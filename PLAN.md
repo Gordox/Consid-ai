@@ -14,10 +14,11 @@ Kamera, bildanalys, poängberäkning, mål, backend, autentisering, synk, redige
 | 1 | Scaffold och verktyg | Klart, enhetstest på S20 återstår |
 | 2 | Domän: inställningar och validering | Klart |
 | 3 | Persistens: migration och repository | Implementerat och enhetstestat, ej verifierat på S20 |
-| 4 | Skapa session | Ej påbörjat |
-| 5 | Lista sessioner | Ej påbörjat |
-| 6 | Dokumentation och integrationstester på enhet | Ej påbörjat |
-| 7 | CI | Ej påbörjat |
+| 4 | UI/UX-design: sessionslista och formulär | Pågår (utkast, skisser saknas) |
+| 5 | Skapa session | Ej påbörjat |
+| 6 | Lista sessioner | Ej påbörjat |
+| 7 | Dokumentation och integrationstester på enhet | Ej påbörjat |
+| 8 | CI | Ej påbörjat |
 
 ## Verifierade versioner (npm-registret och Expo-dokumentationen för SDK 58, 2026-10-27)
 
@@ -43,7 +44,7 @@ Alla Expo-moduler installeras med `npx expo install` så att versionerna följer
 - `expo-router`, `react-native-safe-area-context`, `react-native-screens`, `expo-linking`, `expo-constants` (Expo Routers manuella installation).
 - `react-dom@19.3.0`. Det krävs som peer av Expo Router via Radix. Utan en uttrycklig version installerar npm 19.3.1, som krockar med `react@19.3.0`. Det finns inget webbmål.
 - `expo-sqlite` (steg 3).
-- `expo-crypto` för `randomUUID()` (steg 4). Det är ett Expo-paket men står inte uttryckligen i stacken, så det godkänns genom den här planen.
+- `expo-crypto` för `randomUUID()` (steg 5). Det är ett Expo-paket men står inte uttryckligen i stacken, så det godkänns genom den här planen.
 
 **Dev:**
 - `typescript`, `@types/react` (från mallen).
@@ -78,7 +79,7 @@ Alla Expo-moduler installeras med `npx expo install` så att versionerna följer
      - `LICENSE`, eftersom den innehåller MIT med Expos copyright och ingen licens ska väljas (B9)
      - `AGENTS.md`, eftersom den säger att routes ska ligga i `src/app/`, vilket strider mot `CLAUDE.md`
      - `.claude/settings.json`, som aktiverade ett plugin.
-   - Nya filer: `app/_layout.tsx` (Stack), `app/index.tsx` (rubriken "Target Practice", ersätts i steg 5), `eslint.config.js`, `.prettierrc.json`, `.prettierignore`, `jest.config.js`, `.nvmrc`.
+   - Nya filer: `app/_layout.tsx` (Stack), `app/index.tsx` (rubriken "Target Practice", ersätts i steg 6), `eslint.config.js`, `.prettierrc.json`, `.prettierignore`, `jest.config.js`, `.nvmrc`.
    - Ändrade filer: `package.json`, `app.json`, `tsconfig.json`.
 2. **Ansvar och beteende:**
    - `package.json`:
@@ -111,7 +112,7 @@ Detaljplanen, med kontrakt, förtydliganden och testmatris, finns i `implementat
 
 1. **Filer** (under `apps/mobile/`):
    - `src/domain/result.ts`: `Result<T, E>`, ett typat resultat som är antingen lyckat eller ett fel.
-   - `src/domain/session/firearmType.ts`: `FIREARM_TYPES = ['pistol', 'revolver', 'rifle', 'other'] as const`, `FirearmType` och `isFirearmType(value: unknown)`. Visningsetiketterna hör till UI-lagret (steg 4).
+   - `src/domain/session/firearmType.ts`: `FIREARM_TYPES = ['pistol', 'revolver', 'rifle', 'other'] as const`, `FirearmType` och `isFirearmType(value: unknown)`. Visningsetiketterna hör till UI-lagret (steg 5).
    - `src/domain/session/sessionLimits.ts`: gränserna från B1 som namngivna konstanter.
      - `FIREARM_NAME_MAX_CODE_POINTS = 100` och `CALIBRE_LABEL_MAX_CODE_POINTS = 50`.
      - `DISTANCE_TENTHS_RANGE = { min: 1, max: 10_000 }`, alltså 0,1–1 000 m.
@@ -151,7 +152,7 @@ Detaljplanen, med kontrakt, förtydliganden och testmatris, finns i `implementat
    - `npm run format:check`, `npm run lint` och `npm run typecheck` ger exit 0.
    - `npm test -- --runInBand` ger exit 0, med 7 testsviter och 238 av 238 tester godkända.
    - Domänen importerar inget från React Native, Expo eller SQLite, vilket kontrolleras med `grep`.
-   - Hermes på S20 är inte verifierat. Det täcks av checklistan i steg 6.
+   - Hermes på S20 är inte verifierat. Det täcks av checklistan i steg 7.
 5. **Klart när:** All validering är ren, deterministisk och testad, och den importerar inget från React Native, Expo eller SQLite. Uppfyllt.
 
 ## Steg 3 – Persistens: migration och repository (implementerat och enhetstestat, ej verifierat på S20)
@@ -162,7 +163,7 @@ Detaljplanen, med kontrakt, migrationsordning, teststrategi och testplan för S2
    - `src/persistence/database.ts`:
      - `DATABASE_NAME = 'target-practice.db'`.
      - Den smala typen `SessionDatabase`, där alla läsningar ger `unknown` och därför valideras vid körning.
-     - `asSessionDatabase(db: SQLiteDatabase)`, en kontroll vid kompilering utan cast. Steg 4 ska använda den.
+     - `asSessionDatabase(db: SQLiteDatabase)`, en kontroll vid kompilering utan cast. Steg 5 ska använda den.
      - `DatabaseStateError`.
    - `src/persistence/sessionRow.ts`:
      - `SESSION_COLUMNS`.
@@ -211,16 +212,40 @@ Detaljplanen, med kontrakt, migrationsordning, teststrategi och testplan för S2
      - `ORDER BY created_at_utc DESC, id DESC`.
      - Returnerar `{ sessions, invalidRows }`. Ogiltiga rader anges med kolumner och orsaker, utan värden från raden.
      - Ett databasfel kastas och blir aldrig en tom lista.
-   - **Kontrakt för steg 4:** Ett återförsök måste skicka exakt samma `Session`, även samma `createdAtUtc` och tidszon. Om sessionen byggs om med ny tid ger det `differentContent`.
+   - **Kontrakt för steg 5:** Ett återförsök måste skicka exakt samma `Session`, även samma `createdAtUtc` och tidszon. Om sessionen byggs om med ny tid ger det `differentContent`.
 4. **Beroenden:** `expo-sqlite` ~58.0.14, som har det indirekta beroendet `await-lock`. Pluginet som `expo install` lade till i `app.json` togs bort, eftersom det inte gör något utan inställningar.
 5. **Kontroller** (från `apps/mobile`, Node 26.12.1, efter commit `a216492`):
    - `npm run format:check`, `npm run lint` och `npm run typecheck` ger exit 0.
    - `npm test -- --runInBand` ger exit 0, med 11 testsviter och 322 av 322 tester godkända.
    - Fake-testerna verifierar **inte** riktig SQLite, SQL-syntax, `CHECK` och `STRICT`, rollback, WAL, låsning, samtidighet, parameterbindning i den native-koden eller att REAL-värden blir exakt lika när de läses tillbaka.
-   - Integrationstesterna på S20 ingår i checklistan för steg 6 och har **inte** körts.
+   - Integrationstesterna på S20 ingår i checklistan för steg 7 och har **inte** körts.
 6. **Klart när:** Schema, migrationsrutin och repository finns, radvalidering och orkestrering är enhetstestade och det är dokumenterat vad fake-testerna inte täcker. Uppfyllt för enhetstester. Verifieringen på S20 återstår.
 
-## Steg 4 – Skapa session (formulär och arbetsflöde)
+## Steg 4 – UI/UX-design för sessionslistan och formuläret
+
+Steget tillkom 2026-10-27, innan några skärmar byggs. Tidigare steg 4–7 heter nu steg 5–8.
+
+1. **Filer:**
+   - `docs/design/ui-ux.md`: designdokumentet. Det beskriver skärmar och navigering, tillstånd per skärm, fältordning, etiketter och feltexter på engelska, tillgänglighetskrav för Galaxy S20, en lista över bilderna som behövs och öppna frågor.
+   - `docs/design/images/README.md`: namngivning och format för bilderna.
+   - `docs/design/images/*`: skisser och skärmbilder. Ägaren tar fram dem.
+2. **Ansvar och beteende:**
+   - Omfattningen är bara de två skärmarna i steg 5–6: sessionslistan och formuläret för ny session.
+   - Dokumentet bygger på befintliga beslut: B1–B10, felkoderna från steg 2 och kontrakten från steg 3. Det tar inga UX-beslut som inte är fattade, utan sådant listas som öppna frågor.
+   - Steg 5 och 6 implementerar skärmarna enligt det godkända dokumentet.
+3. **Beroenden:** inga.
+4. **Kontroller:**
+   - Ägaren granskar och godkänner dokumentet.
+   - Varje bild som dokumentet listar finns i `docs/design/images/`, eller är uttryckligen markerad som uppskjuten.
+   - Ingen appkod ändras i steget.
+5. **Klart när:**
+   - Ägaren har godkänt `docs/design/ui-ux.md`.
+   - Det finns skisser för båda skärmarna och deras viktigaste tillstånd.
+   - De öppna frågorna är besvarade eller uttryckligen uppskjutna.
+
+## Steg 5 – Skapa session (formulär och arbetsflöde)
+
+Skärmen följer det godkända designdokumentet `docs/design/ui-ux.md` från steg 4.
 
 1. **Filer:**
    - `apps/mobile/app/_layout.tsx` (ändras): `SQLiteProvider databaseName={DATABASE_NAME}` runt Stack, där `onInit` kör `migrateDatabase(asSessionDatabase(db))`. Om migrationen misslyckas visas en tydlig felskärm i stället för en tom app.
@@ -238,7 +263,7 @@ Detaljplanen, med kontrakt, migrationsordning, teststrategi och testplan för S2
    - Sessions-ID skapas med `useState(() => newSessionId())`, alltså en gång per formulärinstans. Ett återförsök efter ett fel använder samma ID. När användaren lämnar skärmen och öppnar formuläret igen skapas ett nytt ID.
    - En `useRef`-flagga för pågående sparning blockerar samtidiga tryck direkt. Knappen är inaktiverad och visar "Saving…" medan sparningen pågår.
    - Vid fel visas ett meddelande och en Retry-knapp, och inmatningen behålls.
-   - Retry skickar exakt samma `Session`-objekt som det första försöket, även samma `createdAtUtc` och tidszon, enligt kontraktet i steg 3. Sessionen byggs alltså inte om vid Retry. Hur en inmatning som ändrats efter ett misslyckat försök ska hanteras avgörs vid planeringen av steg 4.
+   - Retry skickar exakt samma `Session`-objekt som det första försöket, även samma `createdAtUtc` och tidszon, enligt kontraktet i steg 3. Sessionen byggs alltså inte om vid Retry. Hur en inmatning som ändrats efter ett misslyckat försök ska hanteras avgörs i designdokumentet i steg 4.
    - Vid `SessionIdConflictError` visas ett felmeddelande. Den befintliga raden skrivs aldrig över tyst.
    - Distansfältet använder `keyboardType="decimal-pad"` och heltalsfälten `number-pad`. Tangentbordet räknas inte som validering, utan domänen avgör.
 3. **Beroenden:** `expo-crypto`.
@@ -258,7 +283,9 @@ Detaljplanen, med kontrakt, migrationsordning, teststrategi och testplan för S2
      - formuläret öppnas igen och nästa session får ett nytt ID.
 5. **Klart när:** En giltig session sparas en gång, ogiltig inmatning stoppas med begripliga fel och återförsök skapar inga dubbletter.
 
-## Steg 5 – Lista sessioner
+## Steg 6 – Lista sessioner
+
+Skärmen följer det godkända designdokumentet `docs/design/ui-ux.md` från steg 4.
 
 1. **Filer:**
    - `apps/mobile/app/index.tsx` (ersätts): en route som läser via `listSessions` när skärmen får fokus (`useFocusEffect`) och renderar `SessionList`.
@@ -276,7 +303,7 @@ Detaljplanen, med kontrakt, migrationsordning, teststrategi och testplan för S2
    - Manuellt på S20: listan uppdateras efter sparning, nyast visas först och det tomma läget visas på en ny installation.
 5. **Klart när:** Sparade sessioner visas korrekt, och felaktig data syns i stället för att döljas.
 
-## Steg 6 – Dokumentation och integrationstester på enhet
+## Steg 7 – Dokumentation och integrationstester på enhet
 
 1. **Filer:**
    - `README.md` i rotkatalogen.
@@ -311,12 +338,12 @@ Detaljplanen, med kontrakt, migrationsordning, teststrategi och testplan för S2
      - att REAL och Unicode blir exakt lika när de läses tillbaka
      - sortering och att data finns kvar efter omstart
 
-     Testverktyget, som bara finns i utvecklingsläge, byggs i steg 6.
+     Testverktyget, som bara finns i utvecklingsläge, byggs i steg 7.
 4. **Beroenden:** inga.
 5. **Kontroller:** Checklistan körs och resultaten fylls i. Det som inte har körts märks som overifierat.
 6. **Klart när:** En ny utvecklare kan installera, köra och verifiera appen bara med hjälp av README, och resultaten från enheten är dokumenterade.
 
-## Steg 7 – CI
+## Steg 8 – CI
 
 1. **Filer:** `.github/workflows/ci.yml`.
 2. **Beteende:**
@@ -332,7 +359,7 @@ Detaljplanen, med kontrakt, migrationsordning, teststrategi och testplan för S2
 ## Antaganden som kvarstår
 
 - Expo Go räcker för det här steget. Ingen development build, inget Android-paket-ID och ingen signering behövs.
-- `Intl` i Hermes på RN 0.88 ger IANA-tidszon och lokal formatering. Det verifieras på S20 i steg 6. Om det inte fungerar stoppas sparningen med ett fel, och `expo-localization` föreslås för godkännande.
+- `Intl` i Hermes på RN 0.88 ger IANA-tidszon och lokal formatering. Det verifieras på S20 i steg 7. Om det inte fungerar stoppas sparningen med ett fel, och `expo-localization` föreslås för godkännande.
 - Distans som börjar med decimaltecken (`.5`) eller slutar med det (`25.`) avvisas. Inledande nollor (`007`) godtas som 7.
 - npm 11 kör inte installationsskripten för `@parcel/watcher` och `unrs-resolver` utan godkännande. Lint och bundling fungerar ändå, så de är inte godkända.
 - Inga commits görs utan att ägaren ber om det. Föreslagna granskningspunkter är efter varje steg.

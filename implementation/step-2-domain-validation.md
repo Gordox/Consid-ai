@@ -1,6 +1,8 @@
 # Detaljplan steg 2: domänmodeller, parsning och validering (ren TypeScript)
 
-> **Status:** Förslag som väntar på godkännande. Ingen kod för steg 2 är implementerad. Planen gäller branchen `feature/session-domain-validation`.
+> **Status:** Godkänd och implementerad. Steg 2 är klart, med commits `6899b9a` (2a) till `c8cee73` (2f) och fixen av Jest-typerna `5822341`. Hermes-beteendet för `normalize` och `Intl` är ännu inte verifierat på Galaxy S20.
+
+> **Numrering (2026-10-27):** Ett nytt steg 4 (UI/UX-design) har lagts till i `PLAN.md`. Stegnumren i den här planen följer den äldre numreringen: steg 4–7 här heter nu steg 5–8.
 
 > **Ägarbeslut om vapen (2026-10-27):** Planen behålls. Vapentyp är en fast lista (B2). Namn och kaliber är fritext per session och sparas som en historisk kopia. Sparade vapenprofiler, som beskrivs i `CLAUDE.md`, blir ett eget steg efter steg 0–7. Steg 2 påverkas inte.
 

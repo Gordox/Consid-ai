@@ -2,6 +2,8 @@
 
 > **Status:** Implementerat och enhetstestat (3a–3e, commits `8ced34c`, `10cfb19`, `ec87c7f`, `a216492` samt dokumentationen i 3e). Ej verifierat på Galaxy S20; integrationstesterna i avsnitt 7 körs i steg 6.
 
+> **Numrering (2026-10-27):** Ett nytt steg 4 (UI/UX-design) har lagts till i `PLAN.md`. Stegnumren i den här planen följer den äldre numreringen: steg 4–7 här heter nu steg 5–8.
+
 ## Kontext
 
 Steg 2 är klart och ligger på `main` (`c8cee73`, plus ägarens commit `6bd992b`). Steg 3 ska kunna spara och läsa sessioner i SQLite på ett säkert sätt, så att steg 4 (formulär) och steg 5 (lista) kan bygga på det. Steg 3 planerar inte `SQLiteProvider`, skärmar, ID-generering, klocka, enhetens tidszon, redigering, borttagning, mål, status, vapenprofiler, backend, ORM eller generiska repositories.

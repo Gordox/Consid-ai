@@ -133,7 +133,7 @@ describe('saveSession', () => {
     });
   });
 
-  // Step 4 contract: a retry must reuse the original Session, not only its id.
+  // Step 5 contract: a retry must reuse the original Session, not only its id.
   it('treats the same id with a new createdAtUtc as a conflict', async () => {
     const db = createDatabase({ changes: 0, existing: toRow(SESSION) });
     const rebuilt: Session = { ...SESSION, createdAtUtc: '2026-10-27T13:00:05.000Z' };

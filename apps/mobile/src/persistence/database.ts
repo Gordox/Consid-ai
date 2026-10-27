@@ -14,7 +14,7 @@ export type SessionDatabase = {
 };
 
 // Compile-time proof, without a cast, that a real connection satisfies SessionDatabase.
-// Step 4 uses it when SQLiteProvider hands over the connection.
+// Step 5 uses it when SQLiteProvider hands over the connection.
 export function asSessionDatabase(db: SQLiteDatabase): SessionDatabase {
   return db;
 }
