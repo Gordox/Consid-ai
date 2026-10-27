@@ -295,7 +295,7 @@ Samma textstorlek, samma tangentbord och samma fält (`Planned rounds`) i båda 
   - Inget extra tomrum finns kvar efter att tangentbordet stängts.
   - **Nya mätvärden har inte rapporterats.** Att den använda offseten är cirka 135,5 i testläge och 0 efter återgången är alltså inte bekräftat med loggar. Det är bara bekräftat att beteendet stämmer visuellt.
 
-## Rättning efter E2 (godkänd av ägaren 2026-10-27, inte committad)
+## Rättning efter E2 (godkänd av ägaren 2026-10-27, commit `0fec9d9`)
 
 - **Behålls:**
   - `ContentOffsetContext` med den dynamiskt uppmätta offseten från `DatabaseGate`

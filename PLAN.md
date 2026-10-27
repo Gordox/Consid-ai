@@ -17,7 +17,7 @@ Kamera, bildanalys, poängberäkning, mål, backend, autentisering, synk, redige
 | 4 | UI/UX-design: sessionslista och formulär | Klart som dokumentation (godkänt). Ingen UI är implementerad. |
 | 5 | Skapa session | Implementerat och enhetstestat. Lyckat flöde kontrollerat på S20, och persistens efter omstart verifierad via listan (steg 6, M5). Tangentbordsbuggen är åtgärdad för det testade flödet (`840e8c7`). Felflöden återstår (steg 7). iOS overifierat. |
 | 6 | Lista sessioner | Implementerat och enhetstestat. M1–M5 och M7–M10 godkända på S20, och M6 delvis kontrollerad men inte verifierad. Felinjektion återstår (steg 7). iOS overifierat. |
-| 7 | Dokumentation och integrationstester på enhet | Ej påbörjat |
+| 7 | Dokumentation och integrationstester på enhet | **Pausat** (2026-10-27). 7a (checklistan) och 7b (testgrunden) är klara. T1–T6 och N4 är godkända på S20. Tangentbordsfelet i testläge är åtgärdat efter E2. 7c–7f och den kvarstående verifieringen återstår (`implementation/step-7-verification.md` §11). |
 | 8 | CI | Ej påbörjat |
 
 ## Verifierade versioner (npm-registret och Expo-dokumentationen för SDK 58, 2026-10-27)
