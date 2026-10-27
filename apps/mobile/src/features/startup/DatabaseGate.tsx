@@ -1,6 +1,6 @@
 import { openDatabaseAsync } from 'expo-sqlite';
 import { type ReactNode, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, type LayoutChangeEvent, StyleSheet, View } from 'react-native';
 
 import { Screen } from '../../components/Screen';
 import { colors } from '../../components/tokens';
@@ -8,6 +8,7 @@ import { openSessionDatabase } from '../../persistence/openSessionDatabase';
 import { assertDevelopment, databaseNameForMode } from '../dev-tools/testDatabases';
 import { TestModeBanner } from '../dev-tools/TestModeBanner';
 import { createSaveCoordinator } from '../sessions/saveCoordinator';
+import { ContentOffsetContext } from './contentOffsetContext';
 import { createDatabaseLifecycle, type DatabaseMode } from './databaseLifecycle';
 import { type DatabaseModeControl, DatabaseModeContext } from './databaseModeContext';
 import { SessionStoreContext } from './sessionStoreContext';
@@ -38,6 +39,10 @@ export function DatabaseGate({ children }: { children: ReactNode }) {
   const [lifecycle] = useState(createAppDatabaseLifecycle);
   const state = useSyncExternalStore(lifecycle.subscribe, lifecycle.getState);
   const mode = useSyncExternalStore(lifecycle.subscribe, lifecycle.getMode);
+  // Where the screens start below the test-mode banner; SessionForm needs it for the keyboard.
+  const [measuredContentOffsetY, setMeasuredContentOffsetY] = useState(0);
+  // Only the banner moves the content, so normal mode never reuses a value from test mode.
+  const contentOffsetY = mode === 'test' ? measuredContentOffsetY : 0;
   const modeControl = useMemo<DatabaseModeControl>(
     () => ({
       mode,
@@ -81,7 +86,16 @@ export function DatabaseGate({ children }: { children: ReactNode }) {
     <DatabaseModeContext.Provider value={modeControl}>
       <View style={styles.fill}>
         {mode === 'test' ? <TestModeBanner /> : null}
-        <View style={styles.fill}>{content}</View>
+        <View
+          onLayout={(event: LayoutChangeEvent) => {
+            setMeasuredContentOffsetY(event.nativeEvent.layout.y);
+          }}
+          style={styles.fill}
+        >
+          <ContentOffsetContext.Provider value={contentOffsetY}>
+            {content}
+          </ContentOffsetContext.Provider>
+        </View>
       </View>
     </DatabaseModeContext.Provider>
   );
