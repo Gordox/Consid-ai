@@ -171,6 +171,14 @@ export function SessionList() {
   const showFooter = view.status === 'loaded' && items.length > 0;
 
   const openForm = () => router.push('/sessions/new');
+  // Development only, and shown in every list state so it stays reachable after a read error.
+  const devChecksLink = __DEV__ ? (
+    <Button
+      label="Developer checks"
+      onPress={() => router.push('/dev/checks')}
+      variant="secondary"
+    />
+  ) : null;
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -179,7 +187,10 @@ export function SessionList() {
         data={items}
         keyExtractor={(item) => item.key}
         ListFooterComponent={
-          showFooter ? <Text style={styles.footer}>Saved locally on this device.</Text> : undefined
+          <>
+            {showFooter ? <Text style={styles.footer}>Saved locally on this device.</Text> : null}
+            {devChecksLink}
+          </>
         }
         ListHeaderComponent={
           <ListHeader
