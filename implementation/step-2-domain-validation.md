@@ -2,13 +2,13 @@
 
 > **Status:** Godkänd och implementerad. Steg 2 är klart, med commits `6899b9a` (2a) till `c8cee73` (2f) och fixen av Jest-typerna `5822341`. Hermes-beteendet för `normalize` och `Intl` är ännu inte verifierat på Galaxy S20.
 
-> **Numrering (2026-10-27):** Ett nytt steg 4 (UI/UX-design) har lagts till i `PLAN.md`. Stegnumren i den här planen följer den äldre numreringen: steg 4–7 här heter nu steg 5–8.
+> **Numrering (2026-10-27):** Ett nytt steg 4 (UI/UX-design) har lagts till i `PLAN.md`, och tidigare steg 4–7 heter nu steg 5–8. Hänvisningarna till kommande steg i den här planen använder den nya numreringen.
 
-> **Ägarbeslut om vapen (2026-10-27):** Planen behålls. Vapentyp är en fast lista (B2). Namn och kaliber är fritext per session och sparas som en historisk kopia. Sparade vapenprofiler, som beskrivs i `CLAUDE.md`, blir ett eget steg efter steg 0–7. Steg 2 påverkas inte.
+> **Ägarbeslut om vapen (2026-10-27):** Planen behålls. Vapentyp är en fast lista (B2). Namn och kaliber är fritext per session och sparas som en historisk kopia. Sparade vapenprofiler, som beskrivs i `CLAUDE.md`, blir ett eget steg efter steg 0–8. Steg 2 påverkas inte.
 
 ## Kontext
 
-Steg 0–1 är klara och sammanslagna med `main`. Arbetet sker på branchen `feature/session-domain-validation`. Steg 2 i `PLAN.md` ska ge en ren, deterministisk och testad domän för sessionsinställningar, som formuläret (steg 4) och radvalideringen (steg 3) sedan bygger på. Ingen UI, SQLite, Expo-integration, ID-generering eller klocka ingår. Inga beroenden, ingen Node-version och inga globala verktyg ändras.
+Steg 0–1 är klara och sammanslagna med `main`. Arbetet sker på branchen `feature/session-domain-validation`. Steg 2 i `PLAN.md` ska ge en ren, deterministisk och testad domän för sessionsinställningar, som formuläret (steg 5) och radvalideringen (steg 3) sedan bygger på. Ingen UI, SQLite, Expo-integration, ID-generering eller klocka ingår. Inga beroenden, ingen Node-version och inga globala verktyg ändras.
 
 ## 1. Förutsättningar (kontrollerade, inga filer ändrade)
 
@@ -23,11 +23,11 @@ Steg 0–1 är klara och sammanslagna med `main`. Arbetet sker på branchen `fea
 | Unicode | `trim()` tar bort U+3000. `"é"` har 2 kodpunkter före och 1 efter NFC. `"👍🏽"` är 2 kodpunkter. | Bekräftar regeln om NFC och kodpunkter. |
 
 **Konflikter och justeringar mot `PLAN.md` (nya förslag, inte beslutade):**
-1. `createSession.ts` i domänen skulle få samma namn som `features/sessions/createSession.ts` i steg 4. **Förslag:** byt namn till `buildSession.ts`.
+1. `createSession.ts` i domänen skulle få samma namn som `features/sessions/createSession.ts` i steg 5. **Förslag:** byt namn till `buildSession.ts`.
 2. `Result` var tänkt att ligga i `session.ts`, men steg 3 behöver typen utan att importera sessionstyperna. **Förslag:** egen fil `src/domain/result.ts`.
 3. `sessionId.ts` behöver också regler för UTC-tid och tidszon. **Förslag:** byt till `sessionMetadata.ts`.
 4. `parseWholeNumber` med `Number.isSafeInteger` ersätts med en kontroll av antalet siffror (se 3d), så att mycket stora tal aldrig konverteras.
-5. Hermes på S20 kan bete sig annorlunda än Node för `String.prototype.normalize` och `Intl.DateTimeFormat({ timeZone })`. **Förslag:** lägg till två punkter i S20-checklistan i steg 6. Jest-körningen bevisar bara beteendet i Node.
+5. Hermes på S20 kan bete sig annorlunda än Node för `String.prototype.normalize` och `Intl.DateTimeFormat({ timeZone })`. **Förslag:** lägg till två punkter i S20-checklistan i steg 7. Jest-körningen bevisar bara beteendet i Node.
 
 Inga konflikter med `CLAUDE.md`. Gränser definieras i ett kontrakt, inte som magiska tal. Tid och ID injiceras. Ingen `any`. Förväntade fel returneras explicit.
 
@@ -159,7 +159,7 @@ d. **Långa siffersträngar:** Inledande nollor tas bort. Om fler siffror åters
 e. **UUID:** Bara kanonisk UUID v4 med gemener godtas: `^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`.
 - Versaler, klammerparenteser, avsaknad av bindestreck, nil-UUID och andra versioner avvisas.
 - Ingen normalisering görs, så att varianter av samma ID inte kan bli dubbletter.
-- Det matchar `expo-crypto` `randomUUID()` i steg 4.
+- Det matchar `expo-crypto` `randomUUID()` i steg 5.
 
 f. **`createdAtUtc`:** Exakt formatet `YYYY-MM-DDTHH:mm:ss.sssZ`, alltså samma form som `toISOString()` ger, kontrolleras med regex.
 - Dessutom måste `new Date(value).toISOString() === value` gälla. Det avvisar `2026-02-30`, `2026-04-31`, `T24:00` och `2026-13-01` utan tyst normalisering.
@@ -170,9 +170,9 @@ g. **`createdTimeZone`:** Ja, tidszonen ska kontrolleras som en giltig zon. Två
 - Formen följer `^[A-Za-z][A-Za-z0-9_+\-]*(?:\/[A-Za-z0-9_+\-]+)*$` och är högst 64 tecken. Det avvisar `"+01:00"`, `""` och blanksteg.
 - `new Intl.DateTimeFormat('en-US', { timeZone })` kastar inget fel. Det avvisar `"Foo/Bar"`.
 
-Värdet sparas som det angavs, utan kanonisering. Begränsning: tidszonsdata beror på motorn, och Hermes verifieras i steg 6.
+Värdet sparas som det angavs, utan kanonisering. Begränsning: tidszonsdata beror på motorn, och Hermes verifieras i steg 7.
 
-h. **`buildSession`:** Funktionen returnerar `Result` med samlade, typade fel och kastar inte. Det följer `CLAUDE.md`: förväntade domänfel returneras explicit. Steg 4 avgör hur ett fel visas.
+h. **`buildSession`:** Funktionen returnerar `Result` med samlade, typade fel och kastar inte. Det följer `CLAUDE.md`: förväntade domänfel returneras explicit. Steg 5 avgör hur ett fel visas.
 
 i. **Typer räcker inte vid körning:** `buildSession` anropar alltid `checkSessionSettings`, som tar emot `unknown`. Ett `SessionSettings`-objekt som har rätt typ men ogiltiga värden (t.ex. `distanceMetres: 0.15`, `plannedRounds: 0`, `firearmName: " x"`) stoppas därför. Ingen brandad typ används.
 
@@ -240,7 +240,7 @@ Efter varje delsteg körs `npm run format:check`, `npm run lint`, `npm run typec
 | 2c. Tal | `parseNumber.ts` | `parseWholeNumber`, `parseDistanceMetres`, `isWholeNumberInRange`, `isDistanceMetres` | `tests/domain/parseNumber.test.ts` (alla talrader) | Alla tal- och formatrader går igenom |
 | 2d. Formulärvalidering | `session.ts`, `validateSessionInput.ts` | Typer, `validateSessionInput` och `checkSessionSettings` | `tests/domain/validateSessionInput.test.ts` (komplett inmatning, flera fel, `null` för rundor, mutation) och `tests/domain/checkSessionSettings.test.ts` | Alla fältfel samlas och inga regler är duplicerade |
 | 2e. Metadata och session | `sessionMetadata.ts`, `buildSession.ts` | `isSessionId`, `isUtcTimestamp`, `isTimeZone`, `buildSession` | `tests/domain/sessionMetadata.test.ts`, `tests/domain/buildSession.test.ts` | Raderna för ID, UTC, tidszon och `buildSession` går igenom |
-| 2f. Dokumentation | `PLAN.md` | Steg 2 uppdateras med de faktiska filnamnen och kontrakten. Statusen sätts till klart. Två punkter läggs till i S20-checklistan i steg 6: att `normalize` och `Intl`-tidszon fungerar i Hermes. | `grep` visar att domänen inte importerar `react-native`, `expo` eller `sqlite` | Alla fyra slutkontroller ger exit 0, och resultaten redovisas med exakta kommandon |
+| 2f. Dokumentation | `PLAN.md` | Steg 2 uppdateras med de faktiska filnamnen och kontrakten. Statusen sätts till klart. Två punkter läggs till i S20-checklistan i steg 7: att `normalize` och `Intl`-tidszon fungerar i Hermes. | `grep` visar att domänen inte importerar `react-native`, `expo` eller `sqlite` | Alla fyra slutkontroller ger exit 0, och resultaten redovisas med exakta kommandon |
 
 Alla filer under `src/domain/session/` ligger i `apps/mobile/`. Inga commits görs utan att du ber om det.
 
@@ -255,4 +255,4 @@ npm test -- --runInBand
 grep -rnE "from '(react|react-native|expo|expo-[a-z-]+)'" src/domain   # ska inte ge några träffar
 ```
 
-Resultaten redovisas som de faktiskt blev. Hermes-beteendet för `normalize` och `Intl` verifieras inte här, utan på S20 i steg 6.
+Resultaten redovisas som de faktiskt blev. Hermes-beteendet för `normalize` och `Intl` verifieras inte här, utan på S20 i steg 7.

@@ -1,12 +1,12 @@
 # Detaljplan steg 3: persistens med expo-sqlite, migrationer och sessionsrepository
 
-> **Status:** Implementerat och enhetstestat (3a–3e, commits `8ced34c`, `10cfb19`, `ec87c7f`, `a216492` samt dokumentationen i 3e). Ej verifierat på Galaxy S20; integrationstesterna i avsnitt 7 körs i steg 6.
+> **Status:** Implementerat och enhetstestat (3a–3e, commits `8ced34c`, `10cfb19`, `ec87c7f`, `a216492` samt dokumentationen i 3e). Ej verifierat på Galaxy S20; integrationstesterna i avsnitt 7 körs i steg 7.
 
-> **Numrering (2026-10-27):** Ett nytt steg 4 (UI/UX-design) har lagts till i `PLAN.md`. Stegnumren i den här planen följer den äldre numreringen: steg 4–7 här heter nu steg 5–8.
+> **Numrering (2026-10-27):** Ett nytt steg 4 (UI/UX-design) har lagts till i `PLAN.md`, och tidigare steg 4–7 heter nu steg 5–8. Hänvisningarna till kommande steg i den här planen använder den nya numreringen.
 
 ## Kontext
 
-Steg 2 är klart och ligger på `main` (`c8cee73`, plus ägarens commit `6bd992b`). Steg 3 ska kunna spara och läsa sessioner i SQLite på ett säkert sätt, så att steg 4 (formulär) och steg 5 (lista) kan bygga på det. Steg 3 planerar inte `SQLiteProvider`, skärmar, ID-generering, klocka, enhetens tidszon, redigering, borttagning, mål, status, vapenprofiler, backend, ORM eller generiska repositories.
+Steg 2 är klart och ligger på `main` (`c8cee73`, plus ägarens commit `6bd992b`). Steg 3 ska kunna spara och läsa sessioner i SQLite på ett säkert sätt, så att steg 5 (formulär) och steg 6 (lista) kan bygga på det. Steg 3 planerar inte `SQLiteProvider`, skärmar, ID-generering, klocka, enhetens tidszon, redigering, borttagning, mål, status, vapenprofiler, backend, ORM eller generiska repositories.
 
 ## 1. Förutsättningar (kontrollerade utan ändringar)
 
@@ -25,7 +25,7 @@ Steg 2 är klart och ligger på `main` (`c8cee73`, plus ägarens commit `6bd992b
 
 **Ingår:** databasnamn och schemaversion, migration 1, validering och mappning av rader, sparning med idempotenta återförsök, listning med synliga ogiltiga rader, enhetstester med fake samt en dokumenterad testplan för S20.
 
-**Ingår inte:** se Kontext. Databasens livscykel, alltså att öppna databasen, `SQLiteProvider`, `onInit` och felskärmen, hör till steg 4.
+**Ingår inte:** se Kontext. Databasens livscykel, alltså att öppna databasen, `SQLiteProvider`, `onInit` och felskärmen, hör till steg 5.
 
 ## 3. Filer och kontrakt (bara signaturer)
 
@@ -46,7 +46,7 @@ export type SessionDatabase = {
 };
 
 // Kontroll vid kompilering, utan cast, att den riktiga anslutningen uppfyller typen.
-// Används i steg 4 när SQLiteProvider lämnar över anslutningen.
+// Används i steg 5 när SQLiteProvider lämnar över anslutningen.
 export function asSessionDatabase(db: SQLiteDatabase): SessionDatabase {
   return db;
 }
@@ -95,7 +95,7 @@ export function listSessions(db: SessionDatabase): Promise<SessionListing>;
 - `sessionRepository.ts` importerar `database.ts`, `sessionRow.ts` och domänen.
 - Ingen persistensmodul gör en import av `expo-sqlite` vid körning. Det kontrolleras med `grep` i 3e.
 
-**Livscykel:** Alla funktioner tar emot en öppen anslutning (`db`). De öppnar och stänger den aldrig. I steg 4 kopplas `SQLiteProvider databaseName={DATABASE_NAME} onInit={migrateDatabase}`, och där visas också fel från migrationen.
+**Livscykel:** Alla funktioner tar emot en öppen anslutning (`db`). De öppnar och stänger den aldrig. I steg 5 kopplas `SQLiteProvider databaseName={DATABASE_NAME} onInit={migrateDatabase}`, och där visas också fel från migrationen.
 
 **Fel som kastas:**
 
@@ -182,7 +182,7 @@ CREATE INDEX sessions_created_at_idx ON sessions (created_at_utc DESC, id DESC);
    - En giltig rad jämförs fält för fält med `===` för alla nio värden. Identiskt innehåll ger `'alreadySaved'`, och annars kastas `SessionIdConflictError(id, 'differentContent')`.
 5. **Samtidiga anrop:** Varje sats körs atomiskt i autocommit, och SQLite garanterar att bara en `INSERT` med samma id lyckas. Ett anrop som får `changes === 0` ser den andra radens commit och returnerar `alreadySaved` eller kastar konflikt. Repositoryt använder inte `withExclusiveTransactionAsync`, eftersom en egen anslutning kan ge `database is locked` för andra skrivningar.
 
-**Kontrakt för steg 4 (dokumenteras nu, implementeras inte):** Ett återförsök måste skicka **exakt samma `Session`-objekt**, med samma `createdAtUtc`, tidszon och inställningar. Bara samma ID räcker inte. Om sessionen byggs om med ny tid ger det `differentContent` i stället för `alreadySaved`.
+**Kontrakt för steg 5 (dokumenteras nu, implementeras inte):** Ett återförsök måste skicka **exakt samma `Session`-objekt**, med samma `createdAtUtc`, tidszon och inställningar. Bara samma ID räcker inte. Om sessionen byggs om med ny tid ger det `differentContent` i stället för `alreadySaved`.
 
 **`listSessions(db)`:**
 - Kör `getAllAsync('SELECT <9 kolumner> FROM sessions ORDER BY created_at_utc DESC, id DESC', [])`.
@@ -199,11 +199,11 @@ Inga nya testberoenden används. Fakes ligger i `tests/persistence/fakeDatabase.
 | `sessionRow.test.ts` (ren logik, ingen fake) | <ul><li>giltig rad, med och utan `planned_rounds`</li><li>varje kolumn saknas, inklusive `planned_rounds`</li><li>fel typer: id `42`, tid som tal, distans `'25'`</li><li>`null` i obligatoriska kolumner</li><li>värden som inte är objekt: `null`, `[]`, sträng</li><li>id med versaler ger `invalidId` och `id: null`</li><li>`2026-02-30…` ger `invalidTimestamp`, och id finns kvar</li><li>tidszonen `Foo/Bar`</li><li>namnet `' x'` och NFD-text ger `notNormalized`, 101 tecken ger `tooLong`</li><li>vapentypen `'shotgun'`</li><li>distans `0.15` ger `tooManyDecimals`, `0.1 + 0.2` godtas</li><li>skott `1.5` och `101`, rundor `0`</li><li>flera fel samtidigt</li><li>felresultatet innehåller inga värden från raden (kontrolleras med `JSON.stringify`)</li><li>extra kolumner ignoreras</li><li>indata ändras inte</li><li>`sessionToRowParams` ger rätt ordning och värden</li></ul> |
 | `migrations.test.ts` (fake) | <ul><li>ny databas: versionen läses, sedan WAL, sedan en transaktion med migration 1 och `user_version = 1`, i den ordningen</li><li>databas med senaste versionen: bara versionen läses och WAL sätts, ingen transaktion körs</li><li>nyare databas: `DatabaseVersionTooNewError` utan något enda skrivanrop, alltså inte heller WAL</li><li>felaktigt svar på `user_version`: `DatabaseStateError`</li><li>WAL svarar `delete`: `JournalModeError` och ingen migration</li><li>fel i en migration: `MigrationFailedError` med version och `cause`, och senare migrationer körs inte (med två injicerade migrationer)</li><li>version som redan är högre inne i transaktionen: migrationen hoppas över</li><li>flera väntande migrationer: i ordning och var och en i en egen transaktion</li></ul> |
 | `migrationSchema.test.ts` | <ul><li>migration 1 är fryst som exakt text</li><li>`CHECK`-värdena stämmer med `FIREARM_TYPES` och gränskonstanterna</li><li>`LATEST_SCHEMA_VERSION === MIGRATIONS.length`</li></ul> |
-| `sessionRepository.test.ts` (fake) | <ul><li>ogiltig session: `InvalidSessionError` och inget anrop till `runAsync`</li><li>`changes 1` ger `saved`, och parametrarna har rätt ordning</li><li>SQL-strängen innehåller inga värden från sessionen, även med citattecken i namnet</li><li>`changes 0` med identisk rad ger `alreadySaved`</li><li>`changes 0` med annan `createdAtUtc` ger konflikt `differentContent`, vilket visar kontraktet för steg 4</li><li>`changes 0` med ogiltig rad ger `existingRowInvalid`</li><li>`changes 0` utan rad ger `DatabaseStateError`</li><li>avvisad `runAsync` kastar samma fel vidare</li><li>`listSessions`: blandade rader delas upp med bevarad ordning, tom tabell ger tomma listor, avvisad `getAllAsync` kastar vidare och SQL:en innehåller rätt `ORDER BY`</li></ul> |
+| `sessionRepository.test.ts` (fake) | <ul><li>ogiltig session: `InvalidSessionError` och inget anrop till `runAsync`</li><li>`changes 1` ger `saved`, och parametrarna har rätt ordning</li><li>SQL-strängen innehåller inga värden från sessionen, även med citattecken i namnet</li><li>`changes 0` med identisk rad ger `alreadySaved`</li><li>`changes 0` med annan `createdAtUtc` ger konflikt `differentContent`, vilket visar kontraktet för steg 5</li><li>`changes 0` med ogiltig rad ger `existingRowInvalid`</li><li>`changes 0` utan rad ger `DatabaseStateError`</li><li>avvisad `runAsync` kastar samma fel vidare</li><li>`listSessions`: blandade rader delas upp med bevarad ordning, tom tabell ger tomma listor, avvisad `getAllAsync` kastar vidare och SQL:en innehåller rätt `ORDER BY`</li></ul> |
 
 **Vad fakes inte verifierar:** riktig SQLite, att SQL-syntaxen är giltig, `CHECK` och `STRICT`, `ROLLBACK`, transaktionsbeteendet i den native-koden, låsning, parameterbindning i den native-koden och REAL-värden som sparas och läses tillbaka. Allt det verifieras bara på S20.
 
-**Testplan för integration på S20** (dokumenteras i 3e, körs i steg 6 med ett testverktyg som bara finns i utvecklingsläge, `__DEV__`; det verktyget ingår inte i steg 3):
+**Testplan för integration på S20** (dokumenteras i 3e, körs i steg 7 med ett testverktyg som bara finns i utvecklingsläge, `__DEV__`; det verktyget ingår inte i steg 3):
 - **Separat testdatabas:** `target-practice-device-check.db`. Verktyget vägrar köra mot `DATABASE_NAME`. Riktiga sessioner raderas eller ändras aldrig. Testdatabasen tas bort med `deleteDatabaseAsync` före och efter.
 - **Fall som ska verifieras:**
 
@@ -226,7 +226,7 @@ Inga nya testberoenden används. Fakes ligger i `tests/persistence/fakeDatabase.
 
 ## 8. Implementationsordning
 
-Efter varje delsteg körs `npm run format:check`, `npm run lint`, `npm run typecheck` och `npm test -- --runInBand` från `apps/mobile`. Varje delsteg committas innan nästa påbörjas. Alla delsteg nedan räknas som **implementerade och enhetstestade**. Inget räknas som **verifierat på S20** förrän testplanen har körts i steg 6.
+Efter varje delsteg körs `npm run format:check`, `npm run lint`, `npm run typecheck` och `npm test -- --runInBand` från `apps/mobile`. Varje delsteg committas innan nästa påbörjas. Alla delsteg nedan räknas som **implementerade och enhetstestade**. Inget räknas som **verifierat på S20** förrän testplanen har körts i steg 7.
 
 | Delsteg | Filer | Ansvar | Beroenden | Tester | Klart när |
 | --- | --- | --- | --- | --- | --- |
@@ -234,7 +234,7 @@ Efter varje delsteg körs `npm run format:check`, `npm run lint`, `npm run typec
 | 3b | `src/persistence/sessionRow.ts`, `tests/persistence/sessionRow.test.ts` | `SESSION_COLUMNS`, `parseSessionRow`, `sessionToRowParams` | inga | Raderna för `sessionRow.test.ts` i avsnitt 7 | Alla rader går igenom, och domänens regler återanvänds utan egna regex eller gränser |
 | 3c | `src/persistence/migrations.ts`, `tests/persistence/fakeDatabase.ts`, `migrations.test.ts`, `migrationSchema.test.ts` | Migration 1, `migrateDatabase` och migrationsfelen | inga | Raderna för migrationer i avsnitt 7 | Ordningen version, WAL, transaktioner är testad med fake, och den frysta SQL-texten och `CHECK`-värdena stämmer |
 | 3d | `src/persistence/sessionRepository.ts`, `tests/persistence/sessionRepository.test.ts` | `saveSession`, `listSessions`, `InvalidSessionError` och `SessionIdConflictError` | inga | Raderna för repositoryt i avsnitt 7 | `saved`, `alreadySaved`, båda konflikterna och vidarekastade fel är testade |
-| 3e | `PLAN.md`, `implementation/step-3-persistence.md` (status) | Steg 3 i `PLAN.md` uppdateras med de faktiska kontrakten. Testplanen för S20 läggs in i checklistan för steg 6. Det kontrolleras att persistenslagret bara har typimporter från expo-sqlite. | inga | `grep -rn "from 'expo-sqlite'" src/persistence` får bara ge träffar på `import type` | Alla fyra kontroller ger exit 0. Status: "implementerat och enhetstestat, ej verifierat på S20". |
+| 3e | `PLAN.md`, `implementation/step-3-persistence.md` (status) | Steg 3 i `PLAN.md` uppdateras med de faktiska kontrakten. Testplanen för S20 läggs in i checklistan för steg 7. Det kontrolleras att persistenslagret bara har typimporter från expo-sqlite. | inga | `grep -rn "from 'expo-sqlite'" src/persistence` får bara ge träffar på `import type` | Alla fyra kontroller ger exit 0. Status: "implementerat och enhetstestat, ej verifierat på S20". |
 
 ## 9. Beslut och förslag
 
@@ -260,7 +260,7 @@ Efter varje delsteg körs `npm run format:check`, `npm run lint`, `npm run typec
 7. Vid konflikt med en ogiltig befintlig rad kastas `SessionIdConflictError('existingRowInvalid')`.
 8. Jämförelse med `===` på alla nio fält.
 9. Policyn för framtida ändringar av regler.
-10. Testverktyget för S20 byggs i steg 6, inte i steg 3.
+10. Testverktyget för S20 byggs i steg 7, inte i steg 3.
 11. Ny branch: `feature/session-persistence`.
 
 **Ingen blockerande fråga.** Om `npx expo install expo-sqlite` lägger till ett plugin i `app.json` redovisas det i 3a, och ändringen behålls bara om Expo kräver den.

@@ -14,7 +14,7 @@ Kamera, bildanalys, poängberäkning, mål, backend, autentisering, synk, redige
 | 1 | Scaffold och verktyg | Klart, enhetstest på S20 återstår |
 | 2 | Domän: inställningar och validering | Klart |
 | 3 | Persistens: migration och repository | Implementerat och enhetstestat, ej verifierat på S20 |
-| 4 | UI/UX-design: sessionslista och formulär | Pågår (utkast, skisser saknas) |
+| 4 | UI/UX-design: sessionslista och formulär | Klart som dokumentation (godkänt). Ingen UI är implementerad. |
 | 5 | Skapa session | Ej påbörjat |
 | 6 | Lista sessioner | Ej påbörjat |
 | 7 | Dokumentation och integrationstester på enhet | Ej påbörjat |
@@ -45,6 +45,11 @@ Alla Expo-moduler installeras med `npx expo install` så att versionerna följer
 - `react-dom@19.3.0`. Det krävs som peer av Expo Router via Radix. Utan en uttrycklig version installerar npm 19.3.1, som krockar med `react@19.3.0`. Det finns inget webbmål.
 - `expo-sqlite` (steg 3).
 - `expo-crypto` för `randomUUID()` (steg 5). Det är ett Expo-paket men står inte uttryckligen i stacken, så det godkänns genom den här planen.
+- `lucide-react-native` **1.56.0** och `react-native-svg` **15.16.0** för ikoner (steg 5). Ägaren godkände båda 2026-10-27 (Q1). Inget av dem är installerat än.
+  - `react-native-svg` 15.16.0 är den version som Expo SDK 58 anger i `bundledNativeModules.json`. Den installeras med `npx expo install react-native-svg`.
+  - `lucide-react-native` 1.56.0 är publicerad 2026-10-13. Den pinnas exakt, eftersom paketet släpps nästan dagligen (senaste är 1.62.0 från 2026-10-27).
+  - `lucide-react-native` har peer-kraven `react-native-svg ^12 || ^13 || ^14 || ^15` och `react ^16.5.1 || … || ^19`. Båda uppfylls av SDK 58 med react 19.3.0. Det är kontrollerat i npm-registret, men inte installerat eller testat.
+  - Licensen är ISC, och en del ikoner kommer från Feather med MIT-licens. Licenstexterna bevaras i en fil med tredjepartsnotiser (steg 5).
 
 **Dev:**
 - `typescript`, `@types/react` (från mallen).
@@ -57,6 +62,8 @@ Alla Expo-moduler installeras med `npx expo install` så att versionerna följer
 - `react-native-web`, eftersom det inte finns något webbmål.
 - `@testing-library/react-native` och `expo-localization`.
 - `better-sqlite3` och `zod`, enligt B6 och B7.
+- `@expo/vector-icons` och `expo-font`. De är inte installerade, och Expo SDK 58-dokumentationen avråder från `@expo/vector-icons`. Ikonerna kommer i stället från Lucide (Q1).
+- `expo-system-ui` och `expo-navigation-bar`. De läggs bara till om plattformsverifieringen i `docs/design/ui-ux.md`, avsnitt 11, visar ett behov. Problemet redovisas då före installation (Q2).
 
 **Versionspolicy:** Intervallen i `package.json` behålls, `package-lock.json` commitas, installation sker med `npm ci` och kontroll med `npx expo install --check`.
 
@@ -221,34 +228,45 @@ Detaljplanen, med kontrakt, migrationsordning, teststrategi och testplan för S2
    - Integrationstesterna på S20 ingår i checklistan för steg 7 och har **inte** körts.
 6. **Klart när:** Schema, migrationsrutin och repository finns, radvalidering och orkestrering är enhetstestade och det är dokumenterat vad fake-testerna inte täcker. Uppfyllt för enhetstester. Verifieringen på S20 återstår.
 
-## Steg 4 – UI/UX-design för sessionslistan och formuläret
+## Steg 4 – UI/UX-design för sessionslistan och formuläret (klart som dokumentation, ingen UI implementerad)
 
 Steget tillkom 2026-10-27, innan några skärmar byggs. Tidigare steg 4–7 heter nu steg 5–8.
 
 1. **Filer:**
-   - `docs/design/ui-ux.md`: designdokumentet. Det beskriver skärmar och navigering, tillstånd per skärm, fältordning, etiketter och feltexter på engelska, tillgänglighetskrav för Galaxy S20, en lista över bilderna som behövs och öppna frågor.
-   - `docs/design/images/README.md`: namngivning och format för bilderna.
-   - `docs/design/images/*`: skisser och skärmbilder. Ägaren tar fram dem.
+   - `docs/design/ui-ux.md`: designdokumentet. Det innehåller:
+     - underlaget och vad varje tavla täcker
+     - ägarens beslut A1–A15, F1–F7 och Q1–Q7
+     - avvikelserna från tavla 03
+     - skärmar och tillstånd, inklusive de sju tillstånd som saknas i tavlorna, beskrivna i text
+     - texterna
+     - tema och den uppmätta kontrasten
+     - ikoner med licenser
+     - plattformsverifiering och tillgänglighet.
+   - `docs/design/images/README.md`: namngivning av tavlor och utsnitt.
+   - `docs/design/images/01-foundations.png`, `02-components.png`, `03-current-mvp.png`, `04-future-features.png` och `05-prototype-flows.png`: ägarens designtavlor, med ändrade namn men oförändrat innehåll.
 2. **Ansvar och beteende:**
-   - Omfattningen är bara de två skärmarna i steg 5–6: sessionslistan och formuläret för ny session.
-   - Dokumentet bygger på befintliga beslut: B1–B10, felkoderna från steg 2 och kontrakten från steg 3. Det tar inga UX-beslut som inte är fattade, utan sådant listas som öppna frågor.
-   - Steg 5 och 6 implementerar skärmarna enligt det godkända dokumentet.
-3. **Beroenden:** inga.
+   - Omfattningen är bara sessionslistan, formuläret för ny session och felskärmen vid start.
+   - Tavla `03` och `05` är normerande för MVP:n, med avvikelserna i avsnitt 4 i `ui-ux.md`. `04` och de framtida delarna av `02` och `05` är bara koncept (A13).
+   - Tillstånd som saknas i tavlorna är beskrivna i text och blockerar inte implementationen (Q3).
+3. **Beroenden:** inga i steget. Ikonpaketen installeras i steg 5.
 4. **Kontroller:**
-   - Ägaren granskar och godkänner dokumentet.
-   - Varje bild som dokumentet listar finns i `docs/design/images/`, eller är uttryckligen markerad som uppskjuten.
-   - Ingen appkod ändras i steget.
-5. **Klart när:**
-   - Ägaren har godkänt `docs/design/ui-ux.md`.
-   - Det finns skisser för båda skärmarna och deras viktigaste tillstånd.
-   - De öppna frågorna är besvarade eller uttryckligen uppskjutna.
+   - Alla bildlänkar i dokumentet pekar på filer som finns.
+   - Inga filnamn har mellanslag eller tankstreck.
+   - Kontrastvärdena är uppmätta och står tillsammans med färgparen.
+   - Ingen appkod och inga paket ändras.
+   - **Verifiering:** UI:t som specificeras är varken implementerat eller verifierat i körande app. Android (Galaxy S20 med Hermes) och iOS är overifierade. De 322 testerna gäller steg 2–3 och täcker inte designen, Lucide och SVG eller native-beteende. De kontroller som faktiskt har gjorts är dokumentationskontrollerna och kontrastberäkningarna.
+5. **Klart när:** Ägaren har godkänt `docs/design/ui-ux.md` och de omdöpta tavlorna. Uppfyllt 2026-10-27, med texterna P1–P4 och U1–U10 beslutade.
 
 ## Steg 5 – Skapa session (formulär och arbetsflöde)
 
 Skärmen följer det godkända designdokumentet `docs/design/ui-ux.md` från steg 4.
 
 1. **Filer:**
-   - `apps/mobile/app/_layout.tsx` (ändras): `SQLiteProvider databaseName={DATABASE_NAME}` runt Stack, där `onInit` kör `migrateDatabase(asSessionDatabase(db))`. Om migrationen misslyckas visas en tydlig felskärm i stället för en tom app.
+   - `apps/mobile/app/_layout.tsx` (ändras): `SQLiteProvider databaseName={DATABASE_NAME}` runt Stack, där `onInit` kör `migrateDatabase(asSessionDatabase(db))`. Om initieringen eller migrationen misslyckas visas felskärmen i `ui-ux.md` 7.7, med bara Retry, utan `New session`, utan återställning och utan radering.
+   - Mörkt tema (A6): `app.json` får `userInterfaceStyle: "dark"` och `backgroundColor: "#111315"`. Rotlayouten får `ThemeProvider` och en anpassad `DarkTheme` från `expo-router`. `<StatusBar style="light" />`. `TextInput` får `keyboardAppearance="dark"` på iOS, `placeholderTextColor` och `selectionColor`.
+   - Designtokens (färger inklusive `inputBorder #68727C`, typografi, avstånd och ikonstorlekar) i en modul under `apps/mobile/src/components/` eller `src/config/`.
+   - Ikoner: namngivna importer från `lucide-react-native`, bara de nio ikonerna i `ui-ux.md` avsnitt 10.
+   - En fil med tredjepartsnotiser för Lucide (ISC) och Feather (MIT).
    - `apps/mobile/app/sessions/new.tsx`: en tunn route som renderar `SessionForm` och navigerar tillbaka till listan efter sparning.
    - `apps/mobile/src/services/deviceContext.ts`:
      - `nowUtcIso()`
@@ -257,16 +275,25 @@ Skärmen följer det godkända designdokumentet `docs/design/ui-ux.md` från ste
    - `apps/mobile/src/features/sessions/createSession.ts`: `createSession(input, deps: { id, now, timeZone, save })` validerar, bygger posten och sparar. Resultatet är `invalid` (med fältfel), `saved`, `alreadySaved` eller ett kastat fel.
    - `apps/mobile/src/features/sessions/firearmTypeLabels.ts`: `Record<FirearmType, string>` med Pistol, Revolver, Rifle och Other. Kompilatorn kräver en etikett per typ.
    - `apps/mobile/src/features/sessions/fieldErrorMessages.ts`: engelska feltexter byggda av felkod och gränskonstanter, utan hårdkodade tal.
-   - `apps/mobile/src/features/sessions/SessionForm.tsx`: fält, segmentknappar för vapentyp (`accessibilityRole="radio"`), knappen Save och fältfel under respektive fält.
+   - `apps/mobile/src/features/sessions/SessionForm.tsx`: fält, radrader för vapentyp (`accessibilityRole="radio"`, ingen förvald), knappen `Create session`, fältfel, sparfel, id-konflikt och dialogerna enligt `ui-ux.md` avsnitt 6–7.
    - Tester: `apps/mobile/tests/features/createSession.test.ts` och `fieldErrorMessages.test.ts`.
 2. **Beteende:**
-   - Sessions-ID skapas med `useState(() => newSessionId())`, alltså en gång per formulärinstans. Ett återförsök efter ett fel använder samma ID. När användaren lämnar skärmen och öppnar formuläret igen skapas ett nytt ID.
-   - En `useRef`-flagga för pågående sparning blockerar samtidiga tryck direkt. Knappen är inaktiverad och visar "Saving…" medan sparningen pågår.
-   - Vid fel visas ett meddelande och en Retry-knapp, och inmatningen behålls.
-   - Retry skickar exakt samma `Session`-objekt som det första försöket, även samma `createdAtUtc` och tidszon, enligt kontraktet i steg 3. Sessionen byggs alltså inte om vid Retry. Hur en inmatning som ändrats efter ett misslyckat försök ska hanteras avgörs i designdokumentet i steg 4.
-   - Vid `SessionIdConflictError` visas ett felmeddelande. Den befintliga raden skrivs aldrig över tyst.
+   - **Före första försöket:** alla fält går att redigera, och ingen vapentyp är förvald (A3).
+   - **Första giltiga försöket:** en stabil kopia av hela `Session`-objektet skapas, alltså id, `createdAtUtc`, tidszon och inställningar. Formuläret låses, och en `useRef`-flagga blockerar dubbla anrop. Knappen visar `Creating session…`.
+   - **Sparfel:** fälten är fortfarande låsta, och låsningen förklaras i text. `Try saving again` skickar exakt samma kopia (kontraktet i steg 3). Inget försök görs automatiskt (F1, `ui-ux.md` 7.3).
+   - **Id-konflikt (`SessionIdConflictError`):** ingen Retry, inget nytt id och ingen överskrivning. Bara `Back to sessions` finns (`ui-ux.md` 7.6).
+   - **Bakåt:** `usePreventRemove` från `expo-router` fångar header-knappen, Androids bakåtknapp och iOS bakåtsvep.
+     - Ändrat men aldrig skickat formulär ger dialogen "Discard" (7.4).
+     - Efter ett sparfel visas dialogen "Leave without saving?" med `Stay` och `Leave` (7.5). `Leave` går till listan, som läses om.
+     - Ett orört formulär eller en sparad session ger ingen fråga. Dialogerna är egna komponenter, inte native `Alert`.
+   - **Ett nytt besök** i formuläret ger ett nytt formulär och, vid första försöket, ett nytt id.
+   - **Fältfel (U7):** Inga fel visas före första sparförsöket. `Create session` validerar alltid hela formuläret. Därefter valideras ett ändrat fält på nytt med domänens `validateSessionInput`, och bara det fältets fel uppdateras. Formuläret har inga egna valideringsregler.
+   - **Långvarig eller hängande sparning (U8):** Det ska **planeras i detaljplanen för steg 5 före implementation**:
+     - Användaren får inte bli permanent inlåst på skärmen.
+     - En UI-timeout får inte tolkas som att databasanropet har avbrutits eller att sessionen inte har sparats.
+     - Inga parallella sparförsök får startas.
    - Distansfältet använder `keyboardType="decimal-pad"` och heltalsfälten `number-pad`. Tangentbordet räknas inte som validering, utan domänen avgör.
-3. **Beroenden:** `expo-crypto`.
+3. **Beroenden:** `expo-crypto`, `lucide-react-native` 1.56.0 och `react-native-svg` 15.16.0. Alla installeras först i steg 5.
 4. **Kontroller:**
    - Automatiskt, `createSession` med en fake-`save`. Testet **verifierar bara orkestreringen**:
      - att `save` inte anropas vid ogiltig inmatning
@@ -280,7 +307,12 @@ Skärmen följer det godkända designdokumentet `docs/design/ui-ux.md` från ste
      - fältfel visas och försvinner efter rättning
      - snabba dubbeltryck på Save ger en enda rad
      - både `25,5` och `25.5` godtas
-     - formuläret öppnas igen och nästa session får ett nytt ID.
+     - formuläret öppnas igen och nästa session får ett nytt ID
+     - ingen vapentyp är förvald
+     - fälten är låsta efter ett sparfel, och Retry skickar samma session
+     - båda dialogerna visas via appens bakåtknapp och Androids bakåtknapp
+     - mörkt tema, statusfält och tangentbord enligt `ui-ux.md` avsnitt 11.
+   - iOS är overifierat tills det testats på en riktig enhet.
 5. **Klart när:** En giltig session sparas en gång, ogiltig inmatning stoppas med begripliga fel och återförsök skapar inga dubbletter.
 
 ## Steg 6 – Lista sessioner
@@ -289,18 +321,19 @@ Skärmen följer det godkända designdokumentet `docs/design/ui-ux.md` från ste
 
 1. **Filer:**
    - `apps/mobile/app/index.tsx` (ersätts): en route som läser via `listSessions` när skärmen får fokus (`useFocusEffect`) och renderar `SessionList`.
-   - `apps/mobile/src/features/sessions/SessionList.tsx`: `FlatList`, tomt läge ("No sessions yet") och knappen "New session".
-   - `apps/mobile/src/features/sessions/formatSession.ts`: ren formatering av lokal tid (`toLocaleString`), distans (`25.5 m`) och planerade rundor ("Not planned" när värdet är `null`).
+   - `apps/mobile/src/features/sessions/SessionList.tsx`: `FlatList` med tillstånden i `ui-ux.md` 5.2. Posterna är inte klickbara.
+   - `apps/mobile/src/features/sessions/formatSession.ts`: ren formatering av lokalt datum och lokal tid (A4, till exempel `27 Oct 2026, 14:00`), distans (`25 m`) och planerade rundor (`5 planned rounds`, eller `Not planned` när värdet är `null`, A5).
+   - Översättning av kolumnfel för ogiltiga rader till texterna i `ui-ux.md` 5.3 (A2).
    - Test: `apps/mobile/tests/features/formatSession.test.ts`.
 2. **Beteende:**
    - Varje post visar vapennamn, typetikett, kaliber, distans, skott per runda, planerade rundor och skapad tid i enhetens lokala tid.
-   - Ogiltiga rader visas som "Unreadable session record" med id och orsak. De försvinner inte och fylls inte med standardvärden.
-   - Om läsningen misslyckas visas ett felläge med Retry.
+   - Ogiltiga rader visas som `Unreadable session record` med kort id (eller `ID unavailable`) och begripliga orsaker. Inga ovaliderade värden, råa felkoder eller kolumnnamn visas, och raderna försvinner inte.
+   - Ett läsfel visar bannern med `Try again` och `New session` (Q7). Det visas aldrig som en tom lista, inte heller efter `Leave` från formuläret.
 3. **Beroenden:** inga.
 4. **Kontroller:**
-   - Automatiskt: `formatSession` för distans med och utan decimal, `null` för rundor och en fast tidszon i testet (`TZ` sätts i Jest-konfigurationen).
+   - Automatiskt: `formatSession` för distans med och utan decimal, `null` som ger `Not planned`, datum och tid med en fast tidszon i testet (`TZ` sätts i Jest-konfigurationen), och översättningen av varje felkod för ogiltiga rader.
    - Därefter lint, typkontroll och tester.
-   - Manuellt på S20: listan uppdateras efter sparning, nyast visas först och det tomma läget visas på en ny installation.
+   - Manuellt på S20: listan uppdateras efter sparning, nyast visas först, det tomma läget visas på en ny installation och texten radbryts vid den största systemtexten. iOS är overifierat.
 5. **Klart när:** Sparade sessioner visas korrekt, och felaktig data syns i stället för att döljas.
 
 ## Steg 7 – Dokumentation och integrationstester på enhet
@@ -329,6 +362,7 @@ Skärmen följer det godkända designdokumentet `docs/design/ui-ux.md` från ste
    - lokal tid visas korrekt efter byte av enhetens tidszon
    - en andra start kör inte migrationen igen
    - flygplansläge påverkar inte appen.
+   - Tema och plattform enligt `docs/design/ui-ux.md` avsnitt 11. På Android kontrolleras mörk bakgrund utan vit blinkning, statusfält, navigationsfält, systemets tangentbord, bakåtknappen och dialogerna. iOS-punkterna markeras som overifierade tills de har testats på en riktig enhet. Ett behov av `expo-system-ui` eller `expo-navigation-bar` redovisas innan något installeras.
    - Persistensen enligt testplanen i `implementation/step-3-persistence.md`, avsnitt 7. Den körs mot en separat testdatabas, `target-practice-device-check.db`, och aldrig mot riktiga sessioner. Den täcker:
      - ny databas och upprepad initiering
      - nyare version och rollback när en migration misslyckas
