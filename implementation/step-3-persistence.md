@@ -1,6 +1,6 @@
 # Detaljplan steg 3: persistens med expo-sqlite, migrationer och sessionsrepository
 
-> **Status:** Godkänd 2026-10-27. Implementeras på branchen `feature/session-persistence`. Ingen kod för steg 3 är implementerad ännu.
+> **Status:** Implementerat och enhetstestat (3a–3e, commits `8ced34c`, `10cfb19`, `ec87c7f`, `a216492` samt dokumentationen i 3e). Ej verifierat på Galaxy S20; integrationstesterna i avsnitt 7 körs i steg 6.
 
 ## Kontext
 

@@ -13,7 +13,7 @@ Kamera, bildanalys, poängberäkning, mål, backend, autentisering, synk, redige
 | 0 | Förberedelser | Klart |
 | 1 | Scaffold och verktyg | Klart, enhetstest på S20 återstår |
 | 2 | Domän: inställningar och validering | Klart |
-| 3 | Persistens: migration och repository | Ej påbörjat |
+| 3 | Persistens: migration och repository | Implementerat och enhetstestat, ej verifierat på S20 |
 | 4 | Skapa session | Ej påbörjat |
 | 5 | Lista sessioner | Ej påbörjat |
 | 6 | Dokumentation och integrationstester på enhet | Ej påbörjat |
@@ -154,21 +154,24 @@ Detaljplanen, med kontrakt, förtydliganden och testmatris, finns i `implementat
    - Hermes på S20 är inte verifierat. Det täcks av checklistan i steg 6.
 5. **Klart när:** All validering är ren, deterministisk och testad, och den importerar inget från React Native, Expo eller SQLite. Uppfyllt.
 
-## Steg 3 – Persistens: migration och repository
+## Steg 3 – Persistens: migration och repository (implementerat och enhetstestat, ej verifierat på S20)
 
-1. **Filer** (`apps/mobile/src/persistence/`):
-   - `database.ts`: `DATABASE_NAME = 'target-practice.db'`.
-   - `migrations.ts`:
-     - `MIGRATIONS: readonly string[]`. Indexet plus 1 är versionen. Listan får bara växa, och en befintlig post ändras aldrig.
-     - `migrateDatabase(db)`: läser `PRAGMA user_version`. Om databasversionen är högre än appens kastas ett fel och databasen lämnas orörd. Annars körs varje väntande migration tillsammans med `PRAGMA user_version = n` i `withExclusiveTransactionAsync`. `PRAGMA journal_mode = WAL` sätts före migrationerna.
-   - `sessionRow.ts`: `parseSessionRow(row: unknown): Result<Session, InvalidSessionRow>`.
-     - Den kontrollerar alla kolumntyper och kör samma domänregler som vid inmatning, genom att återanvända `checkSessionSettings` från steg 2: längd, NFC, enum, intervall och högst en decimal.
-     - Den kontrollerar också metadata med `isSessionId`, `isUtcTimestamp` och `isTimeZone` från steg 2.
-     - Den sätter aldrig standardvärden.
-   - `sessionRepository.ts`:
-     - `saveSession(db, session)`: `INSERT … ON CONFLICT(id) DO NOTHING`. Om ingen rad ändrades läses den befintliga raden. Är den identisk returneras `alreadySaved` (idempotent återförsök). Annars kastas `SessionIdConflictError`.
-     - `listSessions(db)`: `ORDER BY created_at_utc DESC, id DESC`. Returnerar `{ sessions, invalidRows }`, där `invalidRows` innehåller id (om det går att läsa) och orsak.
-   - Tester: `apps/mobile/tests/persistence/sessionRow.test.ts` och `migrations.test.ts`.
+Detaljplanen, med kontrakt, migrationsordning, teststrategi och testplan för S20, finns i `implementation/step-3-persistence.md`.
+
+1. **Filer** (under `apps/mobile/`):
+   - `src/persistence/database.ts`:
+     - `DATABASE_NAME = 'target-practice.db'`.
+     - Den smala typen `SessionDatabase`, där alla läsningar ger `unknown` och därför valideras vid körning.
+     - `asSessionDatabase(db: SQLiteDatabase)`, en kontroll vid kompilering utan cast. Steg 4 ska använda den.
+     - `DatabaseStateError`.
+   - `src/persistence/sessionRow.ts`:
+     - `SESSION_COLUMNS`.
+     - `parseSessionRow(row: unknown): Result<Session, InvalidSessionRow>`. Den återanvänder `checkSessionSettings`, `isSessionId`, `isUtcTimestamp` och `isTimeZone` från steg 2 och har inga egna regler eller toleranser.
+     - `sessionToRowParams`, som ger värden att binda i SQL.
+   - `src/persistence/migrations.ts`: migration 1, `MIGRATIONS` (får bara utökas), `LATEST_SCHEMA_VERSION`, `migrateDatabase(db, migrations = MIGRATIONS)` och felklasserna `DatabaseVersionTooNewError`, `JournalModeError` och `MigrationFailedError`.
+   - `src/persistence/sessionRepository.ts`: `saveSession`, `listSessions`, `InvalidSessionError` och `SessionIdConflictError`.
+   - Tester i `tests/persistence/`: `sessionRow`, `migrations`, `migrationSchema` och `sessionRepository` (`*.test.ts`). Där finns också `fakeDatabase.ts`, som inte är en egen testsvit.
+   - Persistenslagret har bara typimporter från `expo-sqlite`. Ingen native-kod laddas i Jest.
 2. **Migration 1:**
    ```sql
    CREATE TABLE sessions (
@@ -182,32 +185,45 @@ Detaljplanen, med kontrakt, förtydliganden och testmatris, finns i `implementat
      planned_shots_per_round INTEGER NOT NULL CHECK (planned_shots_per_round BETWEEN 1 AND 100),
      planned_rounds INTEGER CHECK (planned_rounds IS NULL OR planned_rounds BETWEEN 1 AND 100)
    ) STRICT;
-   CREATE INDEX sessions_created_at_idx ON sessions (created_at_utc DESC);
+   CREATE INDEX sessions_created_at_idx ON sessions (created_at_utc DESC, id DESC);
    ```
-   - Inställningarna sparas som en historisk kopia i sessionsraden.
-   - Det finns ingen `status`-kolumn och inga mål-kolumner (B3 och justeringen om status). De läggs till i senare migrationer.
-   - SQLite:s `length()` räknar tecken i TEXT, vilket motsvarar kodpunkter, så kolumnen skyddar samma gräns som domänen. NFC-kravet går inte att uttrycka i SQL och kontrolleras bara i domänen.
-   - Kontrollen av "högst en decimal" vid läsning tål ett epsilon på 1e-9, enbart för flyttalsbrus. Epsilonet dokumenteras och är ingen tolerans för själva värdet.
-3. **Beroenden:** `expo-sqlite`.
-4. **Kontroller:**
-   - Automatiskt, `parseSessionRow` med vanliga objekt (riktig logik, ingen mock):
-     - giltig rad
-     - varje kolumn saknas, har fel typ eller ligger utanför gränsen
-     - okänd vapentyp
-     - `planned_rounds` som `null` respektive `0`
-     - distans med två decimaler
-     - trasigt datum.
-   - Automatiskt, `migrateDatabase` med en minimal fake-db (en inspelad lista av SQL-anrop):
-     - **verifierar bara** ordning, versionslogik, att fel kastas när databasen är nyare än appen och att varje migration körs i en transaktion
-     - **verifierar inte** att SQL:en är giltig för SQLite eller att `CHECK` faktiskt fungerar.
-   - Automatiskt: ett test som kontrollerar att `CHECK`-värdena i migration 1 matchar `FIREARM_TYPES` och `sessionLimits`. Det fångar avvikelser, men visar inte att SQL:en går att köra.
-   - Manuellt: täcks i steg 6 med riktig expo-sqlite på S20.
-5. **Klart när:** Schema, migrationsrutin och repository finns. Radvalidering och migrationslogik är enhetstestade, och det är dokumenterat vad mockarna inte täcker.
+   - Inställningarna sparas som en historisk kopia i sessionsraden. Det finns ingen `status` och inga mål-kolumner.
+   - Indexet omfattar också `id DESC`, så att det matchar sorteringen i `listSessions`.
+   - `STRICT` och `CHECK` skyddar lagringsklass, `NOT NULL`, unikt id, vapentyp, intervall och längd i tecken. NFC, trim, UUID-format, giltiga datum och tidszoner samt högst en decimal skyddas bara av domänen.
+   - Migration 1 är fryst av ett test. Ett annat test kontrollerar att `CHECK`-värdena stämmer med domänens gränser.
+   - **Policy för framtida regler:**
+     - Vidgade gränser kräver en ny migration som bygger om tabellen.
+     - Skärpta gränser får inte göra sparade rader ogiltiga, så då behövs separata regler för lagrade poster i samma ändring.
+3. **Beteende:**
+   - **`migrateDatabase`:**
+     1. Läser `user_version` och kontrollerar svaret.
+     2. Avvisar en nyare databas med `DatabaseVersionTooNewError` innan något skrivs, alltså även före WAL.
+     3. Aktiverar WAL utanför transaktioner och kontrollerar svaret. Ett annat svar ger `JournalModeError`.
+     4. Kör varje väntande migration i en egen `withExclusiveTransactionAsync`. Där läses versionen om via `txn`, SQL:en körs och `user_version` höjs i samma transaktion.
+
+     Fel ger rollback och `MigrationFailedError(version, cause)`, och senare migrationer körs inte.
+   - **`saveSession`:**
+     - Validerar med `buildSession` och kastar `InvalidSessionError` utan att skriva.
+     - Kör `INSERT … ON CONFLICT(id) DO NOTHING` med bundna parametrar.
+     - En ny rad ger `saved`. En identisk rad ger `alreadySaved`, där alla nio fält jämförs med `===`.
+     - Annat innehåll ger `SessionIdConflictError('differentContent')`, och en ogiltig befintlig rad ger `SessionIdConflictError('existingRowInvalid')`. Befintliga rader skrivs aldrig över.
+   - **`listSessions`:**
+     - `ORDER BY created_at_utc DESC, id DESC`.
+     - Returnerar `{ sessions, invalidRows }`. Ogiltiga rader anges med kolumner och orsaker, utan värden från raden.
+     - Ett databasfel kastas och blir aldrig en tom lista.
+   - **Kontrakt för steg 4:** Ett återförsök måste skicka exakt samma `Session`, även samma `createdAtUtc` och tidszon. Om sessionen byggs om med ny tid ger det `differentContent`.
+4. **Beroenden:** `expo-sqlite` ~58.0.14, som har det indirekta beroendet `await-lock`. Pluginet som `expo install` lade till i `app.json` togs bort, eftersom det inte gör något utan inställningar.
+5. **Kontroller** (från `apps/mobile`, Node 26.12.1, efter commit `a216492`):
+   - `npm run format:check`, `npm run lint` och `npm run typecheck` ger exit 0.
+   - `npm test -- --runInBand` ger exit 0, med 11 testsviter och 322 av 322 tester godkända.
+   - Fake-testerna verifierar **inte** riktig SQLite, SQL-syntax, `CHECK` och `STRICT`, rollback, WAL, låsning, samtidighet, parameterbindning i den native-koden eller att REAL-värden blir exakt lika när de läses tillbaka.
+   - Integrationstesterna på S20 ingår i checklistan för steg 6 och har **inte** körts.
+6. **Klart när:** Schema, migrationsrutin och repository finns, radvalidering och orkestrering är enhetstestade och det är dokumenterat vad fake-testerna inte täcker. Uppfyllt för enhetstester. Verifieringen på S20 återstår.
 
 ## Steg 4 – Skapa session (formulär och arbetsflöde)
 
 1. **Filer:**
-   - `apps/mobile/app/_layout.tsx` (ändras): `SQLiteProvider databaseName={DATABASE_NAME} onInit={migrateDatabase}` runt Stack. Om migrationen misslyckas visas en tydlig felskärm i stället för en tom app.
+   - `apps/mobile/app/_layout.tsx` (ändras): `SQLiteProvider databaseName={DATABASE_NAME}` runt Stack, där `onInit` kör `migrateDatabase(asSessionDatabase(db))`. Om migrationen misslyckas visas en tydlig felskärm i stället för en tom app.
    - `apps/mobile/app/sessions/new.tsx`: en tunn route som renderar `SessionForm` och navigerar tillbaka till listan efter sparning.
    - `apps/mobile/src/services/deviceContext.ts`:
      - `nowUtcIso()`
@@ -222,6 +238,7 @@ Detaljplanen, med kontrakt, förtydliganden och testmatris, finns i `implementat
    - Sessions-ID skapas med `useState(() => newSessionId())`, alltså en gång per formulärinstans. Ett återförsök efter ett fel använder samma ID. När användaren lämnar skärmen och öppnar formuläret igen skapas ett nytt ID.
    - En `useRef`-flagga för pågående sparning blockerar samtidiga tryck direkt. Knappen är inaktiverad och visar "Saving…" medan sparningen pågår.
    - Vid fel visas ett meddelande och en Retry-knapp, och inmatningen behålls.
+   - Retry skickar exakt samma `Session`-objekt som det första försöket, även samma `createdAtUtc` och tidszon, enligt kontraktet i steg 3. Sessionen byggs alltså inte om vid Retry. Hur en inmatning som ändrats efter ett misslyckat försök ska hanteras avgörs vid planeringen av steg 4.
    - Vid `SessionIdConflictError` visas ett felmeddelande. Den befintliga raden skrivs aldrig över tyst.
    - Distansfältet använder `keyboardType="decimal-pad"` och heltalsfälten `number-pad`. Tangentbordet räknas inte som validering, utan domänen avgör.
 3. **Beroenden:** `expo-crypto`.
@@ -285,6 +302,16 @@ Detaljplanen, med kontrakt, förtydliganden och testmatris, finns i `implementat
    - lokal tid visas korrekt efter byte av enhetens tidszon
    - en andra start kör inte migrationen igen
    - flygplansläge påverkar inte appen.
+   - Persistensen enligt testplanen i `implementation/step-3-persistence.md`, avsnitt 7. Den körs mot en separat testdatabas, `target-practice-device-check.db`, och aldrig mot riktiga sessioner. Den täcker:
+     - ny databas och upprepad initiering
+     - nyare version och rollback när en migration misslyckas
+     - parameterbindning med citattecken
+     - `CHECK` och `STRICT`
+     - idempotent sparning, id-konflikt och samtidiga sparningar
+     - att REAL och Unicode blir exakt lika när de läses tillbaka
+     - sortering och att data finns kvar efter omstart
+
+     Testverktyget, som bara finns i utvecklingsläge, byggs i steg 6.
 4. **Beroenden:** inga.
 5. **Kontroller:** Checklistan körs och resultaten fylls i. Det som inte har körts märks som overifierat.
 6. **Klart när:** En ny utvecklare kan installera, köra och verifiera appen bara med hjälp av README, och resultaten från enheten är dokumenterade.
