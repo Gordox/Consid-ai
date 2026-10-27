@@ -237,6 +237,20 @@ describe('createSessionFormController states', () => {
     }
   });
 
+  it('works again after resume, e.g. when Fast Refresh re-runs effects', () => {
+    const { controller, harness } = createController();
+    const listener = jest.fn();
+    controller.subscribe(listener);
+    controller.dispose();
+    controller.resume();
+
+    fill(controller);
+    controller.submit();
+
+    expect(listener).toHaveBeenCalled();
+    expect(harness.calls).toHaveLength(1);
+  });
+
   it('stops publishing after dispose', () => {
     const { controller } = createController();
     const listener = jest.fn();

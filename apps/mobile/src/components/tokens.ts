@@ -20,6 +20,8 @@ export const colors = {
   border: '#3A424B',
   // Boundary of active inputs and unselected choices: 3.80:1 on background, 3.35:1 on surface.
   inputBorder: '#68727C',
+  // Dims the screen behind a dialog. Not on the board; chosen so the elevated card stands out.
+  scrim: 'rgba(0, 0, 0, 0.6)',
 } as const;
 
 // System font (decision A7). Line heights are the board's ratios rounded to whole points.

@@ -39,6 +39,8 @@ export type SessionFormController = {
   changeField(field: SessionField, value: string | null): void;
   submit(): void;
   retry(): void;
+  // Undoes dispose() for the same form instance, e.g. when Fast Refresh re-runs effects.
+  resume(): void;
   dispose(): void;
 };
 
@@ -118,11 +120,15 @@ export function createSessionFormController(
     publish();
   }
 
-  const unsubscribeCoordinator = deps.coordinator.subscribe(() => {
-    if (!disposed) {
-      publish();
-    }
-  });
+  function subscribeToCoordinator(): () => void {
+    return deps.coordinator.subscribe(() => {
+      if (!disposed) {
+        publish();
+      }
+    });
+  }
+
+  let unsubscribeCoordinator = subscribeToCoordinator();
 
   function startSave(snapshot: Session): void {
     const attempt = deps.coordinator.run(() => deps.save(snapshot));
@@ -186,10 +192,21 @@ export function createSessionFormController(
       startSave(form.snapshot);
     },
 
+    resume() {
+      if (!disposed) {
+        return;
+      }
+      disposed = false;
+      unsubscribeCoordinator = subscribeToCoordinator();
+      publish();
+    },
+
     dispose() {
+      if (disposed) {
+        return;
+      }
       disposed = true;
       unsubscribeCoordinator();
-      listeners.clear();
     },
   };
 }
