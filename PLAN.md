@@ -15,9 +15,9 @@ Kamera, bildanalys, poängberäkning, mål, backend, autentisering, synk, redige
 | 2 | Domän: inställningar och validering | Klart |
 | 3 | Persistens: migration och repository | Implementerat och enhetstestat, ej verifierat på S20 |
 | 4 | UI/UX-design: sessionslista och formulär | Klart som dokumentation (godkänt). Ingen UI är implementerad. |
-| 5 | Skapa session | Implementerat och enhetstestat. Lyckat flöde kontrollerat på S20. Persistens och felflöden återstår (steg 6–7). iOS overifierat. |
-| 6 | Lista sessioner | Ej påbörjat |
-| 7 | Dokumentation och integrationstester på enhet | Ej påbörjat |
+| 5 | Skapa session | Implementerat och enhetstestat. Lyckat flöde kontrollerat på S20, och persistens efter omstart verifierad via listan (steg 6, M5). Tangentbordsbuggen är åtgärdad för det testade flödet (`840e8c7`). Felflöden återstår (steg 7). iOS overifierat. |
+| 6 | Lista sessioner | Implementerat och enhetstestat. M1–M5 och M7–M10 godkända på S20, och M6 delvis kontrollerad men inte verifierad. Felinjektion återstår (steg 7). iOS overifierat. |
+| 7 | Dokumentation och integrationstester på enhet | **Pausat** (2026-10-27). 7a (checklistan) och 7b (testgrunden) är klara. T1–T6 och N4 är godkända på S20. Tangentbordsfelet i testläge är åtgärdat efter E2. 7c–7f och den kvarstående verifieringen återstår (`implementation/step-7-verification.md` §11). |
 | 8 | CI | Ej påbörjat |
 
 ## Verifierade versioner (npm-registret och Expo-dokumentationen för SDK 58, 2026-10-27)
@@ -324,26 +324,59 @@ Detaljplanen, med livscykeln för databasen, tillståndstabellen, felklassningen
      - iOS är overifierat.
 5. **Klart när:** En giltig session sparas en gång, ogiltig inmatning stoppas med begripliga fel och återförsök skapar inga dubbletter. Uppfyllt för logik och enhetstester, och lyckat flöde är kontrollerat på S20. Persistensen på enhet och felflödena återstår (steg 6–7).
 
-## Steg 6 – Lista sessioner
+## Steg 6 – Lista sessioner (implementerat och enhetstestat, inte fullständigt verifierat)
 
-Skärmen följer det godkända designdokumentet `docs/design/ui-ux.md` från steg 4.
+Detaljplanen, med beslut, tillstånd, nycklar och checklistan M1–M10 med resultat, finns i `implementation/step-6-session-list.md`. Skärmen följer `docs/design/ui-ux.md` §5, med ändringarna Ö1–Ö3 från steg 6.
 
-1. **Filer:**
-   - `apps/mobile/app/index.tsx` (ersätts): en route som läser via `listSessions` när skärmen får fokus (`useFocusEffect`) och renderar `SessionList`.
-   - `apps/mobile/src/features/sessions/SessionList.tsx`: `FlatList` med tillstånden i `ui-ux.md` 5.2. Posterna är inte klickbara.
-   - `apps/mobile/src/features/sessions/formatSession.ts`: ren formatering av lokalt datum och lokal tid (A4, till exempel `27 Oct 2026, 14:00`), distans (`25 m`) och planerade rundor (`5 planned rounds`, eller `Not planned` när värdet är `null`, A5).
-   - Översättning av kolumnfel för ogiltiga rader till texterna i `ui-ux.md` 5.3 (A2).
-   - Test: `apps/mobile/tests/features/formatSession.test.ts`.
+1. **Filer** (under `apps/mobile/`):
+   - `src/features/sessions/formatSession.ts`: kortets rader och etiketten för skärmläsare. Lokalt datum och lokal tid via `Intl`, med enhetens språk, region och tidszon. Singular och plural (Ö3) och `Not planned` för `null`.
+   - `src/features/sessions/invalidRowPresentation.ts`: ogiltiga rader med titel, text, unika orsaker, kort id eller `ID unavailable`, samt listnycklar som är unika även när id saknas eller upprepas. Positionsnyckeln är en reservlösning, inte en stabil identitet mellan omladdningar.
+   - `src/features/sessions/sessionListController.ts`: läsningar med `listSessions`:
+     - bara när listan är aktiv
+     - vid aktivering och återkomst, vid Retry och när en sparning avslutas medan listan visas
+     - högst en läsning åt gången och högst en väntande omladdning
+     - generationsnummer mot gamla resultat, även efter `dispose` och `resume`.
+   - `src/features/sessions/SessionList.tsx`, `SessionCard.tsx` och `InvalidSessionCard.tsx`.
+   - `app/index.tsx`: en tunn route som renderar `SessionList`.
+   - Tester: `tests/features/sessions/formatSession.test.ts`, `invalidRowPresentation.test.ts` och `sessionListController.test.ts`.
 2. **Beteende:**
-   - Varje post visar vapennamn, typetikett, kaliber, distans, skott per runda, planerade rundor och skapad tid i enhetens lokala tid.
-   - Ogiltiga rader visas som `Unreadable session record` med kort id (eller `ID unavailable`) och begripliga orsaker. Inga ovaliderade värden, råa felkoder eller kolumnnamn visas, och raderna försvinner inte.
-   - Ett läsfel visar bannern med `Try again` och `New session` (Q7). Det visas aldrig som en tom lista, inte heller efter `Leave` från formuläret.
-3. **Beroenden:** inga.
+   - **Header:** `Sessions`, `Your practice, recorded.` och `New session`. Knappen är tillgänglig även under laddning och vid läsfel, eftersom `DatabaseGate` redan är redo.
+   - **Kort:** Nyast först. Korten är inte klickbara och läses som en grupp, utan knapproll.
+   - **Ogiltiga rader:** De visas efter de giltiga sessionerna (Ö1), utan datum, felkoder eller kolumnnamn.
+   - **Tomt läge:** bara efter en lyckad läsning med noll rader.
+   - **Läsfel:** En banner med `Try again` och `New session`. Det visas aldrig som en tom lista.
+   - **Omladdning:** Tidigare kort ligger kvar. Om omladdningen misslyckas visas Ö2-bannern `Sessions couldn't be refreshed` / `Showing the sessions loaded earlier. Try again.`
+3. **Beroenden:** inga nya.
 4. **Kontroller:**
-   - Automatiskt: `formatSession` för distans med och utan decimal, `null` som ger `Not planned`, datum och tid med en fast tidszon i testet (`TZ` sätts i Jest-konfigurationen), och översättningen av varje felkod för ogiltiga rader.
-   - Därefter lint, typkontroll och tester.
-   - Manuellt på S20: listan uppdateras efter sparning, nyast visas först, det tomma läget visas på en ny installation och texten radbryts vid den största systemtexten. iOS är overifierat.
-5. **Klart när:** Sparade sessioner visas korrekt, och felaktig data syns i stället för att döljas.
+   - `npm run format:check`, `npm run lint` och `npm run typecheck` ger exit 0.
+   - `npm test -- --runInBand` ger exit 0, med 22 testsviter och 453 av 453 tester godkända.
+   - Android-exporten innehåller nio Lucide-ikoner.
+   - Datumtesterna använder uttrycklig locale och tidszon, och Node-testerna **verifierar inte Hermes**. Logiktesterna bevisar inte att skärmen är korrekt inkopplad.
+   - **Manuellt på Galaxy S20 (Expo Go, ägaren, 2026-10-27):**
+     - **M1–M5 och M7–M10 är godkända.**
+     - **M5 verifierar att skapade sessioner finns kvar efter fullständig omstart** i den testade miljön. Det är första verifieringen av persistens på enhet.
+     - M8 (TalkBack) och M9 (största text och skärmzoom) gäller **listan**.
+     - **M6** (datum, språk och tidszon) är **delvis kontrollerad, inte verifierad**.
+   - **Återstår till steg 7 (felinjektion):** läsfel, misslyckad omladdning med kvarvarande kort, ogiltiga rader i en riktig databas och omladdning efter långsam sparning.
+   - **iOS:** overifierat.
+5. **Klart när:** Sparade sessioner visas korrekt, och felaktig data syns i stället för att döljas. Uppfyllt för logiken och det testade lyckade flödet på S20. M6 och felflödena återstår, och steg 6 är **inte fullständigt verifierat**.
+
+### Fynd under steg 6: tangentbordet dolde formulärets nedersta fält (steg 5-kod)
+
+- **Buggrapport:** `docs/bugs/keyboard-covers-lower-form-fields.md`. **Rättning:** commit `840e8c7`.
+- **Rättningen:** `KeyboardAvoidingView` i `SessionForm.tsx` har `behavior="padding"` på alla plattformar. Den saknade anpassningen på Android är mätt i Expo Go på S20 (mekanismen i H1). Den bakomliggande plattformsorsaken (H3) är inte fastställd.
+- **Manuellt verifierat i Expo Go på S20:**
+  - `Planned rounds` syns helt automatiskt.
+  - `Create session` går att nå med tangentbordet öppet.
+  - Layouten återställs utan tomrum. Det gäller även sluttestet utan diagnostik.
+- **Overifierat**, enligt buggrapporten:
+  - övriga fält
+  - felvisning med tangentbordet öppet
+  - **TalkBack och största systemtext med tangentbordet öppet**
+  - andra tangentbord
+  - en egen Android-build (risk för dubbel anpassning)
+  - iOS.
+- **Skillnad mot listans tester:** TalkBack och största text är godkända för **listan** (M8, M9), men **inte** testade för formuläret med tangentbordet öppet.
 
 ## Steg 7 – Dokumentation och integrationstester på enhet
 
@@ -382,6 +415,13 @@ Skärmen följer det godkända designdokumentet `docs/design/ui-ux.md` från ste
      - sortering och att data finns kvar efter omstart
 
      Testverktyget, som bara finns i utvecklingsläge, byggs i steg 7.
+   - **Sessionslistan (från steg 6), med felinjektion:**
+     - läsfel med `Try again` och `New session`
+     - misslyckad omladdning med kvarvarande kort och Ö2-bannern
+     - ogiltiga rader i en riktig databas
+     - omladdning när en långsam sparning avslutas medan listan visas.
+   - **M6 från steg 6:** datum och tid efter uttryckligt byte av tidszon, 12- och 24-timmarsformat och språk (`Intl` i Hermes).
+   - **Formuläret med tangentbordet öppet** (`docs/bugs/keyboard-covers-lower-form-fields.md`): övriga fält, felvisning, TalkBack, största systemtext och andra tangentbord. En egen Android-build och iOS markeras som overifierade tills de faktiskt har testats.
 4. **Beroenden:** inga.
 5. **Kontroller:** Checklistan körs och resultaten fylls i. Det som inte har körts märks som overifierat.
 6. **Klart när:** En ny utvecklare kan installera, köra och verifiera appen bara med hjälp av README, och resultaten från enheten är dokumenterade.

@@ -1,13 +1,16 @@
 import { openDatabaseAsync } from 'expo-sqlite';
-import { type ReactNode, useEffect, useState, useSyncExternalStore } from 'react';
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { type ReactNode, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
+import { ActivityIndicator, type LayoutChangeEvent, StyleSheet, View } from 'react-native';
 
 import { Screen } from '../../components/Screen';
 import { colors } from '../../components/tokens';
-import { DATABASE_NAME } from '../../persistence/database';
 import { openSessionDatabase } from '../../persistence/openSessionDatabase';
+import { assertDevelopment, databaseNameForMode } from '../dev-tools/testDatabases';
+import { TestModeBanner } from '../dev-tools/TestModeBanner';
 import { createSaveCoordinator } from '../sessions/saveCoordinator';
-import { createDatabaseLifecycle } from './databaseLifecycle';
+import { ContentOffsetContext } from './contentOffsetContext';
+import { createDatabaseLifecycle, type DatabaseMode } from './databaseLifecycle';
+import { type DatabaseModeControl, DatabaseModeContext } from './databaseModeContext';
 import { SessionStoreContext } from './sessionStoreContext';
 import { StartupErrorScreen } from './StartupErrorScreen';
 
@@ -20,9 +23,10 @@ function reportDevError(error: unknown): void {
 
 function createAppDatabaseLifecycle() {
   return createDatabaseLifecycle({
-    openAndMigrate: () =>
+    // The name is resolved per open, so the test database is guarded on every attempt.
+    openAndMigrate: (mode) =>
       openSessionDatabase({
-        open: () => openDatabaseAsync(DATABASE_NAME),
+        open: () => openDatabaseAsync(databaseNameForMode(mode)),
         reportCloseFailure: reportDevError,
       }),
     createCoordinator: () => createSaveCoordinator(),
@@ -34,17 +38,34 @@ function createAppDatabaseLifecycle() {
 export function DatabaseGate({ children }: { children: ReactNode }) {
   const [lifecycle] = useState(createAppDatabaseLifecycle);
   const state = useSyncExternalStore(lifecycle.subscribe, lifecycle.getState);
+  const mode = useSyncExternalStore(lifecycle.subscribe, lifecycle.getMode);
+  // Where the screens start below the test-mode banner; SessionForm needs it for the keyboard.
+  const [measuredContentOffsetY, setMeasuredContentOffsetY] = useState(0);
+  // Only the banner moves the content, so normal mode never reuses a value from test mode.
+  const contentOffsetY = mode === 'test' ? measuredContentOffsetY : 0;
+  const modeControl = useMemo<DatabaseModeControl>(
+    () => ({
+      mode,
+      switchMode: (next: DatabaseMode) => {
+        if (next === 'test') {
+          assertDevelopment();
+        }
+        lifecycle.switchMode(next);
+      },
+    }),
+    [lifecycle, mode],
+  );
 
   useEffect(() => {
     lifecycle.activate();
     return () => lifecycle.deactivate();
   }, [lifecycle]);
 
+  let content: ReactNode;
   if (state.status === 'failed') {
-    return <StartupErrorScreen errorKind={state.errorKind} onRetry={lifecycle.retry} />;
-  }
-  if (state.status === 'loading') {
-    return (
+    content = <StartupErrorScreen errorKind={state.errorKind} onRetry={lifecycle.retry} />;
+  } else if (state.status === 'loading') {
+    content = (
       <Screen>
         <View style={styles.loading}>
           <ActivityIndicator
@@ -55,13 +76,36 @@ export function DatabaseGate({ children }: { children: ReactNode }) {
         </View>
       </Screen>
     );
+  } else {
+    content = (
+      <SessionStoreContext.Provider value={state.store}>{children}</SessionStoreContext.Provider>
+    );
   }
+
   return (
-    <SessionStoreContext.Provider value={state.store}>{children}</SessionStoreContext.Provider>
+    <DatabaseModeContext.Provider value={modeControl}>
+      <View style={styles.fill}>
+        {mode === 'test' ? <TestModeBanner /> : null}
+        <View
+          onLayout={(event: LayoutChangeEvent) => {
+            setMeasuredContentOffsetY(event.nativeEvent.layout.y);
+          }}
+          style={styles.fill}
+        >
+          <ContentOffsetContext.Provider value={contentOffsetY}>
+            {content}
+          </ContentOffsetContext.Provider>
+        </View>
+      </View>
+    </DatabaseModeContext.Provider>
   );
 }
 
 const styles = StyleSheet.create({
+  fill: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
   loading: {
     flex: 1,
     alignItems: 'center',
