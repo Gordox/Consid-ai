@@ -73,3 +73,84 @@ Jest via jest-expo som testkörare.
 expo-sqlite fungerar i Expo Go, så ingen egen utvecklingsbuild behövs för det här steget.
 Arbetet sker i en egen branch, inte på main.
 Säg till när du vill att jag implementerar det.
+---
+## Promt 2
+Tack. Implementera ingenting ännu. Jag vill först ha en konkret
+implementationsplan med filer, ordning och verifiering per steg.
+
+Följande beslut gäller för denna första avgränsade implementation.
+Gränsvärdena är produktval för prototypen, inte officiella regler.
+
+B1 – Validering:
+- Vapennamn: obligatoriskt, 1–100 Unicode-kodpunkter efter trimning
+  och NFC-normalisering.
+- Kaliber: obligatoriskt, 1–50 Unicode-kodpunkter efter samma behandling.
+- Avstånd: 0,1–1 000 meter, högst en decimal.
+- Planerade skott per runda: heltal 1–100.
+- Planerat antal rundor: valfritt, heltal 1–100.
+- Tomt valfritt fält ska bli null, inte 0.
+- Avvisa ogiltig inmatning; trunkera eller avrunda inte tyst.
+
+B2 – Vapentyper:
+Pistol, revolver, gevär och annat.
+Använd stabila interna värden och separata visningsetiketter.
+UI-text och kod ska vara på engelska.
+
+B3 – Mål:
+Inför inget påhittat target_definition_id.
+Målhantering och kalibrering ingår inte i detta steg.
+Lägg till dessa fält genom en senare migration när funktionen införs.
+
+B4 – Kaliber:
+Fritext enligt B1. Ingen kaliberkatalog eller automatisk
+härledning av projektilens diameter.
+
+B5 – Tal:
+Godta både 25,5 och 25.5 för avstånd.
+Avvisa tusentalsavgränsare, blandade separatorer, exponentnotation
+och efterföljande text. Heltalsfälten accepterar endast heltal.
+
+B6 – Validering:
+En liten egen ren valideringsfunktion med typat resultat.
+Ingen zod eller annan valideringsdependency i detta steg.
+Formuläret ska använda domänens valideringsresultat.
+
+B7 – Tester:
+Automatiska tester för validering och annan ren logik.
+Dokumenterade integrationstester av riktig expo-sqlite på Galaxy S20.
+Lägg inte till better-sqlite3.
+Var tydlig med vad mocks faktiskt verifierar.
+
+B8 – Formatering:
+Använd Expo-anpassad ESLint och Prettier.
+Konfigurationerna ska inte konkurrera om formatering.
+Redovisa exakta beroenden i planen innan installation.
+
+B9 – Namn och licens:
+Använd Target Practice som arbetsnamn och target-practice
+som tekniskt projektnamn.
+Välj ingen licens och publicera ingenting ännu.
+
+B10 – Omfattning:
+Endast skapa och lista sessioner.
+Ingen redigering, borttagning eller anteckningsfunktion ännu.
+
+Övriga justeringar:
+- Inför status först när det finns beteende som använder det.
+- Spara sessionsinställningar som en historisk kopia.
+- Spara UTC-tid och IANA-tidszon.
+- Använd stabilt sessions-ID och unik primärnyckel.
+- Förhindra samtidiga sparningar och hantera återförsök utan dubbletter.
+- Återanvänd inte samma ID när användaren börjar skapa en ny session.
+- Migrationer som redan används ska bevaras.
+- Ogiltiga databasrader får inte tyst försvinna eller bli standardvärden.
+- Verifiera kompatibla Expo- och testverktygsversioner när planen tas fram.
+
+Planen ska ange för varje steg:
+1. Filer som skapas eller ändras.
+2. Ansvar och konkret beteende.
+3. Nya beroenden.
+4. Automatiska och manuella kontroller.
+5. Vad som ska fungera när steget är färdigt.
+
+Skapa eller ändra inga projektfiler. Stanna efter planen.
