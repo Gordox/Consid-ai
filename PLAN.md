@@ -15,7 +15,7 @@ Kamera, bildanalys, poängberäkning, mål, backend, autentisering, synk, redige
 | 2 | Domän: inställningar och validering | Klart |
 | 3 | Persistens: migration och repository | Implementerat och enhetstestat, ej verifierat på S20 |
 | 4 | UI/UX-design: sessionslista och formulär | Klart som dokumentation (godkänt). Ingen UI är implementerad. |
-| 5 | Skapa session | Ej påbörjat |
+| 5 | Skapa session | Implementerat och enhetstestat. Lyckat flöde kontrollerat på S20. Persistens och felflöden återstår (steg 6–7). iOS overifierat. |
 | 6 | Lista sessioner | Ej påbörjat |
 | 7 | Dokumentation och integrationstester på enhet | Ej påbörjat |
 | 8 | CI | Ej påbörjat |
@@ -24,11 +24,11 @@ Kamera, bildanalys, poängberäkning, mål, backend, autentisering, synk, redige
 
 | Område | Version | Källa |
 | --- | --- | --- |
-| Expo SDK | 58 (`expo` ~58.0.19) | npm `latest`, mall `expo-template-blank-typescript@58.0.28` |
+| Expo SDK | 58 (`expo` ~58.0.20, patch godkänd 2026-10-27) | npm `latest`, mall `expo-template-blank-typescript@58.0.28` |
 | React / React Native | 19.3.0 / 0.88.0 | `expo/bundledNativeModules.json` |
 | react-dom | 19.3.0 | `expo/bundledNativeModules.json` |
 | TypeScript | ~6.0.3 (inte 7.x, som är `latest` på npm) | SDK 58-mallen |
-| expo-router / expo-sqlite / expo-crypto | ~58.0.26 / ~58.0.14 / ~58.0.7 | bundledNativeModules |
+| expo-router / expo-sqlite / expo-crypto | ~58.0.27 / ~58.0.14 / ~58.0.7 | bundledNativeModules |
 | react-native-screens / safe-area-context | ~4.30.0 / ~5.10.1 | bundledNativeModules |
 | jest-expo / jest | ~58.0.12 / ~30.5.2 | bundledNativeModules, jest-expo peers |
 | eslint-config-expo / eslint | ~58.0.4 / **^9.39.5** | `eslint-plugin-react` har peer `eslint ^9.7`, så ESLint 10 fungerar inte |
@@ -45,7 +45,7 @@ Alla Expo-moduler installeras med `npx expo install` så att versionerna följer
 - `react-dom@19.3.0`. Det krävs som peer av Expo Router via Radix. Utan en uttrycklig version installerar npm 19.3.1, som krockar med `react@19.3.0`. Det finns inget webbmål.
 - `expo-sqlite` (steg 3).
 - `expo-crypto` för `randomUUID()` (steg 5). Det är ett Expo-paket men står inte uttryckligen i stacken, så det godkänns genom den här planen.
-- `lucide-react-native` **1.56.0** och `react-native-svg` **15.16.0** för ikoner (steg 5). Ägaren godkände båda 2026-10-27 (Q1). Inget av dem är installerat än.
+- `lucide-react-native` **1.56.0** och `react-native-svg` **15.16.0** för ikoner (steg 5). Ägaren godkände båda 2026-10-27 (Q1). Båda installerades i 5a.
   - `react-native-svg` 15.16.0 är den version som Expo SDK 58 anger i `bundledNativeModules.json`. Den installeras med `npx expo install react-native-svg`.
   - `lucide-react-native` 1.56.0 är publicerad 2026-10-13. Den pinnas exakt, eftersom paketet släpps nästan dagligen (senaste är 1.62.0 från 2026-10-27).
   - `lucide-react-native` har peer-kraven `react-native-svg ^12 || ^13 || ^14 || ^15` och `react ^16.5.1 || … || ^19`. Båda uppfylls av SDK 58 med react 19.3.0. Det är kontrollerat i npm-registret, men inte installerat eller testat.
@@ -257,63 +257,72 @@ Steget tillkom 2026-10-27, innan några skärmar byggs. Tidigare steg 4–7 hete
    - **Verifiering:** UI:t som specificeras är varken implementerat eller verifierat i körande app. Android (Galaxy S20 med Hermes) och iOS är overifierade. De 322 testerna gäller steg 2–3 och täcker inte designen, Lucide och SVG eller native-beteende. De kontroller som faktiskt har gjorts är dokumentationskontrollerna och kontrastberäkningarna.
 5. **Klart när:** Ägaren har godkänt `docs/design/ui-ux.md` och de omdöpta tavlorna. Uppfyllt 2026-10-27, med texterna P1–P4 och U1–U10 beslutade.
 
-## Steg 5 – Skapa session (formulär och arbetsflöde)
+## Steg 5 – Skapa session (implementerat och enhetstestat, persistens och felflöden ej verifierade på enhet)
 
-Skärmen följer det godkända designdokumentet `docs/design/ui-ux.md` från steg 4.
+Detaljplanen, med livscykeln för databasen, tillståndstabellen, felklassningen, testerna och resultaten per delsteg, finns i `implementation/step-5-create-session.md`. Skärmarna följer `docs/design/ui-ux.md` från steg 4.
 
-1. **Filer:**
-   - `apps/mobile/app/_layout.tsx` (ändras): `SQLiteProvider databaseName={DATABASE_NAME}` runt Stack, där `onInit` kör `migrateDatabase(asSessionDatabase(db))`. Om initieringen eller migrationen misslyckas visas felskärmen i `ui-ux.md` 7.7, med bara Retry, utan `New session`, utan återställning och utan radering.
-   - Mörkt tema (A6): `app.json` får `userInterfaceStyle: "dark"` och `backgroundColor: "#111315"`. Rotlayouten får `ThemeProvider` och en anpassad `DarkTheme` från `expo-router`. `<StatusBar style="light" />`. `TextInput` får `keyboardAppearance="dark"` på iOS, `placeholderTextColor` och `selectionColor`.
-   - Designtokens (färger inklusive `inputBorder #68727C`, typografi, avstånd och ikonstorlekar) i en modul under `apps/mobile/src/components/` eller `src/config/`.
-   - Ikoner: namngivna importer från `lucide-react-native`, bara de nio ikonerna i `ui-ux.md` avsnitt 10.
-   - En fil med tredjepartsnotiser för Lucide (ISC) och Feather (MIT).
-   - `apps/mobile/app/sessions/new.tsx`: en tunn route som renderar `SessionForm` och navigerar tillbaka till listan efter sparning.
-   - `apps/mobile/src/services/deviceContext.ts`:
-     - `nowUtcIso()`
-     - `deviceTimeZone()`, som hämtar tidszonen från `Intl.DateTimeFormat().resolvedOptions().timeZone` och kastar ett fel om värdet saknas eller är ogiltigt
-     - `newSessionId()`, som använder `randomUUID` från `expo-crypto`.
-   - `apps/mobile/src/features/sessions/createSession.ts`: `createSession(input, deps: { id, now, timeZone, save })` validerar, bygger posten och sparar. Resultatet är `invalid` (med fältfel), `saved`, `alreadySaved` eller ett kastat fel.
-   - `apps/mobile/src/features/sessions/firearmTypeLabels.ts`: `Record<FirearmType, string>` med Pistol, Revolver, Rifle och Other. Kompilatorn kräver en etikett per typ.
-   - `apps/mobile/src/features/sessions/fieldErrorMessages.ts`: engelska feltexter byggda av felkod och gränskonstanter, utan hårdkodade tal.
-   - `apps/mobile/src/features/sessions/SessionForm.tsx`: fält, radrader för vapentyp (`accessibilityRole="radio"`, ingen förvald), knappen `Create session`, fältfel, sparfel, id-konflikt och dialogerna enligt `ui-ux.md` avsnitt 6–7.
-   - Tester: `apps/mobile/tests/features/createSession.test.ts` och `fieldErrorMessages.test.ts`.
+1. **Filer** (under `apps/mobile/`):
+   - **Konfiguration:**
+     - `app.json`: `userInterfaceStyle: "dark"` och `backgroundColor: "#111315"`.
+     - `THIRD_PARTY_NOTICES.md`: Lucides `LICENSE` ordagrant, ISC samt Feathers MIT-text.
+   - **`src/components/`:**
+     - `tokens.ts`: färger inklusive `inputBorder #68727C` och `scrim`, systemtypsnitt, avstånd, radier, tryckytor och ikonstorlekar med linjen 1,7.
+     - `Icon`: Lucide via import per ikon, så att bara använda ikoner kommer med i bundlen.
+     - `Screen`, `Button` (primär, sekundär och destruktiv, samt `busy`), `TextField`, `ChoiceRow`, `Banner`, `ScreenHeader` (Back med `ChevronLeft`) och `ConfirmDialog` (`Modal`, där Androids bakåtknapp väljer det icke-destruktiva valet).
+   - **Databasstart** (avvikelse från `SQLiteProvider`, med skälen i detaljplanen):
+     - `src/persistence/openSessionDatabase.ts`: öppnar och migrerar databasen. Om migrationen misslyckas stängs anslutningen, och ursprungsfelet kastas vidare.
+     - `src/features/startup/databaseLifecycle.ts`: öppning, migrering och stängning körs i en enda kö. Ett generationsnummer gör att resultat från äldre initieringar förkastas, Retry fungerar bara efter ett fel, och anslutningen stängs först när ingen sparning pågår.
+     - `DatabaseGate.tsx`, `StartupErrorScreen.tsx` och `sessionStoreContext.ts`: laddning, felskärmen 7.7 med bara Retry, och delning av anslutningen och koordinatorn.
+   - **`src/features/sessions/`:**
+     - `saveCoordinator.ts`: högst ett sparanrop i taget i appen och flaggan för långsam sparning efter 10 s. Flaggan är bara information och avbryter aldrig anropet.
+     - `prepareSession.ts`: domänvalidering och sedan ögonblicksbilden. `prepareFailed` (T3) uppstår när inget sparanrop har startats.
+     - `sessionFormState.ts` (reducer) och `sessionFormController.ts` (ramverksfri logik, felklassning och beteende vid bakåt).
+     - `fieldErrorMessages.ts`, `firearmTypeLabels.ts` och `SessionForm.tsx`.
+   - **`src/services/deviceContext.ts`:** `nowUtcIso`, `deviceTimeZone` och `newSessionId` (via `expo-crypto`, med gemener).
+   - **Routes:**
+     - `app/_layout.tsx`: mörk `DarkTheme`, ljust statusfält, `DatabaseGate` och `Stack` utan header.
+     - `app/sessions/new.tsx`: formuläret.
+     - `app/index.tsx`: mörk platshållare med `New session`. Den ersätts av listan i steg 6.
+   - **Tester:** `tests/features/sessions/*`, `tests/features/startup/databaseLifecycle.test.ts` och `tests/persistence/openSessionDatabase.test.ts`. Testhjälp finns i `tests/support/async.ts`.
 2. **Beteende:**
-   - **Före första försöket:** alla fält går att redigera, och ingen vapentyp är förvald (A3).
-   - **Första giltiga försöket:** en stabil kopia av hela `Session`-objektet skapas, alltså id, `createdAtUtc`, tidszon och inställningar. Formuläret låses, och en `useRef`-flagga blockerar dubbla anrop. Knappen visar `Creating session…`.
-   - **Sparfel:** fälten är fortfarande låsta, och låsningen förklaras i text. `Try saving again` skickar exakt samma kopia (kontraktet i steg 3). Inget försök görs automatiskt (F1, `ui-ux.md` 7.3).
-   - **Id-konflikt (`SessionIdConflictError`):** ingen Retry, inget nytt id och ingen överskrivning. Bara `Back to sessions` finns (`ui-ux.md` 7.6).
-   - **Bakåt:** `usePreventRemove` från `expo-router` fångar header-knappen, Androids bakåtknapp och iOS bakåtsvep.
-     - Ändrat men aldrig skickat formulär ger dialogen "Discard" (7.4).
-     - Efter ett sparfel visas dialogen "Leave without saving?" med `Stay` och `Leave` (7.5). `Leave` går till listan, som läses om.
-     - Ett orört formulär eller en sparad session ger ingen fråga. Dialogerna är egna komponenter, inte native `Alert`.
-   - **Ett nytt besök** i formuläret ger ett nytt formulär och, vid första försöket, ett nytt id.
-   - **Fältfel (U7):** Inga fel visas före första sparförsöket. `Create session` validerar alltid hela formuläret. Därefter valideras ett ändrat fält på nytt med domänens `validateSessionInput`, och bara det fältets fel uppdateras. Formuläret har inga egna valideringsregler.
-   - **Långvarig eller hängande sparning (U8):** Det ska **planeras i detaljplanen för steg 5 före implementation**:
-     - Användaren får inte bli permanent inlåst på skärmen.
-     - En UI-timeout får inte tolkas som att databasanropet har avbrutits eller att sessionen inte har sparats.
-     - Inga parallella sparförsök får startas.
-   - Distansfältet använder `keyboardType="decimal-pad"` och heltalsfälten `number-pad`. Tangentbordet räknas inte som validering, utan domänen avgör.
-3. **Beroenden:** `expo-crypto`, `lucide-react-native` 1.56.0 och `react-native-svg` 15.16.0. Alla installeras först i steg 5.
+   - **Formuläret:**
+     - Alla fält är tomma från början, och ingen vapentyp är förvald (A3).
+     - Inga fel visas före första försöket. Därefter uppdateras bara det ändrade fältet (U7).
+     - Fokus och skrollning flyttas till det första ogiltiga fältet.
+   - **Ögonblicksbild:** Första giltiga `Create session` bygger en fullständig ögonblicksbild med id, `createdAtUtc`, tidszon och inställningar. Retry skickar samma objekt (kontraktet i steg 3).
+   - **Felklassning:**
+
+     | Utfall | Tillstånd | Retry? |
+     | --- | --- | --- |
+     | `saved` eller `alreadySaved` | Sparat | – |
+     | `InvalidSessionError` | Avvisad, säkert inget skrivet i försöket | Nej |
+     | `SessionIdConflictError` | Konflikt | Nej |
+     | Övriga fel | Sparfel, osäkert | Ja, med låsta fält och P1/P2 |
+   - **Bakåtnavigering:** `usePreventRemove` fångar Back, Androids bakåtknapp och iOS bakåtsvep.
+     - Ett ändrat formulär ger dialogen "Discard".
+     - Efter ett sparfel eller vid långsam sparning visas "Leave this screen?" med `Stay` och `Leave`.
+     - En normal pågående sparning spärrar bakåt utan dialog.
+     - Efter Sparat stängs spärren av innan appen går tillbaka.
+   - **Två formulär:** Ett nytt formulär kan inte spara medan ett äldre anrop pågår (T2). Sena resultat tillhör bara det formulär som startade försöket.
+   - **Begränsningar:**
+     - Ett anrop som aldrig avslutas låser sparning tills appen startas om, och en omstart bevarar inte osparade formulärvärden.
+     - Ett sent fel efter Leave meddelas inte.
+3. **Beroenden:** `expo-crypto` ~58.0.7, `react-native-svg` 15.16.0 och `lucide-react-native` 1.56.0, exakt pinnad. Dessutom den godkända patchuppdateringen till `expo` ~58.0.20 och `expo-router` ~58.0.27.
 4. **Kontroller:**
-   - Automatiskt, `createSession` med en fake-`save`. Testet **verifierar bara orkestreringen**:
-     - att `save` inte anropas vid ogiltig inmatning
-     - att id, tid och tidszon förs vidare oförändrade
-     - att `alreadySaved` förs vidare
-     - att fel inte omvandlas till ett lyckat resultat.
-   - Automatiskt: `fieldErrorMessages` täcker varje kombination av fält och felkod.
-   - Därefter lint, typkontroll och tester.
-   - Manuellt på S20:
-     - spara en giltig session
-     - fältfel visas och försvinner efter rättning
-     - snabba dubbeltryck på Save ger en enda rad
-     - både `25,5` och `25.5` godtas
-     - formuläret öppnas igen och nästa session får ett nytt ID
-     - ingen vapentyp är förvald
-     - fälten är låsta efter ett sparfel, och Retry skickar samma session
-     - båda dialogerna visas via appens bakåtknapp och Androids bakåtknapp
-     - mörkt tema, statusfält och tangentbord enligt `ui-ux.md` avsnitt 11.
-   - iOS är overifierat tills det testats på en riktig enhet.
-5. **Klart när:** En giltig session sparas en gång, ogiltig inmatning stoppas med begripliga fel och återförsök skapar inga dubbletter.
+   - `npm run format:check`, `npm run lint` och `npm run typecheck` ger exit 0.
+   - `npm test -- --runInBand` ger exit 0, med 19 testsviter och 401 av 401 tester godkända.
+   - `npx expo install --check` är OK, och `expo-doctor` ger 20/20 (kontrollerat i 5a).
+   - Android-exporten innehåller exakt de åtta Lucide-ikoner som används.
+   - **Kontrollertesterna bevisar inte att React-komponenterna är korrekt inkopplade (Ö1).**
+   - **Manuellt på Galaxy S20 (Expo Go, ägaren):**
+     - Appen startar mörkt och når startskärmen.
+     - Formulärets UI ser rätt ut. Vilka av kontrollpunkterna som gicks igenom, till exempel TalkBack och största systemtext, är inte specificerat.
+   - **Återgång efter sparning bevisar inte att raden finns kvar i databasen.**
+   - **Återstår:**
+     - Persistens verifieras med listan i steg 6 och testverktyget i steg 7.
+     - Sparfel, Retry, långsam sparning, Avvisad, Konflikt, T2 och felskärmen vid start kräver felinjektion i steg 7.
+     - iOS är overifierat.
+5. **Klart när:** En giltig session sparas en gång, ogiltig inmatning stoppas med begripliga fel och återförsök skapar inga dubbletter. Uppfyllt för logik och enhetstester, och lyckat flöde är kontrollerat på S20. Persistensen på enhet och felflödena återstår (steg 6–7).
 
 ## Steg 6 – Lista sessioner
 

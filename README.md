@@ -3,10 +3,12 @@
 A mobile app for logging recreational target-practice sessions, built with React Native, Expo
 (SDK 58) and TypeScript. The app lives in [`apps/mobile`](apps/mobile).
 
-> **Status:** Early development. The domain validation (step 2) and local SQLite persistence
-> (step 3) are implemented and unit tested, but no screens use them yet. Running the app today
-> shows only a placeholder screen titled "Target Practice". See [PLAN.md](PLAN.md) for the
-> implementation plan and progress. Nothing has been verified on a physical device yet.
+> **Status:** Early development. Domain validation (step 2), local SQLite persistence (step 3)
+> and the new-session form (step 5) are implemented and unit tested. The app opens to a dark
+> placeholder home screen with a **New session** button; the session list follows in step 6.
+> On a Galaxy S20 the app starts and the form works, but saved sessions cannot be viewed yet,
+> so persistence on the device is not verified. iOS is untested. See [PLAN.md](PLAN.md) for the
+> plan and progress.
 
 ## Prerequisites
 
