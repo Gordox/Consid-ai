@@ -66,13 +66,15 @@ Ramarna i tavla `03` kallas här vid sitt namn i tavlan, till exempel *"03 · Ne
 
 **Header:** stor rubrik `Sessions` och undertexten `Your practice, recorded.` (`03`). Ingen tillbakaknapp.
 
-**Primär knapp:** `New session` med ikonen `plus`, överst under undertexten (`03`). Den syns i alla tillstånd utom vid laddning, där den är inaktiverad, och den syns inte på felskärmen vid start.
+**Primär knapp:** `New session` med ikonen `plus`, överst under undertexten (`03`). Den är aktiv i alla tillstånd när listan visas, **även under laddning** (ägarbeslut 2026-10-27, som ersätter "inaktiverad" i tavla `03 · Loading`). Den syns inte på felskärmen vid start.
 
 **Sidfot:** `Saved locally on this device.` (`03`).
 
 ### 5.1 Sessionspost (kort)
 
 Kortet är inte klickbart, har inga pilar och ingen tryckeffekt (F5). Raderna ligger i den här ordningen, och varje rad får radbrytas (A4):
+Antal står i singular för 1 och i plural annars: `1 planned round`, `5 planned rounds`, `1 shot / round` och `10 shots / round` (Ö3, steg 6).
+
 1. vapennamnet som avsnittsrubrik, till exempel `Glock 17`
 2. lokalt datum och tid, till exempel `27 Oct 2026, 14:00` (sekundär färg)
 3. typ och kaliber, till exempel `Pistol · 9×19 mm`
@@ -85,17 +87,18 @@ Kortet är inte klickbart, har inga pilar och ingen tryckeffekt (F5). Raderna li
 
 | Tillstånd | Ram i tavla | Innehåll |
 | --- | --- | --- |
-| Laddar | `03 · Loading` | `New session` är inaktiverad. Skelettkort visas, och texten `Loading saved sessions…` läses upp. |
+| Laddar | `03 · Loading`, med avvikelsen att knappen är aktiv | `New session` är aktiv. Skelettkort visas, och texten `Loading saved sessions…` läses upp. |
 | Tom | `03 · Empty` | Ikonen `activity` (dekorativ), rubriken `Start your practice log`, texten `Keep session settings together, from your first round onward.`, knappen `New session` och sidfoten `No account needed. Records stay on this device.` |
 | Lista | `03 · Populated` | Kort enligt 5.1, nyast först |
 | Ogiltig rad | `03 · Unreadable record retained` med avvikelsen i 4 | Se 5.3 |
 | Läsfel (databasen är öppen men listningen misslyckades) | `03 · Read failure` | En banner med ikonen `circle-alert`, `Sessions couldn't be loaded`, och `Your saved records haven't been removed. Try reading them again.` Primärknappen är `Try again`, som läser listan på nytt, och den sekundära knappen är `New session` (Q7). Visas aldrig som en tom lista. |
 | Läsfel efter "Leave" (6.3) | samma | Samma som läsfel. Det får aldrig se ut som att sessionen saknas. |
+| Omladdning misslyckades, kort finns sedan tidigare (Ö2) | – (ny) | De tidigare korten visas kvar. Överst en banner med ikonen `circle-alert`, `Sessions couldn't be refreshed`, `Showing the sessions loaded earlier. Try again.` och knappen `Try again`. Ingen text om att posterna finns kvar. |
 | Större text | `03 · Large text / 130 %` | Text radbryts och sidan skrollar. Inget klipps av. |
 
 ### 5.3 Ogiltig rad (A2)
 
-Kortet ligger på sin plats i listan:
+Korten för ogiltiga rader visas samlade **efter** de giltiga sessionerna, i den ordning databasen returnerar dem (Ö1, steg 6). Persistenskontraktet returnerar giltiga och ogiltiga rader separat, och ordningen bygger på ett datum som kan vara ogiltigt.
 - Ikonen `triangle-alert` (dekorativ) och rubriken `Unreadable session record`.
 - `ID 3f2504e0` (de första 8 tecknen) när id är giltigt. Hela id:t läses upp av skärmläsaren. Utan giltigt id står `ID unavailable`. (U5) Det förkortade id:t är bara en visuell referens. Internt används alltid hela id:t, även som nyckel i listan, och det förkortade värdet får aldrig användas som unik nyckel.
 - En rad per unik orsak, översatt från kolumnfelen (U4, beslutad). Råa felkoder och kolumnnamn visas aldrig:
