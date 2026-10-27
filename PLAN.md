@@ -12,7 +12,7 @@ Kamera, bildanalys, poängberäkning, mål, backend, autentisering, synk, redige
 | --- | --- | --- |
 | 0 | Förberedelser | Klart |
 | 1 | Scaffold och verktyg | Klart, enhetstest på S20 återstår |
-| 2 | Domän: inställningar och validering | Ej påbörjat |
+| 2 | Domän: inställningar och validering | Klart |
 | 3 | Persistens: migration och repository | Ej påbörjat |
 | 4 | Skapa session | Ej påbörjat |
 | 5 | Lista sessioner | Ej påbörjat |
@@ -86,7 +86,7 @@ Alla Expo-moduler installeras med `npx expo install` så att versionerna följer
      - `"main": "expo-router/entry"` och `"engines": { "node": "^26.0.0" }`.
      - Skript: `start`, `android`, `ios`, `lint` (`expo lint`), `format` (`prettier --write .`), `format:check` (`prettier --check .`), `typecheck` (`tsc --noEmit`), `test` (`jest`).
    - `app.json`: `name` "Target Practice", `slug` och `scheme` "target-practice", ingen webbkonfiguration. Inget Android-paket-ID eller EAS-konfiguration än.
-   - `tsconfig.json`: ärver `expo/tsconfig.base` och har `strict: true` och `noUncheckedIndexedAccess: true`.
+   - `tsconfig.json`: ärver `expo/tsconfig.base` och har `strict: true` och `noUncheckedIndexedAccess: true`. I steg 2 tillkom `types: ["jest"]`. Utan den hittade TypeScript 6.0.3 inte typerna från `@types/jest`, och `tsc` gav fel för `describe`, `it` och `expect` i testfilerna. Det var inte synligt i steg 1, eftersom det då inte fanns några tester.
    - `eslint.config.js`:
      - `eslint-config-expo/flat` följt av `eslint-config-prettier/flat` sist.
      - `@typescript-eslint/no-explicit-any: error` och `@typescript-eslint/no-non-null-assertion: error`.
@@ -105,47 +105,54 @@ Alla Expo-moduler installeras med `npx expo install` så att versionerna följer
      - Kontrollera att rubriken visas.
 5. **Klart när:** Appen startar på S20, och lint, typkontroll och formatkontroll går igenom på en ren installation.
 
-## Steg 2 – Domän: inställningar och validering (ren TypeScript)
+## Steg 2 – Domän: inställningar och validering (klart)
 
-1. **Filer** (`apps/mobile/src/domain/session/`):
-   - `firearmType.ts`: `FIREARM_TYPES = ['pistol', 'revolver', 'rifle', 'other'] as const`, `type FirearmType` och `isFirearmType(value: unknown)`.
-   - `sessionLimits.ts`: alla gränser från B1 som namngivna konstanter. Distans uttrycks i tiondels meter (`DISTANCE_TENTHS_MIN = 1`, `DISTANCE_TENTHS_MAX = 10_000`).
-   - `parseText.ts`: `normalizeLabel(raw)` (NFC och trim) och `codePointLength(s)` (`[...s].length`).
-   - `parseNumber.ts`:
-     - `parseDistanceMetres(raw)` med regex `^\d+([.,]\d)?$` (ASCII-siffror, ingen `u`-flagga). Värdet räknas som heltal i tiondelar för intervallkontrollen och returneras som meter.
-     - `parseWholeNumber(raw)` med regex `^\d+$` och `Number.isSafeInteger`.
-     - Båda returnerar ett typat resultat.
-   - `session.ts`:
-     - Typerna `SessionFormInput` (strängar, `firearmType: string | null`), `SessionSettings` och `Session` (`id`, `createdAtUtc`, `createdTimeZone`, `settings`).
-     - `type Result<T, E> = { ok: true; value: T } | { ok: false; error: E }`.
-     - Felkoderna `required | tooLong | invalidNumber | tooManyDecimals | outOfRange | unsupportedValue`.
-   - `validateSessionInput.ts`: `validateSessionInput(input: SessionFormInput): Result<SessionSettings, SessionFieldErrors>`.
-   - `sessionId.ts`: `isSessionId(value: unknown)` (UUID-regex).
-   - `createSession.ts`: `buildSession(settings, { id, createdAtUtc, createdTimeZone })`. Den validerar id, tid och tidszon och läser inte klockan själv.
-   - Tester: `apps/mobile/tests/domain/*.test.ts`.
+Detaljplanen, med kontrakt, förtydliganden och testmatris, finns i `implementation/step-2-domain-validation.md`.
+
+1. **Filer** (under `apps/mobile/`):
+   - `src/domain/result.ts`: `Result<T, E>`, ett typat resultat som är antingen lyckat eller ett fel.
+   - `src/domain/session/firearmType.ts`: `FIREARM_TYPES = ['pistol', 'revolver', 'rifle', 'other'] as const`, `FirearmType` och `isFirearmType(value: unknown)`. Visningsetiketterna hör till UI-lagret (steg 4).
+   - `src/domain/session/sessionLimits.ts`: gränserna från B1 som namngivna konstanter.
+     - `FIREARM_NAME_MAX_CODE_POINTS = 100` och `CALIBRE_LABEL_MAX_CODE_POINTS = 50`.
+     - `DISTANCE_TENTHS_RANGE = { min: 1, max: 10_000 }`, alltså 0,1–1 000 m.
+     - `PLANNED_SHOTS_PER_ROUND_RANGE` och `PLANNED_ROUNDS_RANGE`, båda `{ min: 1, max: 100 }`.
+   - `src/domain/session/parseText.ts`: `normalizeLabel` (NFC och sedan trim), `codePointLength` och `parseLabel(raw, maxCodePoints)`. Den sista ger `required` eller `tooLong`.
+   - `src/domain/session/parseNumber.ts`:
+     - `parseWholeNumber(raw, range)` och `parseDistanceMetres(raw)` tolkar formulärets text.
+     - `checkWholeNumber(value, range)` och `checkDistanceMetres(value)` kontrollerar redan tolkade tal och returnerar en felkod eller `null`. Detaljplanen angav boolean, men ägaren beslutade felkod eller `null` så att 2d och steg 3 kan återanvända reglerna.
+   - `src/domain/session/session.ts`: typerna `SessionFormInput`, `SessionField`, `SessionSettings`, `Session`, `SessionFieldError(s)` och `SettingsFieldError(s)`. De två sista har dessutom `invalidType` och `notNormalized` för data som inte kommer från formuläret.
+   - `src/domain/session/validateSessionInput.ts`:
+     - `validateSessionInput(input)` tolkar formuläret och samlar alla fältfel.
+     - `checkSessionSettings(value: unknown)` kontrollerar redan tolkade inställningar med samma regler. Den används av `buildSession` och ska användas för databasrader i steg 3.
+   - `src/domain/session/sessionMetadata.ts`: `isSessionId`, `isUtcTimestamp` och `isTimeZone`.
+   - `src/domain/session/buildSession.ts`: `buildSession(settings, { id, createdAtUtc, createdTimeZone })`. Den kontrollerar metadata, kör `checkSessionSettings` och returnerar ett `Result` med alla fel samlade utan att kasta. Den läser aldrig klockan och skapar inga ID:n.
+   - Tester i `tests/domain/`: `firearmType`, `parseText`, `parseNumber`, `validateSessionInput`, `checkSessionSettings`, `sessionMetadata` och `buildSession` (`*.test.ts`).
 2. **Beteende:**
-   - Text normaliseras med NFC och trimmas, och längden räknas därefter.
-   - Tom text ger `required`, och text över gränsen ger `tooLong`. Texten trunkeras aldrig.
-   - Distans:
+   - **Text:** NFC och sedan trim, och längden räknas i kodpunkter. Tom text ger `required`, och text över gränsen ger `tooLong`. Texten trunkeras aldrig.
+   - **Tal:** Talfälten trimmas, och bara ASCII-siffror godtas. Siffersträngar som är längre än gränsens maxvärde ger `outOfRange` innan de görs om till tal.
+   - **Distans:**
      - `25,5` och `25.5` godtas båda.
-     - Följande avvisas: `1 000`, `1,000.5`, `1.000`, `1e3`, `25.5m`, `-5`, `+5`, `.5`, `25.`, `25,55` (`tooManyDecimals`), `0` och `1000.1` (`outOfRange`).
-   - Heltal: `1.0`, `1,5`, `10abc` och `1e2` avvisas. Inget värde avrundas.
-   - Planerat antal rundor: tom sträng eller bara blanksteg blir `null`. Övriga värden valideras som heltal.
-   - Okänd vapentyp ger `unsupportedValue`, saknad vapentyp ger `required`.
-   - Alla fältfel returneras samtidigt, inte bara det första.
+     - Två eller fler decimaler ger `tooManyDecimals`, även `1.000` och `1.10`.
+     - Fel form, som `1 000`, `1,000.5`, `1e3`, `25.5m`, `-5`, `+5`, `.5` och `25.`, ger `invalidNumber`.
+     - `0` och `1000.1` ger `outOfRange`.
+   - **Heltal:** `1.0`, `1,5`, `10abc` och `1e2` ger `invalidNumber`. Inget värde avrundas.
+   - **Planerat antal rundor:** tom sträng eller bara blanksteg blir `null`.
+   - **Vapentyp:** `null` eller `''` ger `required`. Okända värden ger `unsupportedValue`, och jämförelsen är skiftlägeskänslig.
+   - Alla fältfel returneras samtidigt.
+   - **Metadata:**
+     - ID måste vara UUID v4 med gemener.
+     - Tiden måste ha exakt formatet från `toISOString()` och bli identisk när den läses in och skrivs ut igen, så att omöjliga datum inte normaliseras tyst.
+     - Tidszonen måste ha IANA-lik form, vara högst 64 tecken och godtas av `Intl`.
+   - **Kända begränsningar:**
+     - Text som bara består av osynliga tecken, till exempel U+200B, godtas.
+     - Tidszonsdata kommer från JavaScript-motorn och är bara verifierad i Node.
 3. **Beroenden:** inga.
-4. **Kontroller:**
-   - Automatiska Jest-tester för:
-     - varje gräns exakt på, strax under och strax över
-     - NFC: `"é"` jämfört med `"é"` ger samma längd efter normalisering
-     - emoji räknas per kodpunkt
-     - blanka fält
-     - alla avvisade talformat ovan
-     - tomt valfritt fält blir `null` och aldrig `0`
-     - flera fel samtidigt
-     - `buildSession` med ogiltigt id eller tom tidszon.
-   - Därefter `npm run lint`, `npm run typecheck`, `npm test -- --runInBand`.
-5. **Klart när:** All validering är ren, deterministisk och testad, och den importerar inget från React Native, Expo eller SQLite.
+4. **Kontroller** (från `apps/mobile`, Node 26.12.1, efter commit `5822341`):
+   - `npm run format:check`, `npm run lint` och `npm run typecheck` ger exit 0.
+   - `npm test -- --runInBand` ger exit 0, med 7 testsviter och 238 av 238 tester godkända.
+   - Domänen importerar inget från React Native, Expo eller SQLite, vilket kontrolleras med `grep`.
+   - Hermes på S20 är inte verifierat. Det täcks av checklistan i steg 6.
+5. **Klart när:** All validering är ren, deterministisk och testad, och den importerar inget från React Native, Expo eller SQLite. Uppfyllt.
 
 ## Steg 3 – Persistens: migration och repository
 
@@ -155,8 +162,8 @@ Alla Expo-moduler installeras med `npx expo install` så att versionerna följer
      - `MIGRATIONS: readonly string[]`. Indexet plus 1 är versionen. Listan får bara växa, och en befintlig post ändras aldrig.
      - `migrateDatabase(db)`: läser `PRAGMA user_version`. Om databasversionen är högre än appens kastas ett fel och databasen lämnas orörd. Annars körs varje väntande migration tillsammans med `PRAGMA user_version = n` i `withExclusiveTransactionAsync`. `PRAGMA journal_mode = WAL` sätts före migrationerna.
    - `sessionRow.ts`: `parseSessionRow(row: unknown): Result<Session, InvalidSessionRow>`.
-     - Den kontrollerar alla kolumntyper och kör samma domänregler som vid inmatning: längd, enum, intervall och högst en decimal.
-     - Den kontrollerar också `isSessionId`, att datumet är giltigt ISO-UTC och att tidszonen inte är tom.
+     - Den kontrollerar alla kolumntyper och kör samma domänregler som vid inmatning, genom att återanvända `checkSessionSettings` från steg 2: längd, NFC, enum, intervall och högst en decimal.
+     - Den kontrollerar också metadata med `isSessionId`, `isUtcTimestamp` och `isTimeZone` från steg 2.
      - Den sätter aldrig standardvärden.
    - `sessionRepository.ts`:
      - `saveSession(db, session)`: `INSERT … ON CONFLICT(id) DO NOTHING`. Om ingen rad ändrades läses den befintliga raden. Är den identisk returneras `alreadySaved` (idempotent återförsök). Annars kastas `SessionIdConflictError`.
@@ -273,6 +280,8 @@ Alla Expo-moduler installeras med `npx expo install` så att versionerna följer
    - en sparad session finns kvar efter att appen tvångsstängts och startats om
    - dubbeltryck ger en rad
    - tidszonen sparas som ett IANA-namn (verifierar att `Intl` i Hermes ger ett värde)
+   - `String.prototype.normalize('NFC')` fungerar i Hermes: ett vapennamn som skrivits med kombinerande accent (e följt av U+0301) sparas som ett enda `é`
+   - `isTimeZone` godtar enhetens tidszon i Hermes, det vill säga att `Intl.DateTimeFormat` med `timeZone` inte ger `RangeError` för en giltig zon
    - lokal tid visas korrekt efter byte av enhetens tidszon
    - en andra start kör inte migrationen igen
    - flygplansläge påverkar inte appen.
