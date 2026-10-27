@@ -8,7 +8,6 @@ import {
   type HostInstance,
   KeyboardAvoidingView,
   type LayoutChangeEvent,
-  Platform,
   ScrollView,
   type ScrollViewInstance,
   StyleSheet,
@@ -264,7 +263,10 @@ export function SessionForm() {
   return (
     <SafeAreaView style={styles.safeArea}>
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        // Padding on Android too: in Expo Go on a Galaxy S20 the window does not shrink for the
+        // keyboard, so without it the lower fields cannot be reached.
+        // See docs/bugs/keyboard-covers-lower-form-fields.md.
+        behavior="padding"
         style={styles.fill}
       >
         <ScrollView

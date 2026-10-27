@@ -1,6 +1,6 @@
 # Bugg: tangentbordet döljer de nedersta fälten i formuläret
 
-> **Status:** Öppen, inte åtgärdad. Rotorsaken är okänd. Används som felsökningsövning i hemuppgift 3.
+> **Status:** **Åtgärdad för det testade flödet** (2026-10-27). Rättningen är godkänd av ägaren, och sluttestet utan diagnostik gick igenom på S20 i Expo Go. **Mekanismen i H1 stöds av mätning** i Expo Go på S20. **Den bakomliggande plattformsorsaken är inte fastställd** (H3 öppen). Egen Android-build, iOS och andra tangentbord är overifierade. Används som felsökningsövning i hemuppgift 3. Används som felsökningsövning i hemuppgift 3.
 
 ## Observation
 
@@ -23,3 +23,127 @@
 
 - Testerna M1–M10 för sessionslistan gick igenom (steg 6c). **De säger inget om formulärets tangentbordshantering.**
 - De automatiska testerna renderar inte komponenter och kan inte upptäcka felet.
+
+## Observationer, andra testet (ägaren, Galaxy S20, Expo Go, 2026-10-27)
+
+| Element | Syns automatiskt när tangentbordet öppnas | Kan skrollas fram helt manuellt med tangentbordet öppet |
+| --- | --- | --- |
+| `Planned rounds (optional)` | Nej | Nej |
+| `Shots per round` | Nej | Nej |
+| `Distance (m)` | Ja, men täcks delvis | Nej, täcks delvis |
+| `Create session` | – | Nej |
+
+- **Enhet:** Android- och One UI-version är inte kända. Tangentbordet är telefonens standardtangentbord, troligen Samsung Keyboard (ej bekräftat). Expo Go-versionen är inte känd.
+- **Kod:** `SessionForm.tsx` är oförändrad sedan steg 5d (`6a5d3e7`), och `app.json` och beroendena är oförändrade sedan 5a. Felet är alltså troligen inte en regression från steg 6.
+
+## Hypoteser
+
+| # | Hypotes | Status |
+| --- | --- | --- |
+| H1 | Fönstret, och därmed `ScrollView`, krymper inte när tangentbordet visas. `KeyboardAvoidingView` med `behavior` `undefined` renderar en vanlig `View` på Android i React Native 0.88 och gör ingen anpassning. Innehåll under tangentbordets överkant kan inte nås. | **Vald för undersökning.** Stärkt av observationerna men inte verifierad. |
+| H2 | Fönstret krymper, men fältet med fokus skrollas inte fram automatiskt. | Mindre sannolik. Den talar emot observationen att inget kan skrollas fram manuellt, men den är inte definitivt utesluten. |
+| H3 | Beteendet styrs av Expo Gos manifest (`windowSoftInputMode`) och skiljer sig i en egen Android-build. | Öppen. Den kräver en development build, och Android SDK och `adb` saknas i dag. |
+
+**Motivering till valet av H1 (ägaren):** De nedersta fälten och `Create session` går inte att skrolla fram manuellt med tangentbordet öppet. Det stämmer med ett skrollområde som inte krymper. Det stärker H1, men det bevisar ännu inte att fönstret eller `ScrollView` behåller sin höjd.
+
+**H1 och rotorsaken:** Även om mätningen visar oförändrad höjd fastställer det bara mekanismen, alltså att ytan inte krymper. Det visar inte **varför**: om det beror på kant till kant i SDK 58, Expo Gos manifest eller något annat. Det kräver separat avgränsning (H3).
+
+## Diagnostik för H1 (tillfällig)
+
+- **Var:** `src/features/sessions/keyboardDiagnostics.ts`, som `SessionForm.tsx` anropar. Diagnostiken körs bara i utvecklingsläge (`__DEV__`). Loggraderna börjar med `[KBDIAG]` och innehåller inga formulärvärden.
+- **Vad som mäts:** höjd och position i fönstret för `KeyboardAvoidingView` och `ScrollView`, tangentbordets höjd och överkant, raden med `Shots per round` och `Planned rounds`, samt fönster- och skärmhöjd.
+- **Status:** Körd av ägaren 2026-10-27 före och under E1. Resultaten står nedan.
+- **Borttagen** 2026-10-27 tillsammans med rättningen (`keyboardDiagnostics.ts` raderad, och raderna i `SessionForm.tsx` borttagna).
+
+## Mätresultat för H1 (Expo Go, Galaxy S20, 2026-10-27)
+
+Två körningar gav identiska värden. Fältet var `Planned rounds (optional)`. Alla värden är i dp.
+
+| Mått | Före tangentbordet | Efter `keyboardDidShow` |
+| --- | --- | --- |
+| `windowHeight` / `screenHeight` | 778,1 / 853,3 | 778,1 / 853,3 |
+| `KeyboardAvoidingView`, höjd (`onLayout`) | 778,1 | oförändrad, ingen ny layouthändelse |
+| `ScrollView`, höjd (`onLayout` och `measureInWindow`) | 778,1 (top 0, bottom 778,1) | 778,1 (top 0, bottom 778,1) |
+| Raden `Shots per round` / `Planned rounds` (`measureInWindow`) | top 672,5, bottom 769,1 | top 672,5, bottom 769,1 |
+| Tangentbordet (`keyboardDidShow`) | – | höjd 255,5, överkant (`screenY`) 549,9 |
+| Innehållets höjd i `ScrollView` | 893,9 | 893,9 |
+
+**Tolkning:**
+- **Mekanismen i H1 stöds av mätningen.** Varken `KeyboardAvoidingView`, `ScrollView` eller fönstret krymper när tangentbordet visas.
+- **H2:s antagande om en krympande skrollyta motsägs** av samma mätning. Det gäller i Expo Go på S20.
+- **Skrollningen räcker inte:** Innehållet kan skrollas högst cirka 115,8 (893,9 − 778,1). Det är mindre än vad som behövs för att få fältraden ovanför tangentbordets överkant. Efter att tangentbordet stängts i första körningen loggades raden på top 556,8, vilket stämmer med att den var skrollad så långt det gick.
+- **`Create session`** är verifierad genom **manuell observation**: den gick inte att skrolla fram med tangentbordet öppet. Den mättes inte. **Fältraden har dessutom mätts.**
+
+**Koordinater:**
+- `keyboardTop` är i skärmkoordinater och `measureInWindow` i fönsterkoordinater. Fönstret är 75,2 lägre än skärmen, vilket troligen motsvarar statusfältet (27,2) och navigationsfältet.
+- **Exakta överlappningsmått ska därför inte beskrivas som säkert fastställda.** Slutsatsen att fältraden och skrollytans nederkant ligger under tangentbordets överkant håller dock för båda tänkbara nollpunkterna.
+
+**Fortfarande öppet:**
+- **H3 och plattformsorsaken.** Mätningen visar inte varför ytan inte krymper. Kant till kant i SDK 58, Expo Gos `windowSoftInputMode` och andra orsaker är inte avgränsade.
+- **Egen build:** En development build är inte testad, och Android-verktyg installeras inte nu (ägarbeslut 2026-10-27).
+
+## Experiment E1: `behavior="padding"` även på Android (tillfälligt, inte en godkänd rättning)
+
+- **Ändring:** I `SessionForm.tsx` sätts `KeyboardAvoidingView` till `behavior="padding"` på alla plattformar. iOS hade redan `padding`, så beteendet där är oförändrat. Automatisk skrollning, offsets och övrig layout är oförändrade. Diagnostiken ligger kvar.
+- **Status:** Testat av ägaren 2026-10-27. Resultatet står nedan.
+
+### Resultat av E1 (Expo Go, Galaxy S20, fältet `Planned rounds`)
+
+**Manuell observation (ägaren):**
+
+| Fråga | Svar |
+| --- | --- |
+| 1. Syns fältet automatiskt när tangentbordet öppnas? | Ja |
+| 2. Kan hela fältet skrollas fram manuellt? | Ja |
+| 3. Kan `Create session` skrollas fram? | Ja |
+| 4. Återställs layouten utan extra tomrum när tangentbordet stängs? | Ja |
+
+**Mätning (`[KBDIAG]`):**
+
+| Mått | Före E1 | Med E1 |
+| --- | --- | --- |
+| `ScrollView`-höjd med tangentbordet öppet | 778,1, oförändrad | 522,7, ny layouthändelse vid `keyboardDidShow` |
+| Minskning | 0 | 255,4, nästan exakt tangentbordets höjd 255,5 |
+| Skrollytans nederkant i fönsterkoordinater | 778,1 | 522,7 |
+| `ScrollView`-höjd efter att tangentbordet stängts | 778,1 | 778,1 |
+| Innehållets höjd | 893,9 | 893,9, ingen ny storlek och inget tomrum |
+
+**Koordinaterna avgjorda:** Tangentbordets överkant är 549,9 i skärmkoordinater. Minus statusfältet på 27,2, som är `KeyboardAvoidingView`s `y`, blir det 522,7, samma värde som skrollytans nya nederkant. Fönstrets nollpunkt ligger alltså 27,2 under skärmens överkant. Med den omräkningen låg fältraden i H1-mätningen (672,5–769,1) helt under tangentbordets överkant (522,7).
+
+**Fältraden 540,8 jämfört med skrollytan 522,7:**
+- **Vid mättillfället,** 300 ms efter `keyboardDidShow`, låg fältradens nederkant (540,8) **18,1 under** skrollytans synliga nederkant (522,7). Raden är 96,5 hög och består av etikett, mellanrum och inmatningsfält med minst 48 i höjd. Ungefär de nedersta 18 av inmatningsfältet låg alltså utanför den synliga ytan, bakom tangentbordets överkant, **vid just det tillfället**.
+- **Det mätningen inte visar:** Skrollpositionen (`contentOffset`) loggades inte, och ingen mätning gjordes senare. Det går därför inte att säga om Android skrollade fältet med fokus ytterligare efter mätningen, eller om den nedersta delen av fältet förblev dold.
+- **Ägaren verifierade manuellt** att fältet syntes (fråga 1) och att **hela** fältet och `Create session` gick att skrolla fram (frågorna 2 och 3). Det är verifierat **efter manuell skrollning**.
+- **Slutsats vid mättillfället:** Att fältet blir **helt** synligt automatiskt gick inte att säga utifrån mätningen.
+
+**Ny manuell observation (ägaren, upprepat test, Expo Go på S20, 2026-10-27):** `Planned rounds` syns **helt, inklusive nederkanten, efter ungefär två sekunder utan manuell skrollning.** Mätningen efter 300 ms var en **tidigare ögonblicksbild** och visar inte slutläget. Den automatiska skrollningen sköts av plattformen och inte av appens egen kod.
+
+**Inte verifierat med E1:** `Distance (m)`, `Shots per round` och övriga fält, felvisning med tangentbordet öppet, största systemtext, TalkBack, andra tangentbord, en **egen Android-build** och **iOS**.
+
+### Vad E1 säger om hypoteserna
+
+| # | Slutsats |
+| --- | --- |
+| H1 | **Ytterligare stöd.** Utan anpassning krymper ytan inte, och när `KeyboardAvoidingView` lägger till padding som motsvarar tangentbordets höjd försvinner symtomet. Den saknade anpassningen var alltså det som gjorde att innehållet hamnade bakom tangentbordet i Expo Go på S20. **Varför** fönstret inte krymper av sig självt är inte fastställt. |
+| H2 | **Inte orsaken** i Expo Go på S20, eftersom ytan inte krympte utan E1. Med E1 skrollades `Planned rounds` fram helt automatiskt inom cirka två sekunder (manuell observation). För övriga fält är det inte testat. |
+| H3 | **Öppen.** E1 säger inget om en egen build. Om fönstret där krymper via `adjustResize` (standardvärdet `resize` i app config) kan `padding` ge dubbel anpassning, alltså tomrum ovanför tangentbordet. Det är den viktigaste kvarstående risken. |
+
+## Rättning (godkänd av ägaren 2026-10-27)
+
+- **Ändring:** I `src/features/sessions/SessionForm.tsx` sätts `KeyboardAvoidingView` till `behavior="padding"` på alla plattformar. Tidigare var det `padding` på iOS och `undefined` på Android. En kommentar förklarar varför och hänvisar till den här rapporten. `Platform` har tagits bort ur importen, eftersom den inte längre används.
+- **Inte ändrat:** Ingen egen logik för automatisk skrollning, inga offsets och ingen övrig layout. Den tillfälliga diagnostiken och experimentkommentaren är borttagna.
+- **Verifierat:** Det testade flödet med `Planned rounds` i Expo Go på Galaxy S20, med diagnostiken kvar (E1 och det upprepade testet). Fältet syns helt efter cirka två sekunder, fältet och `Create session` kan skrollas fram och layouten återställs utan tomrum.
+- **Sluttest utan diagnostik (ägaren, Expo Go, Galaxy S20, 2026-10-27): godkänt.**
+  - Inga `[KBDIAG]`-loggar visas, så diagnostiken är borta.
+  - `Planned rounds` syns helt automatiskt.
+  - `Create session` går att skrolla fram med tangentbordet öppet.
+  - Inget extra tomrum ligger kvar efter att tangentbordet stängts.
+- **Inte verifierat:**
+  - `Distance (m)`, `Shots per round`, `Firearm name` och `Calibre`
+  - felvisning med tangentbordet öppet
+  - största systemtext och TalkBack med tangentbordet öppet
+  - **andra tangentbord** än standardtangentbordet
+  - **en egen Android-build**: risken för dubbel anpassning om fönstret där krymper via `adjustResize` (H3)
+  - **iOS**, där beteendet är oförändrat men otestat.
+
+  Inga av dessa är markerade som godkända utan ett uttryckligt testresultat.
