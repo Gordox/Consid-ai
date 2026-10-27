@@ -1,8 +1,8 @@
 # Detaljplan steg 6: lista sessioner
 
-> **Status:** Godkänd 2026-10-27, med ägarens beslut om Ö1–Ö3 och förtydliganden (§8). **6a: Implementerat och enhetstestat (ej committat). Node-testerna verifierar inte Intl i Hermes (M5).** **6b: Implementerat och enhetstestat (ej committat), med `sessionListController` och kontrollerade promises. Logiktesterna bevisar inte att skärmen är korrekt inkopplad.** **6c: Implementerat (ej committat). Format-, lint- och typkontroll, tester och Android-export går igenom. På Galaxy S20 är M1–M5 och M7–M10 OK enligt ägaren. M5 är första verifieringen av persistens på enhet. **M6 är delvis kontrollerad men inte verifierad.** En bugg i formuläret från steg 5 hittades: tangentbordet döljer de nedersta fälten (§9 och `docs/bugs/keyboard-covers-lower-form-fields.md`).** 6d är inte påbörjat.
+> **Status (2026-10-27):** Godkänd plan med beslut Ö1–Ö3 och förtydliganden (§8). **6a–6c är implementerade, enhetstestade och committade** (`1cec35f`, `680a65c`, `537a0b7`, designbeslut i `7456ec6`). **6d: dokumentationen är uppdaterad** (`PLAN.md`, README och denna plan). Steg 6 är **inte fullständigt verifierat**.
 > **Branch:** `feature/session-list`, skapad från `main` (`a1e4761`) 2026-10-27. Ingen push eller sammanslagning görs utan ägarens besked.
-> **Verifiering:** Inga manuella kontroller för steg 6 är genomförda. iOS är overifierat. Felflöden som kräver felinjektion ligger kvar i steg 7.
+> **Verifiering:** M1–M5 och M7–M10 är godkända på Galaxy S20 i Expo Go (ägaren). M5 verifierar att skapade sessioner finns kvar efter fullständig omstart i den testade miljön. **M6 är delvis kontrollerad, inte verifierad.** Node-testerna verifierar inte `Intl` i Hermes (M6). Felinjektion för listan återstår till steg 7. iOS är overifierat. Tangentbordsbuggen i formuläret (steg 5-kod) är dokumenterad och rättad separat (`9f99cf4`, `840e8c7`) och ingår inte i M1–M10.
 
 ## 1. Kontext och underlag
 

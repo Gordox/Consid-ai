@@ -3,12 +3,20 @@
 A mobile app for logging recreational target-practice sessions, built with React Native, Expo
 (SDK 58) and TypeScript. The app lives in [`apps/mobile`](apps/mobile).
 
-> **Status:** Early development. Domain validation (step 2), local SQLite persistence (step 3)
-> and the new-session form (step 5) are implemented and unit tested. The app opens to a dark
-> placeholder home screen with a **New session** button; the session list follows in step 6.
-> On a Galaxy S20 the app starts and the form works, but saved sessions cannot be viewed yet,
-> so persistence on the device is not verified. iOS is untested. See [PLAN.md](PLAN.md) for the
-> plan and progress.
+> **Status:** Early development. Domain validation (step 2), local SQLite persistence (step 3),
+> the new-session form (step 5) and the session list (step 6) are implemented and unit tested.
+> The app opens to the **Sessions** list, newest first, with a **New session** button.
+>
+> On a Galaxy S20 in Expo Go, creating sessions, the list, and sessions kept after a full app
+> restart have been checked manually. Date and time display across languages and time zones is
+> only partly checked. Error cases (read failures, unreadable records, startup errors) still need
+> fault-injection tests. iOS is untested. See [PLAN.md](PLAN.md) for the plan and progress.
+>
+> **Known issue, fixed for the tested case:** the keyboard used to hide the lowest fields of the
+> new-session form on Android. The fix is verified for *Planned rounds* in Expo Go on a Galaxy
+> S20; other fields, accessibility with the keyboard open, other keyboards, a custom Android
+> build and iOS are not yet verified. See
+> [docs/bugs/keyboard-covers-lower-form-fields.md](docs/bugs/keyboard-covers-lower-form-fields.md).
 
 ## Prerequisites
 
