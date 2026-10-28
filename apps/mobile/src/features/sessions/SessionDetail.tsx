@@ -375,7 +375,11 @@ export function SessionDetail({ sessionId }: { sessionId: string }) {
         ) : null}
 
         {finished ? (
-          <Button icon={ChevronLeft} label="Back to sessions" onPress={() => router.dismissTo('/')} />
+          <Button
+            icon={ChevronLeft}
+            label="Back to sessions"
+            onPress={() => router.dismissTo('/')}
+          />
         ) : (
           <View style={styles.section}>
             {draft === null ? null : (
