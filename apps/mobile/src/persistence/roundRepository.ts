@@ -222,6 +222,26 @@ export async function getRound(db: SessionDatabase, roundId: string): Promise<Ro
   };
 }
 
+// Calibration and marks of any round, read only. A confirmed round keeps them after
+// confirmation; they are shown for inspection and never used to rescore its fixed result.
+export async function getRoundAnnotations(
+  db: SessionDatabase,
+  roundId: string,
+): Promise<{ readonly calibration: Calibration | null; readonly marks: HitMark[] } | null> {
+  const row = await db.getFirstAsync('SELECT calibration_json FROM rounds WHERE id = ?', [roundId]);
+  if (row === null || row === undefined) {
+    return null;
+  }
+  const markRows = await db.getAllAsync(
+    'SELECT id, x, y, shots, source, uncertain, accepted, candidate_id FROM round_marks WHERE round_id = ? ORDER BY ordinal',
+    [roundId],
+  );
+  return {
+    calibration: parseCalibration(readNullableString(row, 'calibration_json')),
+    marks: markRows.map(parseMarkRow),
+  };
+}
+
 // Both stored copies of one photo, for deletion after the row that pointed at them is gone.
 function filesOfPhotoRow(row: unknown): string[] {
   const original = readNullableString(row, 'original_file_name');

@@ -35,6 +35,8 @@ export type GestureSnapshot = {
   readonly marks: readonly HitMark[];
   readonly selectedId: string | null;
   readonly calibrationPoints: readonly Point[];
+  // Inspection: only pan, zoom and select; nothing can be placed, dragged or moved.
+  readonly readOnly?: boolean;
 };
 
 // What follows the finger before the edit is committed on release.
@@ -91,13 +93,15 @@ export function createGestureController(newMarkId: () => string) {
 
   function calibrationTarget(start: Point): number | null {
     const view = snapshot?.view;
-    if (view == null || snapshot?.tool !== 'calibrate') return null;
+    if (view == null || snapshot?.tool !== 'calibrate' || snapshot.readOnly === true) return null;
     const screenPoints = snapshot.calibrationPoints.map((point) => imageToScreen(view, point));
     return pointNear(screenPoints, start, TOUCH_REACH);
   }
 
   function dragTarget(start: Point): string | null {
-    if (snapshot?.view == null || snapshot.tool === 'calibrate') return null;
+    if (snapshot?.view == null || snapshot.tool === 'calibrate' || snapshot.readOnly === true) {
+      return null;
+    }
     const selected = snapshot.marks.find((mark) => mark.id === snapshot?.selectedId);
     if (selected === undefined) return null;
     const screen = imageToScreen(snapshot.view, selected.position);

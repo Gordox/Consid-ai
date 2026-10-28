@@ -1,6 +1,6 @@
 import Camera from 'lucide-react-native/icons/camera';
 import ImageIcon from 'lucide-react-native/icons/image';
-import { Image, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Button } from '../../components/Button';
 import { Icon } from '../../components/Icon';
@@ -21,6 +21,8 @@ type PhotoSlotProps = {
   onTake?: () => void;
   onChoose?: () => void;
   onRemove?: () => void;
+  // Opens the photo full screen; the photo becomes a button when given.
+  onInspect?: () => void;
 };
 
 function badgeFor(
@@ -47,6 +49,7 @@ export function PhotoSlot({
   onTake,
   onChoose,
   onRemove,
+  onInspect,
 }: PhotoSlotProps) {
   const photos = usePhotoStore();
   const badge = badgeFor(photo, missing, required);
@@ -70,12 +73,19 @@ export function PhotoSlot({
           </Text>
         </View>
       ) : (
-        <Image
+        <Pressable
+          accessibilityHint={onInspect === undefined ? undefined : 'Opens the photo full screen'}
           accessibilityLabel={`${title} photo`}
-          resizeMode="contain"
-          source={{ uri: photos.uri(photo.fileName) }}
-          style={[styles.image, { aspectRatio: photo.width / photo.height }]}
-        />
+          accessibilityRole={onInspect === undefined ? 'image' : 'button'}
+          disabled={onInspect === undefined}
+          onPress={onInspect}
+        >
+          <Image
+            resizeMode="contain"
+            source={{ uri: photos.uri(photo.fileName) }}
+            style={[styles.image, { aspectRatio: photo.width / photo.height }]}
+          />
+        </Pressable>
       )}
       {editable && photo === null ? <Text style={styles.hint}>{hint}</Text> : null}
       {editable && onTake !== undefined && onChoose !== undefined ? (

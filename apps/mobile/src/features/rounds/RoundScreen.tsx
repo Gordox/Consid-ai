@@ -1,8 +1,9 @@
 import Camera from 'lucide-react-native/icons/camera';
+import ScanSearch from 'lucide-react-native/icons/scan-search';
 import ChevronRight from 'lucide-react-native/icons/chevron-right';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Image, Linking, StyleSheet, Text, View } from 'react-native';
+import { Image, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Banner } from '../../components/Banner';
 import { Button } from '../../components/Button';
@@ -28,6 +29,7 @@ import { PhotoSlot } from './PhotoSlot';
 import { ActualShots, HoleDiameterCard } from './RoundCounts';
 import { RoundProgress } from './RoundProgress';
 import { savePickedPhoto } from './roundPhotos';
+import { createActionGuard } from './nextRound';
 import { initialRoundStep, type RoundStep } from './roundSteps';
 import { useDraftCounts } from './useDraftCounts';
 
@@ -61,10 +63,12 @@ function Thumbnail({
   title,
   photo,
   missing,
+  onPress,
 }: {
   title: string;
   photo: RoundPhoto | null;
   missing: boolean;
+  onPress?: () => void;
 }) {
   const photos = usePhotoStore();
   return (
@@ -73,12 +77,19 @@ function Thumbnail({
       {photo === null || missing ? (
         <Text style={styles.muted}>{photo === null ? 'None' : 'Unavailable'}</Text>
       ) : (
-        <Image
+        <Pressable
+          accessibilityHint={onPress === undefined ? undefined : 'Opens the photo full screen'}
           accessibilityLabel={`${title} photo`}
-          resizeMode="contain"
-          source={{ uri: photos.uri(photo.fileName) }}
-          style={[styles.thumbImage, { aspectRatio: photo.width / photo.height }]}
-        />
+          accessibilityRole={onPress === undefined ? 'image' : 'button'}
+          disabled={onPress === undefined}
+          onPress={onPress}
+        >
+          <Image
+            resizeMode="contain"
+            source={{ uri: photos.uri(photo.fileName) }}
+            style={[styles.thumbImage, { aspectRatio: photo.width / photo.height }]}
+          />
+        </Pressable>
       )}
     </View>
   );
@@ -89,11 +100,13 @@ function DraftRoundView({
   calibreLabel,
   missing,
   onChanged,
+  onInspect,
 }: {
   draft: DraftRound;
   calibreLabel: string;
   missing: LoadedRound['missing'];
   onChanged: () => void;
+  onInspect: (showHits: boolean) => void;
 }) {
   const { db } = useSessionStore();
   const photos = usePhotoStore();
@@ -317,13 +330,27 @@ function DraftRoundView({
           {banners}
           <View style={styles.thumbs}>
             <Thumbnail missing={missing.before} photo={draft.photos.before} title="Before" />
-            <Thumbnail missing={missing.after} photo={draft.photos.after} title="After" />
+            <Thumbnail
+              missing={missing.after}
+              onPress={() => onInspect(false)}
+              photo={draft.photos.after}
+              title="After"
+            />
           </View>
           {draft.photos.before === null ? (
             <Banner
               body="Existing holes may appear as suggestions. Review every result."
               title="No before photo"
               tone="warning"
+            />
+          ) : null}
+          {draft.marks.length > 0 && afterUsable ? (
+            <Button
+              disabled={locked}
+              icon={ScanSearch}
+              label="Inspect hits"
+              onPress={() => onInspect(true)}
+              variant="secondary"
             />
           ) : null}
           <AnalysisPanel
@@ -390,9 +417,11 @@ function Stat({ value, label }: { value: number; label: string }) {
 function ConfirmedRoundView({
   round,
   missing,
+  onInspect,
 }: {
   round: ConfirmedRound;
   missing: LoadedRound['missing'];
+  onInspect: (showHits: boolean) => void;
 }) {
   const { result } = round;
   const target = findTarget(result.targetId);
@@ -430,6 +459,9 @@ function ConfirmedRoundView({
         </Text>
         <Text style={styles.secondary}>{"Confirmed results can't be changed."}</Text>
       </View>
+      {round.photos.after !== null && !missing.after ? (
+        <Button icon={ScanSearch} label="Inspect hits" onPress={() => onInspect(true)} />
+      ) : null}
       {target?.isDemo !== false ? (
         <Banner
           body="This round used unverified target geometry. It is not an official score."
@@ -451,6 +483,7 @@ function ConfirmedRoundView({
         editable={false}
         hint="No after photo."
         missing={missing.after}
+        onInspect={() => onInspect(false)}
         photo={round.photos.after}
         required
         title="After"
@@ -484,6 +517,17 @@ export function RoundScreen({ sessionId, roundId }: { sessionId: string; roundId
     };
   }, [db, photos, roundId, sessionId]);
   const { state, reload } = useFocusLoad(load);
+  // One inspection at a time: a second tap in the same frame must not open it twice.
+  const inspectGuard = useRef(createActionGuard());
+  useFocusEffect(
+    useCallback(() => {
+      inspectGuard.current.release();
+    }, []),
+  );
+  const inspect = (showHits: boolean) => {
+    if (!inspectGuard.current.tryEnter()) return;
+    router.push(`/sessions/${sessionId}/rounds/${roundId}/inspect?hits=${showHits ? '1' : '0'}`);
+  };
 
   const goBack = () =>
     router.canGoBack() ? router.back() : router.replace(`/sessions/${sessionId}`);
@@ -527,10 +571,11 @@ export function RoundScreen({ sessionId, roundId }: { sessionId: string; roundId
             key={loaded.round.id}
             missing={loaded.missing}
             onChanged={reload}
+            onInspect={inspect}
           />
         ) : null}
         {loaded?.round.state === 'confirmed' ? (
-          <ConfirmedRoundView missing={loaded.missing} round={loaded.round} />
+          <ConfirmedRoundView missing={loaded.missing} onInspect={inspect} round={loaded.round} />
         ) : null}
       </View>
     </Screen>
