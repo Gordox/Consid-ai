@@ -26,6 +26,7 @@ import { newId, nowUtcIso } from '../../services/deviceContext';
 import type { PickOutcome } from '../../services/pickedPhoto';
 import { choosePhoto, takePhoto } from '../../services/photoPicker';
 import { copyPhotoIntoApp, deleteAppPhoto, photoExists } from '../../services/photoStorage';
+import { AnalysisPanel } from '../analysis/AnalysisPanel';
 import { formatPoints } from '../sessions/sessionProgressText';
 import { useSessionStore } from '../startup/sessionStoreContext';
 import { useFocusLoad } from '../useFocusLoad';
@@ -300,6 +301,12 @@ function DraftRoundView({
           title="After"
         />
       </View>
+
+      <AnalysisPanel
+        draft={draft}
+        onChanged={onChanged}
+        photosMissing={missing.after || missing.before}
+      />
 
       <View style={styles.card}>
         <Text accessibilityRole="header" style={styles.sectionTitle}>

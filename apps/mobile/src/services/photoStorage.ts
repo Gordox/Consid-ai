@@ -38,3 +38,10 @@ export function deleteAppPhoto(fileName: string): void {
     file.delete();
   }
 }
+
+// Size in bytes, or null when the copy is missing or cannot be read.
+export function photoFileSize(fileName: string): number | null {
+  if (!isPhotoFileName(fileName)) return null;
+  const file = photoFile(fileName);
+  return file.exists ? file.size : null;
+}

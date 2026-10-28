@@ -1,0 +1,171 @@
+openapi: 3.1.0
+info:
+  title: Target Practice analysis
+  version: 1.0.0
+  description: >
+    Suggests hit locations on the after photo of one round. Suggestions are untrusted: the app
+    validates every field, the user confirms or corrects each hit, and scores are calculated in
+    the app from confirmed geometry. The service never returns scores. No service is deployed or
+    selected yet (implementation/mvp-plan.md §5); this file is the contract an implementation
+    must follow.
+servers:
+  - url: http://127.0.0.1:8000
+    description: Local development (adb reverse tcp:8000 tcp:8000). HTTPS is required elsewhere.
+paths:
+  /v1/analyses:
+    post:
+      operationId: analyzeRound
+      summary: Suggest hits for one analysis attempt of a round.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [roundId, attemptId, mode, targetId, after]
+              properties:
+                roundId:
+                  type: string
+                  format: uuid
+                attemptId:
+                  type: string
+                  format: uuid
+                  description: New for every attempt; echoed so late answers can be discarded.
+                mode:
+                  type: string
+                  enum: [paired, single]
+                  description: paired requires before; single must not include before.
+                targetId:
+                  type: string
+                  example: demo-synthetic-v1
+                after:
+                  type: string
+                  format: binary
+                  description: JPEG, PNG, HEIC or WebP, at most 15 MB. Orientation is applied by the service.
+                before:
+                  type: string
+                  format: binary
+                  description: Same limits. Taken after covering old holes, before shooting.
+      responses:
+        '200':
+          description: >
+            Analysis finished. A status other than succeeded carries no candidates and tells the
+            app to offer a retake or manual marking; an empty candidate list with status
+            succeeded means no new holes were found, never a hidden failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalysisResult'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '413':
+          $ref: '#/components/responses/Error'
+        '415':
+          $ref: '#/components/responses/Error'
+        '422':
+          $ref: '#/components/responses/Error'
+        '429':
+          $ref: '#/components/responses/Error'
+        '500':
+          $ref: '#/components/responses/Error'
+        '502':
+          $ref: '#/components/responses/Error'
+        '504':
+          $ref: '#/components/responses/Error'
+components:
+  responses:
+    Error:
+      description: Structured error without stack traces or credentials.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+  schemas:
+    AnalysisResult:
+      type: object
+      additionalProperties: false
+      required: [roundId, attemptId, status, algorithmVersion, image, candidates, warnings]
+      properties:
+        roundId:
+          type: string
+          format: uuid
+        attemptId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [succeeded, unusableImage, registrationFailed]
+        algorithmVersion:
+          type: string
+          minLength: 1
+          maxLength: 100
+        image:
+          type: object
+          description: >
+            Size of the after photo after orientation, in pixels. Must equal the size the app
+            recorded, otherwise the result is rejected.
+          required: [width, height]
+          properties:
+            width:
+              type: integer
+              minimum: 1
+            height:
+              type: integer
+              minimum: 1
+        candidates:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/Candidate'
+        warnings:
+          type: array
+          maxItems: 20
+          items:
+            $ref: '#/components/schemas/Warning'
+    Candidate:
+      type: object
+      required: [id, x, y, confidence, uncertain]
+      properties:
+        id:
+          type: string
+          minLength: 1
+          maxLength: 64
+        x:
+          type: number
+          description: Hole centre in after-photo pixels; origin top left, x to the right.
+        y:
+          type: number
+          description: Hole centre in after-photo pixels; y downwards.
+        diameterPx:
+          type: [number, 'null']
+          description: Estimated hole diameter in pixels. Informational; the app scores with its own diameter.
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+        uncertain:
+          type: boolean
+          description: True when the service wants the user to check this hole (overlap, tear, sticker edge).
+    Warning:
+      type: object
+      required: [code]
+      properties:
+        code:
+          type: string
+          enum: [blur, glare, shadow, clipping, partialTarget, stickerEdges, other]
+    Error:
+      type: object
+      required: [code, message, requestId]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        requestId:
+          type: string
+        fieldErrors:
+          type: object
+          additionalProperties:
+            type: string
