@@ -12,7 +12,6 @@ import {
   StyleSheet,
   Text,
   type TextInputInstance,
-  useWindowDimensions,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -23,7 +22,7 @@ import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { Icon } from '../../components/Icon';
 import { ScreenHeader } from '../../components/ScreenHeader';
 import { SelectSheet } from '../../components/SelectSheet';
-import { TextField } from '../../components/TextField';
+import { FieldPair, TextField } from '../../components/TextField';
 import { colors, spacing, typography } from '../../components/tokens';
 import { FIREARM_TYPES } from '../../domain/session/firearmType';
 import type { SessionField } from '../../domain/session/session';
@@ -39,9 +38,6 @@ const FIREARM_TYPE_OPTIONS = FIREARM_TYPES.map((type) => ({
   value: type,
   label: FIREARM_TYPE_LABELS[type],
 }));
-
-// Above this text scale the paired number fields are stacked instead of side by side.
-const STACK_FIELDS_FONT_SCALE = 1.3;
 
 // Visual order, used to focus the first invalid field after Create session.
 const FIELD_ORDER: readonly SessionField[] = [
@@ -153,7 +149,6 @@ export function SessionForm() {
   const backRef = useRef<HostInstance>(null);
   const scrollRef = useRef<ScrollViewInstance>(null);
   const typeTriggerRef = useRef<HostInstance>(null);
-  const stackFields = useWindowDimensions().fontScale >= STACK_FIELDS_FONT_SCALE;
   const fieldOffsets = useRef<Partial<Record<SessionField, number>>>({});
   const firearmNameRef = useRef<TextInputInstance>(null);
   const calibreLabelRef = useRef<TextInputInstance>(null);
@@ -285,13 +280,23 @@ export function SessionForm() {
           keyboardShouldPersistTaps="handled"
           style={styles.fill}
         >
-          <ScreenHeader backRef={backRef} onBack={goBack} title="New session" />
+          <ScreenHeader
+            backRef={backRef}
+            onBack={goBack}
+            subtitle={
+              form.phase === 'editing' && Object.keys(form.visibleErrors).length > 0
+                ? 'Check the highlighted fields.'
+                : "Set up today's practice."
+            }
+            title="New session"
+          />
           <StatusBanner view={view} />
 
           <TextField
             {...textFieldProps('firearmName')}
             inputRef={firearmNameRef}
             label="Firearm name"
+            placeholder="Enter firearm name"
             onLayout={(event) => recordOffset(event, 'firearmName')}
             onSubmitEditing={() => calibreLabelRef.current?.focus()}
             returnKeyType="next"
@@ -326,27 +331,22 @@ export function SessionForm() {
             onLayout={(event) => recordOffset(event, 'distanceMetres')}
           />
 
-          <View
+          <FieldPair
+            first={{
+              ...textFieldProps('plannedShotsPerRound'),
+              inputRef: plannedShotsPerRoundRef,
+              keyboardType: 'number-pad',
+              label: 'Shots per round',
+            }}
             onLayout={(event) => recordOffset(event, 'plannedShotsPerRound', 'plannedRounds')}
-            style={stackFields ? styles.stacked : styles.row}
-          >
-            <View style={stackFields ? null : styles.column}>
-              <TextField
-                {...textFieldProps('plannedShotsPerRound')}
-                inputRef={plannedShotsPerRoundRef}
-                keyboardType="number-pad"
-                label="Shots per round"
-              />
-            </View>
-            <View style={stackFields ? null : styles.column}>
-              <TextField
-                {...textFieldProps('plannedRounds')}
-                inputRef={plannedRoundsRef}
-                keyboardType="number-pad"
-                label="Planned rounds (optional)"
-              />
-            </View>
-          </View>
+            second={{
+              ...textFieldProps('plannedRounds'),
+              inputRef: plannedRoundsRef,
+              keyboardType: 'number-pad',
+              label: 'Planned rounds',
+              optional: true,
+            }}
+          />
 
           <PrimaryAction
             onBackToSessions={leaveWithoutPrompt}
@@ -354,7 +354,7 @@ export function SessionForm() {
             onRetry={controller.retry}
             view={view}
           />
-          <Text style={styles.footer}>Saved on this device. No account needed.</Text>
+          <Text style={styles.footer}>No account needed. Saved on this device.</Text>
         </ScrollView>
       </KeyboardAvoidingView>
 
@@ -432,16 +432,6 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     gap: spacing.field,
     padding: spacing.inset,
-  },
-  row: {
-    flexDirection: 'row',
-    gap: spacing.small,
-  },
-  stacked: {
-    gap: spacing.field,
-  },
-  column: {
-    flex: 1,
   },
   lockedRow: {
     flexDirection: 'row',

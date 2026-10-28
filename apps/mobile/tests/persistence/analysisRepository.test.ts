@@ -199,3 +199,34 @@ describe('applyAnalysisResult: calibration changed meanwhile', () => {
     expect(outcome.kind).toBe('applied');
   });
 });
+
+describe('applyAnalysisResult: after photo only by choice', () => {
+  const before = (fileName: string): RoundPhoto => ({ ...after(fileName), role: 'before' });
+
+  async function pairedDraft() {
+    const db = await draftWithAfter();
+    await setDraftPhoto(db, ROUND_ID, before('before.jpg'));
+    return db;
+  }
+
+  it('applies an attempt that left out the before photo the round still has', async () => {
+    const db = await pairedDraft();
+    await startAttempt(db, 'a1', '2026-10-28T10:00:00.000Z');
+    const outcome = await apply(db, 'a1', [suggestion('s', 100, 100)]);
+    expect(outcome.kind).toBe('applied');
+  });
+
+  it('still discards an attempt that used a before photo since replaced', async () => {
+    const db = await pairedDraft();
+    await createAnalysisAttempt(db, {
+      attemptId: 'a2',
+      roundId: ROUND_ID,
+      source: 'service',
+      createdAtUtc: '2026-10-28T10:00:00.000Z',
+      afterFileName: 'a.jpg',
+      beforeFileName: 'before.jpg',
+    });
+    await setDraftPhoto(db, ROUND_ID, before('before-2.jpg'));
+    await expect(apply(db, 'a2', [suggestion('s', 100, 100)])).resolves.toEqual({ kind: 'stale' });
+  });
+});

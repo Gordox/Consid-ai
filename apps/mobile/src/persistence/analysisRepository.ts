@@ -115,7 +115,9 @@ export async function applyAnalysisResult(
       latest !== undefined &&
       readString(latest, 'id') === input.attemptId &&
       readNullableString(latest, 'after_file_name') === currentFile('after') &&
-      readNullableString(latest, 'before_file_name') === currentFile('before') &&
+      // An attempt sent without the before photo (after photo only, by choice) did not use it.
+      (readNullableString(latest, 'before_file_name') === null ||
+        readNullableString(latest, 'before_file_name') === currentFile('before')) &&
       readNullableString(round, 'calibration_json') ===
         (input.calibration === null ? null : serializeCalibration(input.calibration));
     if (readString(round, 'state') !== 'draft' || !isCurrent) {

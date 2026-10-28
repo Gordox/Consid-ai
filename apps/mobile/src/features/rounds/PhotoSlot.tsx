@@ -21,6 +21,8 @@ type PhotoSlotProps = {
   onTake?: () => void;
   onChoose?: () => void;
   onRemove?: () => void;
+  // The main photo of the step: its camera action is the primary button.
+  primary?: boolean;
   // Opens the photo full screen; the photo becomes a button when given.
   onInspect?: () => void;
 };
@@ -50,6 +52,7 @@ export function PhotoSlot({
   onChoose,
   onRemove,
   onInspect,
+  primary = false,
 }: PhotoSlotProps) {
   const photos = usePhotoStore();
   const badge = badgeFor(photo, missing, required);
@@ -97,7 +100,7 @@ export function PhotoSlot({
                 icon={Camera}
                 label={photo === null ? 'Camera' : 'Retake'}
                 onPress={onTake}
-                variant="secondary"
+                variant={primary && photo === null ? 'primary' : 'secondary'}
               />
             </View>
             <View style={styles.action}>

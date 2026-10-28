@@ -47,10 +47,15 @@ function reportDevError(error: unknown): void {
 
 type Message =
   | { readonly tone: 'success' | 'info'; readonly text: string }
-  | { readonly tone: 'error'; readonly title: string; readonly text: string };
+  | {
+      readonly tone: 'error';
+      readonly code: string;
+      readonly title: string;
+      readonly text: string;
+    };
 
 function failure(code: string, text: string): Message {
-  return { tone: 'error', title: analysisErrorTitle(code), text };
+  return { tone: 'error', code, title: analysisErrorTitle(code), text };
 }
 
 // Screens 08 (analyse or mark manually), 09 (analysing) and 15 (analysis unavailable). Nothing
@@ -116,7 +121,9 @@ export function AnalysisPanel({
     targetKnown: target !== null,
   });
 
-  async function run(): Promise<void> {
+  // afterOnly sends only the after photo even when a before photo exists: the user's explicit
+  // choice after the photos could not be aligned.
+  async function run(afterOnly = false): Promise<void> {
     setConfirmReplace(false);
     if (running || config === null || after === null || target === null) return;
     if (draft.calibration === null || block !== null) return;
@@ -124,6 +131,7 @@ export function AnalysisPanel({
     setMessage(null);
     setCancelling(false);
     const attemptId = newId();
+    const sentBefore = afterOnly ? null : before;
     const cancel = new AbortController();
     cancelRef.current = cancel;
     try {
@@ -133,11 +141,11 @@ export function AnalysisPanel({
         source: 'service',
         createdAtUtc: nowUtcIso(),
         afterFileName: after.fileName,
-        beforeFileName: before?.fileName ?? null,
+        beforeFileName: sentBefore?.fileName ?? null,
       });
       const afterUpload = uploadablePhoto(after, photos.uri);
-      const beforeUpload = before === null ? null : uploadablePhoto(before, photos.uri);
-      if (afterUpload === null || (before !== null && beforeUpload === null)) {
+      const beforeUpload = sentBefore === null ? null : uploadablePhoto(sentBefore, photos.uri);
+      if (afterUpload === null || (sentBefore !== null && beforeUpload === null)) {
         await failAnalysisAttempt(db, attemptId, 'oldPhotoCopy');
         setMessage(failure('oldPhotoCopy', ANALYSIS_BLOCK_TEXT.oldPhotoCopy));
         return;
@@ -210,6 +218,11 @@ export function AnalysisPanel({
   const lastFailed =
     (latest !== null && latest.status !== 'succeeded' && !running) || message?.tone === 'error';
   const canAnalyse = config !== null && block === null;
+  // The photos could not be aligned: offer the after photo alone as an explicit choice.
+  const registrationFailed =
+    (message?.tone === 'error' && message.code === 'registrationFailed') ||
+    (message === null && latest?.status === 'failed' && latest.errorCode === 'registrationFailed');
+  const offerAfterOnly = canAnalyse && before !== null && registrationFailed && pending === 0;
   const storedPrefix = latest === null ? '' : `${formatCreatedAt(latest.createdAtUtc)}: `;
 
   if (running) {
@@ -306,6 +319,19 @@ export function AnalysisPanel({
               label={lastFailed ? 'Try again' : 'Analyse photos'}
               onPress={start}
             />
+          ) : null}
+          {offerAfterOnly ? (
+            <>
+              <Button
+                label="Analyse after photo only"
+                onPress={() => void run(true)}
+                variant="secondary"
+              />
+              <Text style={styles.caption}>
+                Without the before photo, old holes under stickers can look like new ones and the
+                number columns are not searched. Review every suggestion.
+              </Text>
+            </>
           ) : null}
           <Button
             disabled={after === null || photosMissing}

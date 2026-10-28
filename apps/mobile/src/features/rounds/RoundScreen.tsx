@@ -48,8 +48,8 @@ type LoadedRound = {
 };
 
 const PHOTO_TIPS =
-  'For reused targets, add a before photo after covering the previous holes. Take the after ' +
-  'photo from the same spot, with the whole target in the frame, straight on, without glare.';
+  'Hold the phone straight in front of the target, with the whole target in the frame and ' +
+  'without glare or shadows.';
 
 const DIAMETER_SOURCE_TEXT = {
   assumed: 'assumed',
@@ -98,12 +98,16 @@ function Thumbnail({
 function DraftRoundView({
   draft,
   calibreLabel,
+  firearmName,
   missing,
+  onBack,
   onChanged,
   onInspect,
 }: {
   draft: DraftRound;
   calibreLabel: string;
+  firearmName: string;
+  onBack: () => void;
   missing: LoadedRound['missing'];
   onChanged: () => void;
   onInspect: (showHits: boolean) => void;
@@ -122,6 +126,8 @@ function DraftRoundView({
   // While analysis runs, photos and marks stay as the request saw them.
   const [analysisRunning, setAnalysisRunning] = useState(false);
   const locked = busy || analysisRunning;
+  const [beforeOpen, setBeforeOpen] = useState(false);
+  const showBefore = beforeOpen || draft.photos.before !== null;
   const [replaceAfter, setReplaceAfter] = useState<{ pick: PendingPick | null } | null>(null);
   const afterAnnotated = draft.calibration !== null || draft.marks.length > 0;
   const roundPath = `/sessions/${draft.sessionId}/rounds/${draft.id}`;
@@ -240,6 +246,20 @@ function DraftRoundView({
 
   return (
     <>
+      {/* Screens 04, 05 and 08: each step has its own heading. */}
+      <ScreenHeader
+        onBack={onBack}
+        subtitle={
+          step === 'analyse'
+            ? `Round ${draft.sequence} · Draft saved`
+            : step === 'photos'
+              ? 'Add photos of the same target.'
+              : firearmName === ''
+                ? 'Draft saved'
+                : `${firearmName} · Draft saved`
+        }
+        title={step === 'analyse' ? 'Find new hits' : `Round ${draft.sequence}`}
+      />
       {step === 'setup' ? (
         <>
           {banners}
@@ -263,36 +283,58 @@ function DraftRoundView({
 
       {step === 'photos' ? (
         <>
-          <Text style={styles.secondary}>Add photos of the same target.</Text>
           <RoundProgress current="photos" draft={draft} />
           {banners}
           <PhotoSlot
             busy={locked}
             editable
-            hint="Recommended for reused targets: taken after covering old holes, before shooting."
-            missing={missing.before}
-            onChoose={() => requestPick({ role: 'before', source: 'library' })}
-            onRemove={() => void removePhoto('before')}
-            onTake={() => requestPick({ role: 'before', source: 'camera' })}
-            photo={draft.photos.before}
-            required={false}
-            title="Before"
-          />
-          <PhotoSlot
-            busy={locked}
-            editable
-            hint="Taken after the round. Hits are marked on this photo."
+            hint="Taken after the round, with the whole target in the frame. Hits are marked on this photo."
             missing={missing.after}
             onChoose={() => requestPick({ role: 'after', source: 'library' })}
+            onInspect={() => onInspect(false)}
             onRemove={() =>
               afterAnnotated ? setReplaceAfter({ pick: null }) : void removePhoto('after')
             }
             onTake={() => requestPick({ role: 'after', source: 'camera' })}
             photo={draft.photos.after}
+            primary
             required
-            title="After"
+            title="After photo"
           />
           <Text style={styles.secondary}>{PHOTO_TIPS}</Text>
+          {/* Optional and secondary; shown open when a before photo already exists so it is
+              never hidden. */}
+          <View style={styles.improve}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityState={{ expanded: showBefore }}
+              onPress={() => setBeforeOpen((open) => !open)}
+              style={styles.improveHeader}
+            >
+              <Text accessibilityRole="header" style={styles.improveTitle}>
+                Improve detection
+              </Text>
+              <Text style={styles.improveToggle}>{showBefore ? 'Hide' : 'Show'}</Text>
+            </Pressable>
+            <Text style={styles.secondary}>
+              Optional. If you reuse a target, a before photo taken after covering the old holes can
+              help tell new holes from old ones.
+            </Text>
+            {showBefore ? (
+              <PhotoSlot
+                busy={locked}
+                editable
+                hint="Taken after covering old holes, before shooting."
+                missing={missing.before}
+                onChoose={() => requestPick({ role: 'before', source: 'library' })}
+                onRemove={() => void removePhoto('before')}
+                onTake={() => requestPick({ role: 'before', source: 'camera' })}
+                photo={draft.photos.before}
+                required={false}
+                title="Before photo"
+              />
+            ) : null}
+          </View>
           {draft.calibration === null ? (
             <>
               <Button
@@ -339,10 +381,20 @@ function DraftRoundView({
           </View>
           {draft.photos.before === null ? (
             <Banner
-              body="Existing holes may appear as suggestions. Review every result."
+              body="Analysis uses the after photo only. Existing holes may appear as suggestions. Review every result."
               title="No before photo"
-              tone="warning"
-            />
+              tone="info"
+            >
+              <Button
+                disabled={locked}
+                label="Add a before photo"
+                onPress={() => {
+                  setBeforeOpen(true);
+                  setStep('photos');
+                }}
+                variant="secondary"
+              />
+            </Banner>
           ) : null}
           {draft.marks.length > 0 && afterUsable ? (
             <Button
@@ -533,19 +585,14 @@ export function RoundScreen({ sessionId, roundId }: { sessionId: string; roundId
     router.canGoBack() ? router.back() : router.replace(`/sessions/${sessionId}`);
   const loaded = state.status === 'loaded' ? state.data : null;
   const title = loaded === null ? 'Round' : `Round ${loaded.round.sequence}`;
-  const subtitle =
-    loaded === null
-      ? undefined
-      : loaded.round.state === 'confirmed'
-        ? 'Confirmed · read-only'
-        : loaded.firearmName === ''
-          ? 'Draft saved'
-          : `${loaded.firearmName} · Draft saved`;
+  const subtitle = loaded?.round.state === 'confirmed' ? 'Confirmed · read-only' : undefined;
 
   return (
     <Screen scroll>
       <View style={styles.stack}>
-        <ScreenHeader onBack={goBack} subtitle={subtitle} title={title} />
+        {loaded?.round.state === 'draft' ? null : (
+          <ScreenHeader onBack={goBack} subtitle={subtitle} title={title} />
+        )}
         {state.status === 'loading' ? (
           <Text accessibilityLiveRegion="polite" style={styles.secondary}>
             Loading round…
@@ -568,6 +615,8 @@ export function RoundScreen({ sessionId, roundId }: { sessionId: string; roundId
           <DraftRoundView
             calibreLabel={loaded.calibreLabel}
             draft={loaded.round}
+            firearmName={loaded.firearmName}
+            onBack={goBack}
             key={loaded.round.id}
             missing={loaded.missing}
             onChanged={reload}
@@ -606,6 +655,29 @@ const styles = StyleSheet.create({
     ...typography.caption,
     color: colors.muted,
     textAlign: 'center',
+  },
+  improve: {
+    gap: spacing.small,
+    padding: spacing.field,
+    borderRadius: radius.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  improveHeader: {
+    minHeight: 48,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.label,
+  },
+  improveTitle: {
+    ...typography.section,
+    color: colors.text,
+  },
+  improveToggle: {
+    ...typography.label,
+    color: colors.accent,
   },
   thumbs: {
     flexDirection: 'row',

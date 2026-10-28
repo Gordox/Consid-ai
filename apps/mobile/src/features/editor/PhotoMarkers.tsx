@@ -11,8 +11,6 @@ import { imageToScreen, scaleOf, type Size, type ViewTransform } from './viewTra
 // calibration points and hit markers, all mapped from photo pixels through the view transform.
 // Nothing here writes; callers decide what a touch does.
 
-const CALIBRATION_LETTERS = ['T', 'R', 'B', 'L'] as const;
-
 export function markName(mark: HitMark, numbers: ReadonlyMap<string, number>): string {
   const number = numbers.get(mark.id);
   return number === undefined ? 'Suggestion' : `Hit ${number}`;
@@ -149,7 +147,7 @@ export function MarkerOverlay({
               x={screen.x + 13}
               y={screen.y - 11}
             >
-              {CALIBRATION_LETTERS[index] ?? ''}
+              {`${index + 1}`}
             </SvgText>
           </G>
         );

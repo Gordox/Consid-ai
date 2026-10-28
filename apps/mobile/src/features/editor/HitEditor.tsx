@@ -36,6 +36,7 @@ import { SHOTS_PER_HOLE_RANGE } from '../../domain/round/roundRules';
 import { findTarget } from '../../domain/target/targetDefinition';
 import { saveDraftAnnotations } from '../../persistence/roundRepository';
 import { newId } from '../../services/deviceContext';
+import { RoundProgress } from '../rounds/RoundProgress';
 import { roundStatusText } from '../rounds/roundText';
 import { formatShortScore } from '../sessions/sessionProgressText';
 import { usePhotoStore } from '../startup/photoStoreContext';
@@ -240,7 +241,11 @@ export function HitEditor({ draft }: { draft: DraftRound }) {
   };
 
   const title = tool === 'calibrate' ? 'Align target' : pending > 0 ? 'Review hits' : 'Mark hits';
-  const subtitle = `Round ${draft.sequence} · ${saveError ? 'Not saved' : saving ? 'Saving…' : 'Draft saved'}`;
+  const saveState = saveError ? 'Not saved' : saving ? 'Saving…' : 'Draft saved';
+  const subtitle =
+    tool === 'calibrate'
+      ? `Round ${draft.sequence} · After photo · ${saveState}`
+      : `Round ${draft.sequence} · ${saveState}`;
   const placed = state.calibrationPoints.length;
   const selectedPointName =
     state.selectedPoint === null ? undefined : CALIBRATION_NAMES[state.selectedPoint];
@@ -296,6 +301,10 @@ export function HitEditor({ draft }: { draft: DraftRound }) {
               />
             ) : null}
 
+            <RoundProgress
+              current={tool === 'calibrate' ? 'align' : 'review'}
+              draft={{ photos: draft.photos, calibration: aligned ? calibration : null }}
+            />
             <View style={styles.instructions}>
               <View style={styles.statusRow}>
                 <StatusBadge label={TOOL_BADGE[tool]} tone="accent" />
@@ -479,7 +488,7 @@ export function HitEditor({ draft }: { draft: DraftRound }) {
             <Button
               disabled={!aligned}
               icon={ChevronRight}
-              label="Continue"
+              label="Use alignment"
               onPress={() => void leave(() => router.back())}
             />
           ) : (
