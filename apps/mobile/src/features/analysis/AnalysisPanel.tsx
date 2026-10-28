@@ -195,7 +195,12 @@ export function AnalysisPanel({
 
   const start = (source: AttemptSource) =>
     pending > 0 ? setConfirmReplace(source) : void run(source);
-  const status = latest === null ? null : latestAttemptText(latest, running);
+  // While a request runs here, an older stored result would be misleading.
+  const status = running
+    ? ({ tone: 'info', text: 'Analysing… this can take up to a minute.' } as const)
+    : latest === null
+      ? null
+      : latestAttemptText(latest, false);
   const lastFailed = latest !== null && latest.status !== 'succeeded' && !running;
 
   return (
@@ -226,7 +231,7 @@ export function AnalysisPanel({
       )}
       {status === null || message !== null ? null : (
         <Text style={status.tone === 'error' ? styles.blocked : styles.body}>
-          {latest === null ? '' : `${formatCreatedAt(latest.createdAtUtc)}: `}
+          {running || latest === null ? '' : `${formatCreatedAt(latest.createdAtUtc)}: `}
           {status.text}
         </Text>
       )}
