@@ -68,3 +68,15 @@ describe('analysisErrorTitle', () => {
     expect(analysisErrorTitle('invalidResponse')).toBe("Couldn't analyse the photos");
   });
 });
+
+describe('cancelled analysis', () => {
+  it('is reported as information that keeps the manual path, not as a failure', () => {
+    expect(analysisErrorTitle('cancelled')).toBe('Analysis cancelled');
+    const stored = latestAttemptText(
+      { status: 'failed', errorCode: 'cancelled', source: 'service' },
+      false,
+    );
+    expect(stored.tone).toBe('info');
+    expect(stored.text).toContain('mark the hits yourself');
+  });
+});

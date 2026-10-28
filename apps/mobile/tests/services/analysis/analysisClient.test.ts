@@ -210,3 +210,56 @@ describe('parseAnalysisConfig', () => {
     expect(parseAnalysisConfig('not a url', true)).toBeNull();
   });
 });
+
+describe('requestAnalysis: cancelling', () => {
+  it('sends nothing when cancelled before the request starts', async () => {
+    const cancel = new AbortController();
+    cancel.abort();
+    const fetch = jest.fn();
+    await expect(
+      requestAnalysis(CONFIG, REQUEST, { ...deps(fetch), signal: cancel.signal }),
+    ).resolves.toEqual({ ok: false, error: 'cancelled' });
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('aborts the waiting request and reports a cancel, not a timeout or network error', async () => {
+    const cancel = new AbortController();
+    let requestSignal: AbortSignal | undefined;
+    const pending = requestAnalysis(CONFIG, REQUEST, {
+      ...deps(
+        (_url, init) =>
+          new Promise((_resolve, reject) => {
+            requestSignal = init.signal ?? undefined;
+            init.signal?.addEventListener('abort', () => reject(new Error('aborted')));
+          }),
+      ),
+      signal: cancel.signal,
+    });
+    await Promise.resolve();
+    cancel.abort();
+    await expect(pending).resolves.toEqual({ ok: false, error: 'cancelled' });
+    expect(requestSignal?.aborted).toBe(true);
+  });
+
+  it('ignores an answer that arrives after the cancel', async () => {
+    const cancel = new AbortController();
+    // A fetch that does not honour the abort and still answers.
+    const result = await requestAnalysis(CONFIG, REQUEST, {
+      ...deps(async () => {
+        cancel.abort();
+        return jsonResponse(200, GOOD);
+      }),
+      signal: cancel.signal,
+    });
+    expect(result).toEqual({ ok: false, error: 'cancelled' });
+  });
+
+  it('still succeeds when a cancel signal is passed but never used', async () => {
+    const cancel = new AbortController();
+    const result = await requestAnalysis(CONFIG, REQUEST, {
+      ...deps(async () => jsonResponse(200, GOOD)),
+      signal: cancel.signal,
+    });
+    expect(result.ok).toBe(true);
+  });
+});

@@ -1,6 +1,6 @@
 import Plus from 'lucide-react-native/icons/plus';
 import Target from 'lucide-react-native/icons/target';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { AccessibilityInfo, ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 
 import { Banner } from '../../components/Banner';
@@ -75,6 +75,9 @@ export function AnalysisPanel({
   const [message, setMessage] = useState<Message | null>(null);
   const [latest, setLatest] = useState<LatestAttempt | null>(null);
   const [confirmReplace, setConfirmReplace] = useState(false);
+  // The running request's cancel switch; null when nothing can be cancelled.
+  const cancelRef = useRef<AbortController | null>(null);
+  const [cancelling, setCancelling] = useState(false);
   const target = findTarget(draft.targetId);
   const { after, before } = draft.photos;
   const pending = draft.marks.filter((mark) => !mark.accepted).length;
@@ -115,7 +118,10 @@ export function AnalysisPanel({
     if (draft.calibration === null) return;
     onRunningChange(true);
     setMessage(null);
+    setCancelling(false);
     const attemptId = newId();
+    const cancel = new AbortController();
+    cancelRef.current = cancel;
     try {
       await createAnalysisAttempt(db, {
         attemptId,
@@ -147,8 +153,16 @@ export function AnalysisPanel({
           fileSize: (photo) => photos.size(photo.fileName),
           readHead: (photo) => photos.readHead(photo.fileName, UPLOAD_CHECK_BYTES),
           timeoutMs: ANALYSIS_TIMEOUT_MS,
+          signal: cancel.signal,
         },
       );
+      // From here on the answer is only written locally; cancelling no longer applies.
+      cancelRef.current = null;
+      if (!result.ok && result.error === 'cancelled') {
+        await failAnalysisAttempt(db, attemptId, 'cancelled');
+        setMessage({ tone: 'info', text: ANALYSIS_ERROR_TEXT.cancelled });
+        return;
+      }
       if (!result.ok) {
         await failAnalysisAttempt(db, attemptId, result.error);
         setMessage(failure(result.error, ANALYSIS_ERROR_TEXT[result.error]));
@@ -178,6 +192,8 @@ export function AnalysisPanel({
         failure('save', "Couldn't save the analysis. Your photos and marks are kept. Try again."),
       );
     } finally {
+      cancelRef.current = null;
+      setCancelling(false);
       onRunningChange(false);
       onChanged();
     }
@@ -203,6 +219,19 @@ export function AnalysisPanel({
         <Text style={styles.body}>
           This can take up to a minute. Photos and marks are locked until it finishes. Your draft is
           saved; leaving this screen does not delete the round.
+        </Text>
+        <Button
+          busy={cancelling}
+          label={cancelling ? 'Cancelling…' : 'Cancel analysis'}
+          onPress={() => {
+            setCancelling(true);
+            cancelRef.current?.abort();
+          }}
+          variant="secondary"
+        />
+        <Text style={styles.caption}>
+          Cancelling stops waiting for the answer. The service may still finish its work, but its
+          answer is not used.
         </Text>
       </View>
     );
@@ -320,6 +349,10 @@ const styles = StyleSheet.create({
   },
   body: {
     ...typography.body,
+    color: colors.secondary,
+  },
+  caption: {
+    ...typography.caption,
     color: colors.secondary,
   },
   blocked: {

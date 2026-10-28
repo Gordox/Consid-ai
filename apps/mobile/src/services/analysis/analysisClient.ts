@@ -31,7 +31,10 @@ export type AnalysisError =
   | 'serverError'
   | 'invalidResponse'
   | 'stale'
-  | 'imageMismatch';
+  | 'imageMismatch'
+  // The user cancelled. The wait and the connection end here; the service may still have
+  // received the photos and finish its work, but the answer is not used.
+  | 'cancelled';
 
 export type AnalysisClientDeps = {
   readonly fetch: (url: string, init: RequestInit) => Promise<Response>;
@@ -40,6 +43,8 @@ export type AnalysisClientDeps = {
   // The first bytes of an app photo file, enough to reach the start of the image data.
   readonly readHead: (photo: AnalysisPhoto) => Uint8Array;
   readonly timeoutMs: number;
+  // Aborted when the user cancels. Optional so callers that cannot cancel need not pass one.
+  readonly signal?: AbortSignal;
 };
 
 // Metadata segments come before the image data; 256 KB covers them with a wide margin.
@@ -97,6 +102,8 @@ export async function requestAnalysis(
   request: AnalysisRequest,
   deps: AnalysisClientDeps,
 ): Promise<{ ok: true; value: AnalysisResult } | { ok: false; error: AnalysisError }> {
+  const cancelled = () => deps.signal?.aborted === true;
+  if (cancelled()) return { ok: false, error: 'cancelled' };
   for (const photo of [request.after, request.before]) {
     if (photo === null) continue;
     const size = deps.fileSize(photo);
@@ -128,8 +135,11 @@ export async function requestAnalysis(
     appendPhoto(form, 'before', request.before);
   }
 
+  // One controller ends the request on either the timeout or the user's cancel.
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), deps.timeoutMs);
+  const forwardCancel = () => controller.abort();
+  deps.signal?.addEventListener('abort', forwardCancel);
   let response: Response;
   try {
     response = await deps.fetch(`${config.baseUrl}/v1/analyses`, {
@@ -139,10 +149,14 @@ export async function requestAnalysis(
       headers: { Accept: 'application/json' },
     });
   } catch {
+    if (cancelled()) return { ok: false, error: 'cancelled' };
     return { ok: false, error: controller.signal.aborted ? 'timeout' : 'network' };
   } finally {
     clearTimeout(timer);
+    deps.signal?.removeEventListener('abort', forwardCancel);
   }
+  // An answer that arrives after the user cancelled is ignored.
+  if (cancelled()) return { ok: false, error: 'cancelled' };
 
   if (response.status === 413) return { ok: false, error: 'fileTooLarge' };
   if (response.status === 429) return { ok: false, error: 'rateLimited' };
@@ -157,8 +171,9 @@ export async function requestAnalysis(
   try {
     body = await response.json();
   } catch {
-    return { ok: false, error: 'invalidResponse' };
+    return { ok: false, error: cancelled() ? 'cancelled' : 'invalidResponse' };
   }
+  if (cancelled()) return { ok: false, error: 'cancelled' };
   const parsed = parseAnalysisResponse(body, {
     roundId: request.roundId,
     attemptId: request.attemptId,

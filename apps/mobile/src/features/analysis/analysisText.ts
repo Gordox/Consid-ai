@@ -22,6 +22,9 @@ export const ANALYSIS_ERROR_TEXT: Record<
     "The analysis answer couldn't be used and was ignored. Try again or mark hits yourself.",
   stale: 'An older analysis answer arrived after a newer request and was ignored.',
   imageMismatch: 'The analysis answer was for a different photo and was ignored. Try again.',
+  // The service may already have the photos and may finish; only its answer is discarded.
+  cancelled:
+    'You cancelled the analysis. Your photos and marks are kept, and any answer that still arrives is ignored. Try again, or mark the hits yourself.',
   unusableImage:
     "The photo couldn't be analysed, for example because of blur or glare. Retake it or mark hits yourself.",
   registrationFailed:
@@ -132,6 +135,12 @@ export function latestAttemptText(
           : 'Last analysis finished.',
     };
   }
+  if (attempt.errorCode === 'cancelled') {
+    return {
+      tone: 'info',
+      text: 'You cancelled the last analysis. Try again, or mark the hits yourself.',
+    };
+  }
   const known = attempt.errorCode !== null ? STORED_ERROR_TEXT[attempt.errorCode] : undefined;
   return { tone: 'error', text: known ?? 'The last analysis failed. Try again.' };
 }
@@ -148,6 +157,8 @@ export function analysisErrorTitle(code: string): string {
       return "Photos couldn't be aligned";
     case 'unusableImage':
       return 'This photo may be hard to review';
+    case 'cancelled':
+      return 'Analysis cancelled';
     default:
       return "Couldn't analyse the photos";
   }
