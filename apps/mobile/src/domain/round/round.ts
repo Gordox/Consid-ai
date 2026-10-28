@@ -5,8 +5,13 @@ export type PhotoRole = 'before' | 'after';
 
 export type RoundPhoto = {
   readonly role: PhotoRole;
-  // Generated name inside the app's own photo folder; never a picker or library URI.
+  // Generated name inside the app's own photo folder; never a picker or library URI. This is the
+  // upright JPEG without metadata: its pixels are the coordinate system for marks, calibration
+  // and analysis.
   readonly fileName: string;
+  // The unmodified copy of the picked file, kept as the original. Null for photos saved before
+  // schema 3, whose fileName is itself the unmodified copy and was never normalised.
+  readonly originalFileName: string | null;
   readonly width: number;
   readonly height: number;
   readonly addedAtUtc: string;

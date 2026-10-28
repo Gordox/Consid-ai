@@ -1,4 +1,5 @@
 import {
+  getPendingResultAsync,
   type ImagePickerOptions,
   launchCameraAsync,
   launchImageLibraryAsync,
@@ -43,4 +44,10 @@ export async function choosePhoto(): Promise<PickOutcome> {
     reportDevError(error);
     return { kind: 'failed' };
   }
+}
+
+// The result of a pick that was open when Android ended the app, delivered once on the next
+// start. Null when there is none (and always on iOS).
+export async function takePendingPickerResult(): Promise<unknown> {
+  return getPendingResultAsync();
 }

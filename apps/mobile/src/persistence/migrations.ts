@@ -72,8 +72,25 @@ CREATE TABLE analysis_attempts (
 ) STRICT;
 CREATE INDEX analysis_attempts_round_idx ON analysis_attempts (round_id, created_at_utc);`;
 
+// Photos are stored twice from schema 3: the unmodified copy (original_file_name) and an upright,
+// metadata-free JPEG (file_name) that defines the pixel coordinates for marks and analysis. Rows
+// from schema 2 keep original_file_name NULL: their file_name is the unmodified copy.
+// pending_photo_picks remembers the one camera or library pick in progress, so a photo can be
+// recovered when Android ends the app while the picker is open. Only adds.
+const MIGRATION_3_PHOTO_RELIABILITY = `ALTER TABLE round_photos ADD COLUMN original_file_name TEXT;
+CREATE TABLE pending_photo_picks (
+  slot INTEGER PRIMARY KEY NOT NULL CHECK (slot = 1),
+  round_id TEXT NOT NULL,
+  role TEXT NOT NULL CHECK (role IN ('before','after')),
+  started_at_utc TEXT NOT NULL
+) STRICT;`;
+
 // Append only: index + 1 is the schema version. Never edit or reorder a shipped entry.
-export const MIGRATIONS: readonly string[] = [MIGRATION_1_CREATE_SESSIONS, MIGRATION_2_ADD_ROUNDS];
+export const MIGRATIONS: readonly string[] = [
+  MIGRATION_1_CREATE_SESSIONS,
+  MIGRATION_2_ADD_ROUNDS,
+  MIGRATION_3_PHOTO_RELIABILITY,
+];
 
 export const LATEST_SCHEMA_VERSION = MIGRATIONS.length;
 

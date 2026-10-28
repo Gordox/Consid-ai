@@ -5,12 +5,18 @@ import { ActivityIndicator, type LayoutChangeEvent, StyleSheet, View } from 'rea
 import { Screen } from '../../components/Screen';
 import { colors } from '../../components/tokens';
 import { openSessionDatabase } from '../../persistence/openSessionDatabase';
-import { assertDevelopment, databaseNameForMode } from '../dev-tools/testDatabases';
+import { createPhotoStore } from '../../services/photoStorage';
+import {
+  assertDevelopment,
+  databaseNameForMode,
+  photoFolderForMode,
+} from '../dev-tools/testDatabases';
 import { TestModeBanner } from '../dev-tools/TestModeBanner';
 import { createSaveCoordinator } from '../sessions/saveCoordinator';
 import { ContentOffsetContext } from './contentOffsetContext';
 import { createDatabaseLifecycle, type DatabaseMode } from './databaseLifecycle';
 import { type DatabaseModeControl, DatabaseModeContext } from './databaseModeContext';
+import { PhotoStoreContext } from './photoStoreContext';
 import { SessionStoreContext } from './sessionStoreContext';
 import { StartupErrorScreen } from './StartupErrorScreen';
 
@@ -43,6 +49,7 @@ export function DatabaseGate({ children }: { children: ReactNode }) {
   const [measuredContentOffsetY, setMeasuredContentOffsetY] = useState(0);
   // Only the banner moves the content, so normal mode never reuses a value from test mode.
   const contentOffsetY = mode === 'test' ? measuredContentOffsetY : 0;
+  const photos = useMemo(() => createPhotoStore(photoFolderForMode(mode)), [mode]);
   const modeControl = useMemo<DatabaseModeControl>(
     () => ({
       mode,
@@ -78,7 +85,9 @@ export function DatabaseGate({ children }: { children: ReactNode }) {
     );
   } else {
     content = (
-      <SessionStoreContext.Provider value={state.store}>{children}</SessionStoreContext.Provider>
+      <SessionStoreContext.Provider value={state.store}>
+        <PhotoStoreContext.Provider value={photos}>{children}</PhotoStoreContext.Provider>
+      </SessionStoreContext.Provider>
     );
   }
 

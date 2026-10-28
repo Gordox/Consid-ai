@@ -17,9 +17,9 @@ import type { Point } from '../../domain/target/homography';
 import { DEMO_TARGET_NOTICE, findTarget } from '../../domain/target/targetDefinition';
 import { saveDraftAnnotations } from '../../persistence/roundRepository';
 import { newId } from '../../services/deviceContext';
-import { photoUri } from '../../services/photoStorage';
 import { roundStatusText } from '../rounds/roundText';
 import { formatPoints } from '../sessions/sessionProgressText';
+import { usePhotoStore } from '../startup/photoStoreContext';
 import { useSessionStore } from '../startup/sessionStoreContext';
 import {
   type Annotations,
@@ -53,6 +53,7 @@ function markColor(mark: HitMark): string {
 
 export function HitEditor({ draft }: { draft: DraftRound }) {
   const { db } = useSessionStore();
+  const photos = usePhotoStore();
   const router = useRouter();
   const target = findTarget(draft.targetId);
   const after = draft.photos.after;
@@ -71,7 +72,7 @@ export function HitEditor({ draft }: { draft: DraftRound }) {
   const [view, setView] = useState<ViewTransform | null>(null);
   const [dragPreview, setDragPreview] = useState<{ id: string; point: Point } | null>(null);
   const [saveError, setSaveError] = useState(false);
-  const [orientationWarning, setOrientationWarning] = useState(false);
+  const [sizeMismatch, setSizeMismatch] = useState(false);
 
   const canvasRef = useRef<HostInstance>(null);
   const [gestures] = useState(() => createGestureController(newId));
@@ -113,19 +114,25 @@ export function HitEditor({ draft }: { draft: DraftRound }) {
       );
   }, [db, draft.id, state.calibrationPoints, state.marks]);
 
-  // The stored size comes from the picker. If the decoded photo has another shape (for example
-  // a rotated orientation), marks would not line up, so the user is told to retake it.
+  // Marks are stored in the pixels of the normalised photo, whose size was recorded when it was
+  // written. If the decoded file has any other size the marks would not line up, so marking is
+  // blocked. Photos saved before normalisation existed only get their shape compared, because
+  // the viewer applies their EXIF orientation itself.
   useEffect(() => {
     if (after === null) return;
     Image.getSize(
-      photoUri(after.fileName),
+      photos.uri(after.fileName),
       (width, height) => {
+        if (after.originalFileName !== null) {
+          setSizeMismatch(width !== after.width || height !== after.height);
+          return;
+        }
         const stored = after.width / after.height;
-        setOrientationWarning(Math.abs(width / height - stored) / stored > 0.02);
+        setSizeMismatch(Math.abs(width / height - stored) / stored > 0.02);
       },
       reportDevError,
     );
-  }, [after]);
+  }, [after, photos]);
 
   const calibration = calibrationOf(state);
   const evaluation = evaluateDraft({ ...draft, calibration, marks: state.marks }, target);
@@ -194,7 +201,7 @@ export function HitEditor({ draft }: { draft: DraftRound }) {
               <>
                 <Image
                   accessibilityLabel="After photo"
-                  source={{ uri: photoUri(after.fileName) }}
+                  source={{ uri: photos.uri(after.fileName) }}
                   style={{
                     position: 'absolute',
                     left: view.offset.x,
@@ -281,9 +288,9 @@ export function HitEditor({ draft }: { draft: DraftRound }) {
           </View>
 
           <View style={styles.panel}>
-            {orientationWarning ? (
+            {sizeMismatch ? (
               <Banner
-                body="The photo's shape doesn't match its recorded size, so marks may not line up. Retake or choose the photo again."
+                body="This photo doesn't match its saved size, so marks wouldn't line up. Take or choose the photo again on the round screen."
                 tone="error"
               />
             ) : null}

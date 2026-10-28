@@ -50,8 +50,14 @@ function fake(answers: Answers): FakeDatabase {
     if (sql.startsWith('SELECT state FROM rounds')) {
       return answers.state === null ? null : { state: answers.state ?? 'draft' };
     }
-    if (sql.startsWith('SELECT file_name FROM round_photos WHERE round_id = ? AND role = ?')) {
-      return answers.existingPhoto ? { file_name: answers.existingPhoto } : null;
+    if (
+      sql.startsWith(
+        'SELECT file_name, original_file_name FROM round_photos WHERE round_id = ? AND role = ?',
+      )
+    ) {
+      return answers.existingPhoto
+        ? { file_name: answers.existingPhoto, original_file_name: 'old-original.jpg' }
+        : null;
     }
     if (sql.startsWith('SELECT id, session_id, sequence, state, created_at_utc')) {
       return answers.roundRow ?? null;
@@ -170,7 +176,14 @@ describe('getRound', () => {
     const db = fake({
       roundRow: DRAFT_ROW,
       photoRows: [
-        { role: 'after', file_name: 'f.jpg', width: 4000, height: 3000, added_at_utc: 't' },
+        {
+          role: 'after',
+          file_name: 'f.jpg',
+          original_file_name: null,
+          width: 4000,
+          height: 3000,
+          added_at_utc: 't',
+        },
       ],
       markRows: [
         { id: 'm1', x: 510, y: 480, shots: 2, source: 'manual', uncertain: 0, candidate_id: null },
@@ -291,12 +304,13 @@ describe('draft writes', () => {
     const replaced = await setDraftPhoto(db, ROUND_ID, {
       role: 'after',
       fileName: 'new.jpg',
+      originalFileName: 'new-original.jpg',
       width: 10,
       height: 10,
       addedAtUtc: 't',
     });
 
-    expect(replaced).toBe('old.jpg');
+    expect(replaced).toEqual(['old.jpg', 'old-original.jpg']);
     expect(writes(db)).toEqual([
       'INSERT INTO round_photos',
       'UPDATE rounds SET',
@@ -309,6 +323,7 @@ describe('draft writes', () => {
     await setDraftPhoto(db, ROUND_ID, {
       role: 'before',
       fileName: 'b.jpg',
+      originalFileName: null,
       width: 1,
       height: 1,
       addedAtUtc: 't',

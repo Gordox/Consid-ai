@@ -46,6 +46,19 @@ export function databaseNameForMode(mode: DatabaseMode, isDevelopment: boolean =
   return assertTestDatabaseName(UI_CHECK_DATABASE_NAME);
 }
 
+// Each database keeps its photo copies in its own folder, so the unused-copy cleanup of one
+// database never sees files that another database refers to.
+export const NORMAL_PHOTO_FOLDER = 'photos';
+const UI_CHECK_PHOTO_FOLDER = 'photos-ui-check';
+
+export function photoFolderForMode(mode: DatabaseMode, isDevelopment: boolean = __DEV__): string {
+  if (mode === 'normal') {
+    return NORMAL_PHOTO_FOLDER;
+  }
+  assertDevelopment(isDevelopment);
+  return UI_CHECK_PHOTO_FOLDER;
+}
+
 export type DeleteTestDatabaseDeps = {
   open: (name: string) => Promise<{ closeAsync(): Promise<void> }>;
   deleteDatabase: (name: string) => Promise<void>;

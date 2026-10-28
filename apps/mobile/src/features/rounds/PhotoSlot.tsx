@@ -5,7 +5,7 @@ import { Image, StyleSheet, Text, View } from 'react-native';
 import { Button } from '../../components/Button';
 import { colors, radius, spacing, typography } from '../../components/tokens';
 import type { RoundPhoto } from '../../domain/round/round';
-import { photoUri } from '../../services/photoStorage';
+import { usePhotoStore } from '../startup/photoStoreContext';
 
 type PhotoSlotProps = {
   title: string;
@@ -30,6 +30,7 @@ export function PhotoSlot({
   onChoose,
   onRemove,
 }: PhotoSlotProps) {
+  const photos = usePhotoStore();
   return (
     <View style={styles.slot}>
       <Text accessibilityRole="header" style={styles.title}>
@@ -45,7 +46,7 @@ export function PhotoSlot({
         <Image
           accessibilityLabel={`${title} photo`}
           resizeMode="contain"
-          source={{ uri: photoUri(photo.fileName) }}
+          source={{ uri: photos.uri(photo.fileName) }}
           style={[styles.image, { aspectRatio: photo.width / photo.height }]}
         />
       )}

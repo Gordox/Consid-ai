@@ -142,7 +142,7 @@ export async function startRound(db: SessionDatabase, input: StartRoundInput): P
 
 async function readPhotos(db: SessionDatabase, roundId: string): Promise<RoundPhotos> {
   const rows = await db.getAllAsync(
-    'SELECT role, file_name, width, height, added_at_utc FROM round_photos WHERE round_id = ?',
+    'SELECT role, file_name, original_file_name, width, height, added_at_utc FROM round_photos WHERE round_id = ?',
     [roundId],
   );
   const photos = rows.map(parsePhotoRow);
@@ -191,6 +191,14 @@ export async function getRound(db: SessionDatabase, roundId: string): Promise<Ro
     calibration: parseCalibration(readNullableString(row, 'calibration_json')),
     marks: markRows.map(parseMarkRow),
   };
+}
+
+// Both stored copies of one photo, for deletion after the row that pointed at them is gone.
+function filesOfPhotoRow(row: unknown): string[] {
+  const original = readNullableString(row, 'original_file_name');
+  return original === null
+    ? [readString(row, 'file_name')]
+    : [readString(row, 'file_name'), original];
 }
 
 export type DraftCounts = {
@@ -264,27 +272,35 @@ export async function saveDraftAnnotations(
 }
 
 // Marks and calibration are in after-photo pixels, so replacing the after photo clears them.
-// Returns the replaced file so the caller can delete it after this commit.
+// Returns the replaced files so the caller can delete them after this commit.
 export async function setDraftPhoto(
   db: SessionDatabase,
   roundId: string,
   photo: RoundPhoto,
-): Promise<string | null> {
-  let replaced: string | null = null;
+): Promise<string[]> {
+  let replaced: string[] = [];
   await db.withExclusiveTransactionAsync(async (txn) => {
     await requireDraft(txn, roundId);
     const existing = await txn.getFirstAsync(
-      'SELECT file_name FROM round_photos WHERE round_id = ? AND role = ?',
+      'SELECT file_name, original_file_name FROM round_photos WHERE round_id = ? AND role = ?',
       [roundId, photo.role],
     );
-    replaced =
-      existing === null || existing === undefined ? null : readString(existing, 'file_name');
+    replaced = existing === null || existing === undefined ? [] : filesOfPhotoRow(existing);
     await txn.runAsync(
-      `INSERT INTO round_photos (round_id, role, file_name, width, height, added_at_utc)
-       VALUES (?, ?, ?, ?, ?, ?)
+      `INSERT INTO round_photos (round_id, role, file_name, original_file_name, width, height, added_at_utc)
+       VALUES (?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT (round_id, role) DO UPDATE SET file_name = excluded.file_name,
-         width = excluded.width, height = excluded.height, added_at_utc = excluded.added_at_utc`,
-      [roundId, photo.role, photo.fileName, photo.width, photo.height, photo.addedAtUtc],
+         original_file_name = excluded.original_file_name, width = excluded.width,
+         height = excluded.height, added_at_utc = excluded.added_at_utc`,
+      [
+        roundId,
+        photo.role,
+        photo.fileName,
+        photo.originalFileName,
+        photo.width,
+        photo.height,
+        photo.addedAtUtc,
+      ],
     );
     if (photo.role === 'after') {
       await txn.runAsync('UPDATE rounds SET calibration_json = NULL WHERE id = ?', [roundId]);
@@ -298,16 +314,15 @@ export async function removeDraftPhoto(
   db: SessionDatabase,
   roundId: string,
   role: PhotoRole,
-): Promise<string | null> {
-  let removed: string | null = null;
+): Promise<string[]> {
+  let removed: string[] = [];
   await db.withExclusiveTransactionAsync(async (txn) => {
     await requireDraft(txn, roundId);
     const existing = await txn.getFirstAsync(
-      'SELECT file_name FROM round_photos WHERE round_id = ? AND role = ?',
+      'SELECT file_name, original_file_name FROM round_photos WHERE round_id = ? AND role = ?',
       [roundId, role],
     );
-    removed =
-      existing === null || existing === undefined ? null : readString(existing, 'file_name');
+    removed = existing === null || existing === undefined ? [] : filesOfPhotoRow(existing);
     await txn.runAsync('DELETE FROM round_photos WHERE round_id = ? AND role = ?', [roundId, role]);
     if (role === 'after') {
       await txn.runAsync('UPDATE rounds SET calibration_json = NULL WHERE id = ?', [roundId]);
@@ -354,10 +369,11 @@ export async function discardDraftRound(db: SessionDatabase, roundId: string): P
   let files: string[] = [];
   await db.withExclusiveTransactionAsync(async (txn) => {
     await requireDraft(txn, roundId);
-    const rows = await txn.getAllAsync('SELECT file_name FROM round_photos WHERE round_id = ?', [
-      roundId,
-    ]);
-    files = rows.map((row) => readString(row, 'file_name'));
+    const rows = await txn.getAllAsync(
+      'SELECT file_name, original_file_name FROM round_photos WHERE round_id = ?',
+      [roundId],
+    );
+    files = rows.flatMap(filesOfPhotoRow);
     await txn.runAsync('DELETE FROM round_marks WHERE round_id = ?', [roundId]);
     await txn.runAsync('DELETE FROM round_photos WHERE round_id = ?', [roundId]);
     await txn.runAsync('DELETE FROM analysis_attempts WHERE round_id = ?', [roundId]);
@@ -465,4 +481,10 @@ export async function listSessionOverviews(
     overviews.get(readString(row, 'session_id'))?.rounds.push(parseSummary(row));
   }
   return overviews;
+}
+
+// Every photo file this database refers to, for the cleanup of unused copies.
+export async function listReferencedPhotoFiles(db: SessionDatabase): Promise<Set<string>> {
+  const rows = await db.getAllAsync('SELECT file_name, original_file_name FROM round_photos', []);
+  return new Set(rows.flatMap(filesOfPhotoRow));
 }

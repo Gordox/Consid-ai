@@ -28,6 +28,60 @@ const FROZEN_MIGRATION_1 = `CREATE TABLE sessions (
 ) STRICT;
 CREATE INDEX sessions_created_at_idx ON sessions (created_at_utc DESC, id DESC);`;
 
+// Migration 2 is on the owner's S20 since the first MVP. Same rule as migration 1.
+const FROZEN_MIGRATION_2 = `ALTER TABLE sessions ADD COLUMN finished_at_utc TEXT;
+CREATE TABLE rounds (
+  id TEXT PRIMARY KEY NOT NULL,
+  session_id TEXT NOT NULL REFERENCES sessions (id),
+  sequence INTEGER NOT NULL CHECK (sequence >= 1),
+  state TEXT NOT NULL CHECK (state IN ('draft','confirmed')),
+  created_at_utc TEXT NOT NULL,
+  actual_shots INTEGER NOT NULL CHECK (actual_shots BETWEEN 0 AND 100),
+  declared_misses INTEGER NOT NULL CHECK (declared_misses BETWEEN 0 AND 100),
+  unresolved_shots INTEGER NOT NULL CHECK (unresolved_shots BETWEEN 0 AND 100),
+  target_id TEXT NOT NULL,
+  hit_diameter_mm REAL NOT NULL CHECK (hit_diameter_mm BETWEEN 1 AND 30),
+  calibration_json TEXT,
+  confirmed_at_utc TEXT,
+  confirmed_json TEXT,
+  confirmed_subtotal INTEGER,
+  confirmed_complete INTEGER CHECK (confirmed_complete IS NULL OR confirmed_complete IN (0,1)),
+  UNIQUE (session_id, sequence)
+) STRICT;
+CREATE INDEX rounds_session_idx ON rounds (session_id, sequence);
+CREATE TABLE round_photos (
+  round_id TEXT NOT NULL REFERENCES rounds (id),
+  role TEXT NOT NULL CHECK (role IN ('before','after')),
+  file_name TEXT NOT NULL,
+  width INTEGER NOT NULL CHECK (width > 0),
+  height INTEGER NOT NULL CHECK (height > 0),
+  added_at_utc TEXT NOT NULL,
+  PRIMARY KEY (round_id, role)
+) STRICT;
+CREATE TABLE round_marks (
+  id TEXT PRIMARY KEY NOT NULL,
+  round_id TEXT NOT NULL REFERENCES rounds (id),
+  ordinal INTEGER NOT NULL,
+  x REAL NOT NULL,
+  y REAL NOT NULL,
+  shots INTEGER NOT NULL CHECK (shots BETWEEN 1 AND 10),
+  source TEXT NOT NULL CHECK (source IN ('manual','suggested','suggestedEdited')),
+  uncertain INTEGER NOT NULL CHECK (uncertain IN (0,1)),
+  candidate_id TEXT
+) STRICT;
+CREATE INDEX round_marks_round_idx ON round_marks (round_id, ordinal);
+CREATE TABLE analysis_attempts (
+  id TEXT PRIMARY KEY NOT NULL,
+  round_id TEXT NOT NULL REFERENCES rounds (id),
+  created_at_utc TEXT NOT NULL,
+  source TEXT NOT NULL CHECK (source IN ('service','demo')),
+  status TEXT NOT NULL CHECK (status IN ('pending','succeeded','failed')),
+  algorithm_version TEXT,
+  error_code TEXT,
+  result_json TEXT
+) STRICT;
+CREATE INDEX analysis_attempts_round_idx ON analysis_attempts (round_id, created_at_utc);`;
+
 describe('MIGRATIONS', () => {
   const migration1 = MIGRATIONS[0] ?? '';
 
@@ -37,7 +91,7 @@ describe('MIGRATIONS', () => {
 
   it('derives the latest schema version from the migration list', () => {
     expect(LATEST_SCHEMA_VERSION).toBe(MIGRATIONS.length);
-    expect(LATEST_SCHEMA_VERSION).toBe(2);
+    expect(LATEST_SCHEMA_VERSION).toBe(3);
   });
 
   // If a domain limit changes, this fails and forces a decision about stored rows and a
@@ -65,6 +119,19 @@ describe('MIGRATIONS', () => {
   it('stores no session status or target columns', () => {
     expect(migration1).not.toMatch(/status|target/i);
   });
+
+  it('keeps migration 2 unchanged', () => {
+    expect(MIGRATIONS[1]).toBe(FROZEN_MIGRATION_2);
+  });
+
+  // Later migrations run on devices with saved sessions and rounds: they may only add.
+  it.each(MIGRATIONS.slice(2).map((sql, index) => [index + 3, sql] as const))(
+    'only adds to the schema in migration %i',
+    (_version, sql) => {
+      expect(sql).not.toMatch(/\bDROP\b|\bDELETE\b|\bRENAME\b/i);
+      expect(sql).not.toMatch(/\bUPDATE\s+\w+\s+SET\b(?![\s\S]*WHERE)/i);
+    },
+  );
 
   // Migration 2 must keep existing sessions: it may only add tables, indexes and a column.
   it('only adds to the schema in migration 2', () => {

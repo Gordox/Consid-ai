@@ -25,9 +25,10 @@ import {
 import { newId, nowUtcIso } from '../../services/deviceContext';
 import type { PickOutcome } from '../../services/pickedPhoto';
 import { choosePhoto, takePhoto } from '../../services/photoPicker';
-import { copyPhotoIntoApp, deleteAppPhoto, photoExists } from '../../services/photoStorage';
+import { clearPendingPick, recordPendingPick } from '../../persistence/pendingPhotoPick';
 import { AnalysisPanel } from '../analysis/AnalysisPanel';
 import { formatPoints } from '../sessions/sessionProgressText';
+import { usePhotoStore } from '../startup/photoStoreContext';
 import { useSessionStore } from '../startup/sessionStoreContext';
 import { useFocusLoad } from '../useFocusLoad';
 import { PhotoSlot } from './PhotoSlot';
@@ -62,6 +63,7 @@ function DraftRoundView({
   onChanged: () => void;
 }) {
   const { db } = useSessionStore();
+  const photos = usePhotoStore();
   const router = useRouter();
   const target = findTarget(draft.targetId);
   // This screen is the only place that edits the counts, so local state stays authoritative
@@ -100,22 +102,32 @@ function DraftRoundView({
   async function runPick({ role, source }: PendingPick): Promise<void> {
     setMessage(null);
     setPermission(null);
-    const outcome: PickOutcome = source === 'camera' ? await takePhoto() : await choosePhoto();
-    if (outcome.kind === 'cancelled') return;
-    if (outcome.kind === 'permissionDenied') {
-      setPermission({ canAskAgain: outcome.canAskAgain });
+    try {
+      // If Android ends the app while the picker is open, the next start finds the photo
+      // through this record (PhotoRecovery).
+      await recordPendingPick(db, { roundId: draft.id, role, startedAtUtc: nowUtcIso() });
+    } catch (error) {
+      reportDevError(error);
+      setMessage("Couldn't prepare the photo. Nothing was changed. Try again.");
       return;
     }
-    if (outcome.kind === 'failed') {
-      setMessage("Couldn't use that photo. Try again or choose another one.");
+    const outcome: PickOutcome = source === 'camera' ? await takePhoto() : await choosePhoto();
+    if (outcome.kind !== 'picked') {
+      await clearPendingPick(db).catch(reportDevError);
+      if (outcome.kind === 'permissionDenied') {
+        setPermission({ canAskAgain: outcome.canAskAgain });
+      } else if (outcome.kind === 'failed') {
+        setMessage("Couldn't use that photo. Try again or choose another one.");
+      }
       return;
     }
     setBusy(true);
     try {
       await savePickedPhoto(role, outcome.photo, {
-        copyIntoApp: copyPhotoIntoApp,
+        copyOriginal: photos.copyOriginal,
+        createNormalized: photos.createNormalized,
         saveRow: (photo) => setDraftPhoto(db, draft.id, photo),
-        deleteFile: deleteAppPhoto,
+        deleteFile: photos.delete,
         newId,
         now: nowUtcIso,
         reportError: reportDevError,
@@ -125,6 +137,7 @@ function DraftRoundView({
       reportDevError(error);
       setMessage("Couldn't save the photo. Nothing was changed. Try again.");
     } finally {
+      await clearPendingPick(db).catch(reportDevError);
       setBusy(false);
     }
   }
@@ -141,9 +154,9 @@ function DraftRoundView({
     setBusy(true);
     try {
       const removed = await removeDraftPhoto(db, draft.id, role);
-      if (removed !== null) {
+      for (const file of removed) {
         try {
-          deleteAppPhoto(removed);
+          photos.delete(file);
         } catch (error) {
           reportDevError(error);
         }
@@ -182,7 +195,7 @@ function DraftRoundView({
       const files = await discardDraftRound(db, draft.id);
       for (const file of files) {
         try {
-          deleteAppPhoto(file);
+          photos.delete(file);
         } catch (error) {
           reportDevError(error);
         }
@@ -450,6 +463,7 @@ function ConfirmedRoundView({
 
 export function RoundScreen({ sessionId, roundId }: { sessionId: string; roundId: string }) {
   const { db } = useSessionStore();
+  const photos = usePhotoStore();
   const router = useRouter();
 
   const load = useCallback(async (): Promise<LoadedRound | null> => {
@@ -458,7 +472,7 @@ export function RoundScreen({ sessionId, roundId }: { sessionId: string; roundId
       return null;
     }
     const isMissing = (fileName: string | undefined) =>
-      fileName !== undefined && !photoExists(fileName);
+      fileName !== undefined && !photos.exists(fileName);
     return {
       round,
       missing: {
@@ -466,7 +480,7 @@ export function RoundScreen({ sessionId, roundId }: { sessionId: string; roundId
         after: isMissing(round.photos.after?.fileName),
       },
     };
-  }, [db, roundId, sessionId]);
+  }, [db, photos, roundId, sessionId]);
   const { state, reload } = useFocusLoad(load);
 
   const goBack = () =>

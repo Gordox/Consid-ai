@@ -154,6 +154,7 @@ export function parsePhotoRow(row: unknown): RoundPhoto {
   return {
     role,
     fileName: readString(row, 'file_name'),
+    originalFileName: readNullableString(row, 'original_file_name'),
     width: readNumber(row, 'width', isPositiveInteger),
     height: readNumber(row, 'height', isPositiveInteger),
     addedAtUtc: readString(row, 'added_at_utc'),

@@ -20,7 +20,8 @@ import {
 } from '../../services/analysis/analysisClient';
 import { readAnalysisConfig } from '../../services/analysis/analysisConfig';
 import { newId, nowUtcIso } from '../../services/deviceContext';
-import { photoFileSize, photoUri } from '../../services/photoStorage';
+import type { PhotoStore } from '../../services/photoStorage';
+import { usePhotoStore } from '../startup/photoStoreContext';
 import { useSessionStore } from '../startup/sessionStoreContext';
 import { ANALYSIS_ERROR_TEXT, suggestionSummary } from './analysisText';
 import { candidatesToMarks, DEMO_ALGORITHM_VERSION, demoCandidates } from './suggestions';
@@ -31,9 +32,9 @@ function reportDevError(error: unknown): void {
   }
 }
 
-function toAnalysisPhoto(photo: RoundPhoto): AnalysisPhoto {
+function toAnalysisPhoto(photo: RoundPhoto, photos: PhotoStore): AnalysisPhoto {
   return {
-    uri: photoUri(photo.fileName),
+    uri: photos.uri(photo.fileName),
     fileName: photo.fileName,
     width: photo.width,
     height: photo.height,
@@ -52,6 +53,7 @@ export function AnalysisPanel({
   onChanged: () => void;
 }) {
   const { db } = useSessionStore();
+  const photos = usePhotoStore();
   const [config] = useState(readAnalysisConfig);
   const [running, setRunning] = useState(false);
   const [message, setMessage] = useState<Message | null>(null);
@@ -105,12 +107,13 @@ export function AnalysisPanel({
           roundId: draft.id,
           attemptId,
           targetId: draft.targetId,
-          after: toAnalysisPhoto(after),
-          before: draft.photos.before === null ? null : toAnalysisPhoto(draft.photos.before),
+          after: toAnalysisPhoto(after, photos),
+          before:
+            draft.photos.before === null ? null : toAnalysisPhoto(draft.photos.before, photos),
         },
         {
           fetch: (url, init) => fetch(url, init),
-          fileSize: (photo) => photoFileSize(photo.fileName),
+          fileSize: (photo) => photos.size(photo.fileName),
           timeoutMs: ANALYSIS_TIMEOUT_MS,
         },
       );
