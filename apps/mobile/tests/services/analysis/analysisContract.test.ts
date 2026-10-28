@@ -22,9 +22,32 @@ describe('parseAnalysisResponse', () => {
       value: {
         status: 'succeeded',
         algorithmVersion: 'opencv-baseline-0.1',
-        candidates: [{ id: 'c1', x: 2000, y: 1500, confidence: 0.9, uncertain: false }],
+        candidates: [
+          { id: 'c1', x: 2000, y: 1500, diameterPx: 40, confidence: 0.9, uncertain: false },
+        ],
         warnings: ['glare'],
       },
+    });
+  });
+
+  it('allows a missing image size only when the photo could not be decoded', () => {
+    expect(
+      parseAnalysisResponse(
+        body({ status: 'unusableImage', image: null, candidates: [] }),
+        EXPECTED,
+      ),
+    ).toMatchObject({ ok: true, value: { status: 'unusableImage' } });
+    expect(parseAnalysisResponse(body({ image: null }), EXPECTED)).toEqual({
+      ok: false,
+      error: 'imageMismatch',
+    });
+  });
+
+  it.each([0, -3, Number.NaN, '40'])('rejects a diameter of %p', (diameterPx) => {
+    const candidate = { id: 'c1', x: 2000, y: 1500, diameterPx, confidence: 0.9, uncertain: false };
+    expect(parseAnalysisResponse(body({ candidates: [candidate] }), EXPECTED)).toEqual({
+      ok: false,
+      error: 'invalidResponse',
     });
   });
 

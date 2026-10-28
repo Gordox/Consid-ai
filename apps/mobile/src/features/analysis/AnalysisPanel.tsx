@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { Banner } from '../../components/Banner';
@@ -12,6 +12,8 @@ import {
   type AttemptSource,
   createAnalysisAttempt,
   failAnalysisAttempt,
+  getLatestAttempt,
+  type LatestAttempt,
 } from '../../persistence/analysisRepository';
 import {
   ANALYSIS_TIMEOUT_MS,
@@ -21,10 +23,23 @@ import {
 import { readAnalysisConfig } from '../../services/analysis/analysisConfig';
 import { newId, nowUtcIso } from '../../services/deviceContext';
 import type { PhotoStore } from '../../services/photoStorage';
+import { formatCreatedAt } from '../sessions/formatSession';
 import { usePhotoStore } from '../startup/photoStoreContext';
 import { useSessionStore } from '../startup/sessionStoreContext';
-import { ANALYSIS_ERROR_TEXT, suggestionSummary } from './analysisText';
-import { candidatesToMarks, DEMO_ALGORITHM_VERSION, demoCandidates } from './suggestions';
+import {
+  ANALYSIS_BLOCK_TEXT,
+  ANALYSIS_ERROR_TEXT,
+  analysisBlock,
+  latestAttemptText,
+  modeText,
+  suggestionSummary,
+} from './analysisText';
+import {
+  candidatesToMarks,
+  DEMO_ALGORITHM_VERSION,
+  demoCandidates,
+  duplicateRadiusPx,
+} from './suggestions';
 
 function reportDevError(error: unknown): void {
   if (__DEV__) {
@@ -46,26 +61,54 @@ type Message = { readonly tone: 'info' | 'error'; readonly text: string };
 export function AnalysisPanel({
   draft,
   photosMissing,
+  running,
+  onRunningChange,
   onChanged,
 }: {
   draft: DraftRound;
   photosMissing: boolean;
+  running: boolean;
+  onRunningChange: (running: boolean) => void;
   onChanged: () => void;
 }) {
   const { db } = useSessionStore();
   const photos = usePhotoStore();
   const [config] = useState(readAnalysisConfig);
-  const [running, setRunning] = useState(false);
   const [message, setMessage] = useState<Message | null>(null);
+  const [latest, setLatest] = useState<LatestAttempt | null>(null);
   const [confirmReplace, setConfirmReplace] = useState<AttemptSource | null>(null);
   const target = findTarget(draft.targetId);
-  const after = draft.photos.after;
-  const hasSuggestions = draft.marks.some((mark) => mark.source === 'suggested');
+  const { after, before } = draft.photos;
+  const pending = draft.marks.filter((mark) => !mark.accepted).length;
+
+  // The stored attempt survives leaving the screen and restarts; reread when the round changes.
+  useEffect(() => {
+    let active = true;
+    getLatestAttempt(db, draft.id).then(
+      (attempt) => {
+        if (active) setLatest(attempt);
+      },
+      (error: unknown) => reportDevError(error),
+    );
+    return () => {
+      active = false;
+    };
+  }, [db, draft]);
+
+  const block = analysisBlock({
+    hasAfter: after !== null,
+    photosMissing,
+    oldPhotoCopy:
+      (after !== null && after.originalFileName === null) ||
+      (before !== null && before.originalFileName === null),
+    calibrated: draft.calibration !== null,
+    targetKnown: target !== null,
+  });
 
   async function run(source: AttemptSource): Promise<void> {
     setConfirmReplace(null);
-    if (running || after === null || target === null) return;
-    setRunning(true);
+    if (running || after === null || target === null || draft.calibration === null) return;
+    onRunningChange(true);
     setMessage(null);
     const attemptId = newId();
     try {
@@ -74,16 +117,14 @@ export function AnalysisPanel({
         roundId: draft.id,
         source,
         createdAtUtc: nowUtcIso(),
+        afterFileName: after.fileName,
+        beforeFileName: before?.fileName ?? null,
       });
       if (source === 'demo') {
-        const candidates =
-          draft.calibration === null ? null : demoCandidates(draft.calibration, target);
+        const candidates = demoCandidates(draft.calibration, target);
         if (candidates === null) {
           await failAnalysisAttempt(db, attemptId, 'calibrationNeeded');
-          setMessage({
-            tone: 'error',
-            text: 'Calibrate the after photo before adding demo suggestions.',
-          });
+          setMessage({ tone: 'error', text: ANALYSIS_BLOCK_TEXT.notCalibrated });
           return;
         }
         await applyAnalysisResult(db, {
@@ -92,12 +133,12 @@ export function AnalysisPanel({
           algorithmVersion: DEMO_ALGORITHM_VERSION,
           resultJson: JSON.stringify({ candidates }),
           suggestions: candidatesToMarks(candidates, newId),
+          duplicateRadiusPx: duplicateRadiusPx(candidates, after),
         });
         setMessage({
           tone: 'info',
           text: 'Demo suggestions added. They are fixed positions, not analysis of your photo.',
         });
-        onChanged();
         return;
       }
       if (config === null) return;
@@ -107,9 +148,9 @@ export function AnalysisPanel({
           roundId: draft.id,
           attemptId,
           targetId: draft.targetId,
+          calibration: draft.calibration,
           after: toAnalysisPhoto(after, photos),
-          before:
-            draft.photos.before === null ? null : toAnalysisPhoto(draft.photos.before, photos),
+          before: before === null ? null : toAnalysisPhoto(before, photos),
         },
         {
           fetch: (url, init) => fetch(url, init),
@@ -133,16 +174,13 @@ export function AnalysisPanel({
         algorithmVersion: result.value.algorithmVersion,
         resultJson: JSON.stringify(result.value),
         suggestions: candidatesToMarks(result.value.candidates, newId),
+        duplicateRadiusPx: duplicateRadiusPx(result.value.candidates, after),
       });
       setMessage(
-        outcome === 'stale'
+        outcome.kind === 'stale'
           ? { tone: 'error', text: ANALYSIS_ERROR_TEXT.stale }
-          : {
-              tone: 'info',
-              text: suggestionSummary(result.value.candidates.length, result.value.warnings),
-            },
+          : { tone: 'info', text: suggestionSummary(outcome.added, result.value.warnings) },
       );
-      onChanged();
     } catch (error) {
       reportDevError(error);
       setMessage({
@@ -150,13 +188,15 @@ export function AnalysisPanel({
         text: "Couldn't save the analysis. Your photos and marks are kept. Try again.",
       });
     } finally {
-      setRunning(false);
+      onRunningChange(false);
+      onChanged();
     }
   }
 
   const start = (source: AttemptSource) =>
-    hasSuggestions ? setConfirmReplace(source) : void run(source);
-  const ready = after !== null && !photosMissing;
+    pending > 0 ? setConfirmReplace(source) : void run(source);
+  const status = latest === null ? null : latestAttemptText(latest, running);
+  const lastFailed = latest !== null && latest.status !== 'succeeded' && !running;
 
   return (
     <View style={styles.card}>
@@ -165,21 +205,38 @@ export function AnalysisPanel({
       </Text>
       {config === null ? (
         <Text style={styles.body}>
-          {"Automatic analysis isn't set up in this app yet. Mark hits yourself in the editor."}
+          {
+            "Automatic analysis isn't set up in this app. Mark hits yourself in the editor. To use the local analysis service, see services/analysis/README.md."
+          }
         </Text>
       ) : (
         <>
+          <Text style={styles.body}>{modeText(before !== null)}</Text>
           <Text style={styles.body}>
-            {`Analyze sends your after photo${draft.photos.before === null ? '' : ' and before photo'} to ${config.host}. Nothing is sent until you tap Analyze. Suggestions must be checked before you confirm.`}
+            {`Analyze sends your after photo${before === null ? '' : ' and before photo'} (without location data) to ${config.host}. Nothing is sent until you tap Analyze.`}
           </Text>
+          {block === null ? null : <Text style={styles.blocked}>{ANALYSIS_BLOCK_TEXT[block]}</Text>}
           <Button
             busy={running}
-            disabled={!ready}
-            label="Analyze photos"
+            disabled={block !== null}
+            label={lastFailed ? 'Try analysis again' : 'Analyze photos'}
             onPress={() => start('service')}
           />
         </>
       )}
+      {status === null || message !== null ? null : (
+        <Text style={status.tone === 'error' ? styles.blocked : styles.body}>
+          {latest === null ? '' : `${formatCreatedAt(latest.createdAtUtc)}: `}
+          {status.text}
+        </Text>
+      )}
+      {pending > 0 ? (
+        <Text style={styles.pending}>
+          {pending === 1
+            ? '1 suggestion to review. Open the editor to accept or delete it.'
+            : `${pending} suggestions to review. Open the editor to accept or delete them.`}
+        </Text>
+      ) : null}
       {__DEV__ ? (
         <>
           <Text style={styles.demo}>
@@ -188,7 +245,7 @@ export function AnalysisPanel({
           </Text>
           <Button
             busy={running}
-            disabled={!ready || draft.calibration === null}
+            disabled={block !== null}
             label="Add demo suggestions"
             onPress={() => start('demo')}
             variant="secondary"
@@ -197,12 +254,12 @@ export function AnalysisPanel({
       ) : null}
       {message === null ? null : <Banner body={message.text} tone={message.tone} />}
       <ConfirmDialog
-        body="Suggestions you haven't changed are replaced. Hits you marked or edited yourself stay."
+        body="Suggestions you haven't accepted or changed are replaced. Hits you marked, accepted or edited stay."
         cancelLabel="Keep current"
         confirmLabel="Replace suggestions"
         onCancel={() => setConfirmReplace(null)}
         onConfirm={() => confirmReplace !== null && void run(confirmReplace)}
-        title="Replace the current suggestions?"
+        title="Replace the suggestions to review?"
         visible={confirmReplace !== null}
       />
     </View>
@@ -223,6 +280,14 @@ const styles = StyleSheet.create({
   body: {
     ...typography.body,
     color: colors.secondary,
+  },
+  blocked: {
+    ...typography.body,
+    color: colors.error,
+  },
+  pending: {
+    ...typography.label,
+    color: colors.warning,
   },
   demo: {
     ...typography.supporting,

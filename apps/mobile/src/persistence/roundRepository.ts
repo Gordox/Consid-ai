@@ -177,7 +177,7 @@ export async function getRound(db: SessionDatabase, roundId: string): Promise<Ro
     throw new InvalidRoundDataError('state');
   }
   const markRows = await db.getAllAsync(
-    'SELECT id, x, y, shots, source, uncertain, candidate_id FROM round_marks WHERE round_id = ? ORDER BY ordinal',
+    'SELECT id, x, y, shots, source, uncertain, accepted, candidate_id FROM round_marks WHERE round_id = ? ORDER BY ordinal',
     [roundId],
   );
   return {
@@ -253,8 +253,8 @@ export async function saveDraftAnnotations(
     await txn.runAsync('DELETE FROM round_marks WHERE round_id = ?', [roundId]);
     for (const [ordinal, mark] of marks.entries()) {
       await txn.runAsync(
-        `INSERT INTO round_marks (id, round_id, ordinal, x, y, shots, source, uncertain, candidate_id)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO round_marks (id, round_id, ordinal, x, y, shots, source, uncertain, accepted, candidate_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           mark.id,
           roundId,
@@ -264,6 +264,7 @@ export async function saveDraftAnnotations(
           mark.shots,
           mark.source,
           mark.uncertain ? 1 : 0,
+          mark.accepted ? 1 : 0,
           mark.candidateId,
         ],
       );

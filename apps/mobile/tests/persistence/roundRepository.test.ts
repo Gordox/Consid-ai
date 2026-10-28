@@ -186,7 +186,16 @@ describe('getRound', () => {
         },
       ],
       markRows: [
-        { id: 'm1', x: 510, y: 480, shots: 2, source: 'manual', uncertain: 0, candidate_id: null },
+        {
+          id: 'm1',
+          x: 510,
+          y: 480,
+          shots: 2,
+          source: 'manual',
+          uncertain: 0,
+          accepted: 1,
+          candidate_id: null,
+        },
       ],
     });
 
@@ -204,6 +213,7 @@ describe('getRound', () => {
         shots: 2,
         source: 'manual',
         uncertain: false,
+        accepted: true,
         candidateId: null,
       },
     ]);
@@ -269,6 +279,7 @@ describe('draft writes', () => {
         shots: 1,
         source: 'suggested',
         uncertain: true,
+        accepted: false,
         candidateId: 'c1',
       },
       {
@@ -277,6 +288,7 @@ describe('draft writes', () => {
         shots: 2,
         source: 'manual',
         uncertain: false,
+        accepted: true,
         candidateId: null,
       },
     ];
@@ -293,8 +305,8 @@ describe('draft writes', () => {
       (call) => 'sql' in call && call.sql.startsWith('INSERT INTO round_marks'),
     );
     expect(inserts.map((call) => ('params' in call ? call.params : null))).toEqual([
-      ['b', ROUND_ID, 0, 2, 2, 1, 'suggested', 1, 'c1'],
-      ['a', ROUND_ID, 1, 1, 1, 2, 'manual', 0, null],
+      ['b', ROUND_ID, 0, 2, 2, 1, 'suggested', 1, 0, 'c1'],
+      ['a', ROUND_ID, 1, 1, 1, 2, 'manual', 0, 1, null],
     ]);
   });
 

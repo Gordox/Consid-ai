@@ -135,12 +135,15 @@ export function parseMarkRow(row: unknown): HitMark {
     throw new InvalidRoundDataError('source');
   }
   const uncertain = readNumber(row, 'uncertain', (value) => value === 0 || value === 1);
+  const accepted = readNumber(row, 'accepted', (value) => value === 0 || value === 1);
   return {
     id: readString(row, 'id'),
     position: { x: readNumber(row, 'x', isFiniteNumber), y: readNumber(row, 'y', isFiniteNumber) },
     shots: readNumber(row, 'shots', isShotsPerHole),
     source,
     uncertain: uncertain === 1,
+    // Only suggestions can be pending; a stored manual or edited mark is always accepted.
+    accepted: accepted === 1 || source !== 'suggested',
     candidateId: readNullableString(row, 'candidate_id'),
   };
 }
@@ -172,7 +175,9 @@ function readShot(value: unknown, column: string): ConfirmedShot {
   const markId: unknown = Reflect.get(value, 'markId');
   const shots: unknown = Reflect.get(value, 'shots');
   const shotValue: unknown = Reflect.get(value, 'value');
+  const source: unknown = Reflect.get(value, 'source');
   if (
+    (source !== undefined && (typeof source !== 'string' || !isMarkSource(source))) ||
     typeof markId !== 'string' ||
     typeof shots !== 'number' ||
     !isShotsPerHole(shots) ||
@@ -184,6 +189,7 @@ function readShot(value: unknown, column: string): ConfirmedShot {
   }
   return {
     markId,
+    ...(source === undefined ? {} : { source }),
     shots,
     value: shotValue,
     centreMm: readPoint(Reflect.get(value, 'centreMm'), column),

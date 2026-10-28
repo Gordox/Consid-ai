@@ -78,6 +78,9 @@ function DraftRoundView({
   const [message, setMessage] = useState<string | null>(null);
   const [permission, setPermission] = useState<{ canAskAgain: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
+  // While analysis runs, photos and marks stay as the request saw them.
+  const [analysisRunning, setAnalysisRunning] = useState(false);
+  const locked = busy || analysisRunning;
   const [dialog, setDialog] = useState<
     | { kind: 'confirm' }
     | { kind: 'discard' }
@@ -288,7 +291,7 @@ function DraftRoundView({
         </Text>
         <Text style={styles.supporting}>{PHOTO_TIPS}</Text>
         <PhotoSlot
-          busy={busy}
+          busy={locked}
           editable
           hint="Optional. Taken after covering old holes, before shooting."
           missing={missing.before}
@@ -299,7 +302,7 @@ function DraftRoundView({
           title="Before"
         />
         <PhotoSlot
-          busy={busy}
+          busy={locked}
           editable
           hint="Taken after the round. Hits are marked on this photo."
           missing={missing.after}
@@ -318,7 +321,9 @@ function DraftRoundView({
       <AnalysisPanel
         draft={draft}
         onChanged={onChanged}
+        onRunningChange={setAnalysisRunning}
         photosMissing={missing.after || missing.before}
+        running={analysisRunning}
       />
 
       <View style={styles.card}>
@@ -328,11 +333,14 @@ function DraftRoundView({
         <Text style={styles.body}>
           {draft.calibration === null ? 'Not calibrated' : 'Calibrated'} ·{' '}
           {evaluation.hitShots === 1
-            ? '1 hit shot marked'
-            : `${evaluation.hitShots} hit shots marked`}
-          {draft.marks.some((mark) => mark.uncertain) ? ' · uncertain suggestions to check' : ''}
+            ? '1 confirmed hit shot'
+            : `${evaluation.hitShots} confirmed hit shots`}
+          {evaluation.pendingSuggestions > 0
+            ? ` · ${evaluation.pendingSuggestions} ${evaluation.pendingSuggestions === 1 ? 'suggestion' : 'suggestions'} to review`
+            : ''}
         </Text>
         <Button
+          busy={analysisRunning}
           disabled={draft.photos.after === null || missing.after}
           label={draft.calibration === null ? 'Calibrate and mark hits' : 'Edit hits'}
           onPress={() => router.push(`/sessions/${draft.sessionId}/rounds/${draft.id}/editor`)}
@@ -350,13 +358,13 @@ function DraftRoundView({
         {resultText === null ? null : <Text style={styles.total}>{resultText}</Text>}
         {target?.isDemo === true ? <Text style={styles.notice}>{DEMO_TARGET_NOTICE}</Text> : null}
         <Button
-          busy={busy}
+          busy={locked}
           disabled={evaluation.blockReason !== null}
           label="Confirm round"
           onPress={() => setDialog({ kind: 'confirm' })}
         />
         <Button
-          busy={busy}
+          busy={locked}
           label="Discard round"
           onPress={() => setDialog({ kind: 'discard' })}
           variant="destructive"

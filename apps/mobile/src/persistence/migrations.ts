@@ -85,11 +85,20 @@ CREATE TABLE pending_photo_picks (
   started_at_utc TEXT NOT NULL
 ) STRICT;`;
 
+// Suggestions must be accepted before they count as hits: round_marks.accepted, with existing
+// untouched suggestions starting as pending. Analysis attempts remember which photo files they
+// analysed, so a late answer for a replaced photo is discarded. Only adds.
+const MIGRATION_4_SUGGESTION_REVIEW = `ALTER TABLE round_marks ADD COLUMN accepted INTEGER NOT NULL DEFAULT 1 CHECK (accepted IN (0,1));
+UPDATE round_marks SET accepted = 0 WHERE source = 'suggested';
+ALTER TABLE analysis_attempts ADD COLUMN after_file_name TEXT;
+ALTER TABLE analysis_attempts ADD COLUMN before_file_name TEXT;`;
+
 // Append only: index + 1 is the schema version. Never edit or reorder a shipped entry.
 export const MIGRATIONS: readonly string[] = [
   MIGRATION_1_CREATE_SESSIONS,
   MIGRATION_2_ADD_ROUNDS,
   MIGRATION_3_PHOTO_RELIABILITY,
+  MIGRATION_4_SUGGESTION_REVIEW,
 ];
 
 export const LATEST_SCHEMA_VERSION = MIGRATIONS.length;

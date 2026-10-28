@@ -46,9 +46,15 @@ function reportDevError(error: unknown): void {
   }
 }
 
+// Pending suggestions are dashed and uncertain ones also carry "?", so the state never relies
+// on colour alone.
 function markColor(mark: HitMark): string {
   if (mark.uncertain) return colors.warning;
   return mark.source === 'manual' ? colors.success : colors.info;
+}
+
+function markLabel(mark: HitMark): string {
+  return `${mark.uncertain ? '?' : ''}${mark.shots > 1 ? `×${mark.shots}` : ''}`;
 }
 
 export function HitEditor({ draft }: { draft: DraftRound }) {
@@ -139,6 +145,7 @@ export function HitEditor({ draft }: { draft: DraftRound }) {
   const outlines =
     calibration !== null && target !== null ? ringOutlines(calibration, target) : null;
   const selected = state.marks.find((mark) => mark.id === state.selectedId) ?? null;
+  const certainPending = state.marks.filter((mark) => !mark.accepted && !mark.uncertain).length;
   const send = (action: EditorAction) => dispatch(action);
 
   const done = async () => {
@@ -265,10 +272,10 @@ export function HitEditor({ draft }: { draft: DraftRound }) {
                           fill="none"
                           r={r}
                           stroke={isSelected ? colors.accent : markColor(mark)}
-                          strokeDasharray={mark.uncertain ? '4 3' : undefined}
+                          strokeDasharray={mark.accepted ? undefined : '5 4'}
                           strokeWidth={isSelected ? 3 : 2}
                         />
-                        {mark.uncertain || mark.shots > 1 ? (
+                        {markLabel(mark) === '' ? null : (
                           <SvgText
                             fill={mark.uncertain ? colors.warning : colors.text}
                             fontSize={13}
@@ -276,9 +283,9 @@ export function HitEditor({ draft }: { draft: DraftRound }) {
                             x={screen.x + r + 3}
                             y={screen.y - r}
                           >
-                            {`${mark.uncertain ? '?' : ''}${mark.shots > 1 ? `×${mark.shots}` : ''}`}
+                            {markLabel(mark)}
                           </SvgText>
-                        ) : null}
+                        )}
                       </G>
                     );
                   })}
@@ -337,13 +344,32 @@ export function HitEditor({ draft }: { draft: DraftRound }) {
                 variant="secondary"
               />
             ) : null}
+            {mode === 'mark' && certainPending > 0 ? (
+              <Button
+                label={
+                  certainPending === 1
+                    ? 'Accept 1 suggestion'
+                    : `Accept ${certainPending} suggestions`
+                }
+                onPress={() => send({ type: 'acceptCertainSuggestions' })}
+                variant="secondary"
+              />
+            ) : null}
             {mode === 'mark' && selected !== null ? (
               <View style={styles.selected}>
-                {selected.uncertain ? (
-                  <Text style={styles.warning}>
-                    ? Uncertain suggestion. Check it against the photo.
+                {selected.accepted ? null : (
+                  <Text style={selected.uncertain ? styles.warning : styles.instructions}>
+                    {selected.uncertain
+                      ? '? Uncertain suggestion: it may be a tear, sticker edge or several holes. Check it against the photo.'
+                      : 'Suggestion, not counted yet. Accept it if it is a real new hole.'}
                   </Text>
-                ) : null}
+                )}
+                {selected.accepted ? null : (
+                  <Button
+                    label="Accept hit"
+                    onPress={() => send({ type: 'acceptMark', id: selected.id })}
+                  />
+                )}
                 <Stepper
                   label="Shots in this hole"
                   max={SHOTS_PER_HOLE_RANGE.max}
@@ -359,9 +385,10 @@ export function HitEditor({ draft }: { draft: DraftRound }) {
               </View>
             ) : null}
             <Text style={styles.summary}>
-              {evaluation.hitShots === 1
-                ? '1 hit shot marked'
-                : `${evaluation.hitShots} hit shots marked`}{' '}
+              {evaluation.hitShots === 1 ? '1 hit shot' : `${evaluation.hitShots} hit shots`}
+              {evaluation.pendingSuggestions > 0
+                ? ` + ${evaluation.pendingSuggestions} to review`
+                : ''}{' '}
               · {draft.actualShots} fired
               {evaluation.score === null
                 ? ''
@@ -372,7 +399,8 @@ export function HitEditor({ draft }: { draft: DraftRound }) {
               <Text style={styles.notice}>{DEMO_TARGET_NOTICE}</Text>
             ) : null}
             <Text style={styles.supporting}>
-              Green: your marks. Blue: suggestions. Dashed with ?: uncertain suggestions.
+              Solid: counted hits (green yours, blue accepted suggestions). Dashed: suggestions not
+              counted yet. ?: uncertain.
             </Text>
             <Button label="Done" onPress={() => void done()} />
           </View>

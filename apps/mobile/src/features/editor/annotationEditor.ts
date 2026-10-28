@@ -25,6 +25,8 @@ export type EditorAction =
   | { readonly type: 'moveMark'; readonly id: string; readonly point: Point }
   | { readonly type: 'setShots'; readonly id: string; readonly shots: number }
   | { readonly type: 'deleteMark'; readonly id: string }
+  | { readonly type: 'acceptMark'; readonly id: string }
+  | { readonly type: 'acceptCertainSuggestions' }
   | { readonly type: 'replaceSuggestions'; readonly marks: readonly HitMark[] }
   | { readonly type: 'undo' };
 
@@ -51,10 +53,16 @@ function edit(state: EditorState, next: Annotations, selectedId: string | null):
   };
 }
 
-// A suggestion the user changes becomes their own mark: no longer flagged as uncertain.
-function touched(mark: HitMark): Pick<HitMark, 'source' | 'uncertain'> {
-  return { source: mark.source === 'manual' ? 'manual' : 'suggestedEdited', uncertain: false };
+// A suggestion the user changes becomes their own mark: accepted and no longer uncertain.
+function touched(mark: HitMark): Pick<HitMark, 'source' | 'uncertain' | 'accepted'> {
+  return {
+    source: mark.source === 'manual' ? 'manual' : 'suggestedEdited',
+    uncertain: false,
+    accepted: true,
+  };
 }
+
+const isPending = (mark: HitMark): boolean => !mark.accepted;
 
 export function editorReducer(state: EditorState, action: EditorAction): EditorState {
   switch (action.type) {
@@ -75,6 +83,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
         shots: 1,
         source: 'manual',
         uncertain: false,
+        accepted: true,
         candidateId: null,
       };
       return edit(state, { ...state, marks: [...state.marks, mark] }, mark.id);
@@ -114,9 +123,38 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
         { ...state, marks: state.marks.filter((mark) => mark.id !== action.id) },
         null,
       );
+    case 'acceptMark': {
+      const target = state.marks.find((mark) => mark.id === action.id);
+      if (target === undefined || target.accepted) return state;
+      // Accepting keeps the suggestion's position and provenance; the user has checked it.
+      return edit(
+        state,
+        {
+          ...state,
+          marks: state.marks.map((mark) =>
+            mark.id === action.id ? { ...mark, accepted: true, uncertain: false } : mark,
+          ),
+        },
+        action.id,
+      );
+    }
+    case 'acceptCertainSuggestions': {
+      // Uncertain suggestions always need a look of their own.
+      if (!state.marks.some((mark) => isPending(mark) && !mark.uncertain)) return state;
+      return edit(
+        state,
+        {
+          ...state,
+          marks: state.marks.map((mark) =>
+            isPending(mark) && !mark.uncertain ? { ...mark, accepted: true } : mark,
+          ),
+        },
+        state.selectedId,
+      );
+    }
     case 'replaceSuggestions': {
-      // Untouched suggestions are replaced; manual and edited marks always stay.
-      const kept = state.marks.filter((mark) => mark.source !== 'suggested');
+      // Pending suggestions are replaced; manual, edited and accepted marks always stay.
+      const kept = state.marks.filter((mark) => !isPending(mark));
       return edit(state, { ...state, marks: [...kept, ...action.marks] }, null);
     }
     case 'undo': {

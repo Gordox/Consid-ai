@@ -3,7 +3,17 @@
 
 export type AnalysisConfig = { readonly baseUrl: string; readonly host: string };
 
-// HTTPS everywhere; plain HTTP only for a service on this computer during development.
+// Private IPv4 ranges (RFC 1918): a computer on the same home or office network.
+function isPrivateNetworkAddress(hostname: string): boolean {
+  const parts = hostname.split('.');
+  if (parts.length !== 4 || !parts.every((part) => /^\d{1,3}$/.test(part))) return false;
+  const [a, b] = parts.map(Number);
+  if (a === undefined || b === undefined || parts.some((part) => Number(part) > 255)) return false;
+  return a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168);
+}
+
+// HTTPS everywhere. Plain HTTP only in development, and only to this computer or to a computer
+// on the same private network (the local analysis service, services/analysis/README.md).
 export function parseAnalysisConfig(
   value: string | undefined,
   isDevelopment: boolean,
@@ -17,7 +27,10 @@ export function parseAnalysisConfig(
   } catch {
     return null;
   }
-  const local = url.hostname === '127.0.0.1' || url.hostname === 'localhost';
+  const local =
+    url.hostname === '127.0.0.1' ||
+    url.hostname === 'localhost' ||
+    isPrivateNetworkAddress(url.hostname);
   const allowed = url.protocol === 'https:' || (isDevelopment && url.protocol === 'http:' && local);
   if (
     !allowed ||

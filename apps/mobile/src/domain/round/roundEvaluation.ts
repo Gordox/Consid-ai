@@ -13,11 +13,14 @@ export type BlockReason =
   | 'unknownTarget'
   | 'calibrationNeeded' // hits are marked but the photo is not calibrated
   | 'calibrationInvalid'
+  | 'suggestionsPending' // analysis suggestions the user has neither accepted nor deleted
   | 'tooFew'
   | 'tooMany';
 
 export type RoundEvaluation = {
+  // Shots in accepted marks only; pending suggestions are not hits yet.
   readonly hitShots: number;
+  readonly pendingSuggestions: number;
   // Hits, declared misses and unresolved shots together.
   readonly recordedShots: number;
   readonly status: AccountingStatus;
@@ -45,7 +48,9 @@ export function photoToTarget(calibration: Quad, target: TargetDefinition): Homo
 
 // Pure: the same draft and target always give the same evaluation.
 export function evaluateDraft(draft: DraftRound, target: TargetDefinition | null): RoundEvaluation {
-  const hitShots = draft.marks.reduce((sum, mark) => sum + mark.shots, 0);
+  const accepted = draft.marks.filter((mark) => mark.accepted);
+  const pendingSuggestions = draft.marks.length - accepted.length;
+  const hitShots = accepted.reduce((sum, mark) => sum + mark.shots, 0);
   const status = accountShots({
     actualShots: draft.actualShots,
     hitShots,
@@ -55,6 +60,7 @@ export function evaluateDraft(draft: DraftRound, target: TargetDefinition | null
   const recordedShots = hitShots + draft.declaredMisses + draft.unresolvedShots;
   const blocked = (blockReason: BlockReason): RoundEvaluation => ({
     hitShots,
+    pendingSuggestions,
     recordedShots,
     status,
     shots: null,
@@ -75,19 +81,24 @@ export function evaluateDraft(draft: DraftRound, target: TargetDefinition | null
       return blocked('calibrationInvalid');
     }
     const mapped: ConfirmedShot[] = [];
-    for (const mark of draft.marks) {
+    for (const mark of accepted) {
       const centreMm = applyHomography(homography, mark.position);
       if (centreMm === null) {
         return blocked('calibrationInvalid');
       }
       const { value } = scoreShot(target, centreMm, draft.hitDiameterMm);
-      mapped.push({ markId: mark.id, shots: mark.shots, centreMm, value });
+      mapped.push({ markId: mark.id, source: mark.source, shots: mark.shots, centreMm, value });
     }
     shots = mapped;
   }
   const score = scoreRound(shots, status);
-  const blockReason = status === 'tooFew' || status === 'tooMany' ? status : null;
-  return { hitShots, recordedShots, status, shots, score, blockReason };
+  const blockReason =
+    pendingSuggestions > 0
+      ? 'suggestionsPending'
+      : status === 'tooFew' || status === 'tooMany'
+        ? status
+        : null;
+  return { hitShots, pendingSuggestions, recordedShots, status, shots, score, blockReason };
 }
 
 export class RoundNotConfirmableError extends Error {

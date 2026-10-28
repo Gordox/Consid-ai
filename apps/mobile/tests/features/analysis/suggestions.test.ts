@@ -14,9 +14,9 @@ describe('candidatesToMarks', () => {
     let next = 0;
     const marks = candidatesToMarks(
       [
-        { id: 'c1', x: 10, y: 20, confidence: 0.9, uncertain: false },
-        { id: 'c2', x: 30, y: 40, confidence: 0.5, uncertain: false },
-        { id: 'c3', x: 50, y: 60, confidence: 0.95, uncertain: true },
+        { id: 'c1', x: 10, y: 20, diameterPx: null, confidence: 0.9, uncertain: false },
+        { id: 'c2', x: 30, y: 40, diameterPx: null, confidence: 0.5, uncertain: false },
+        { id: 'c3', x: 50, y: 60, diameterPx: null, confidence: 0.95, uncertain: true },
       ],
       () => `m${(next += 1)}`,
     );

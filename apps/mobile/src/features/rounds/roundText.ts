@@ -13,6 +13,8 @@ export function roundStatusText(evaluation: RoundEvaluation, actualShots: number
       return 'Calibrate the after photo so the marked hits can be scored.';
     case 'calibrationInvalid':
       return 'The calibration points do not form a valid target outline. Calibrate again.';
+    case 'suggestionsPending':
+      return `${evaluation.pendingSuggestions === 1 ? '1 suggestion has' : `${evaluation.pendingSuggestions} suggestions have`} not been reviewed. In the editor, accept each one that is a real hole and delete the rest.`;
     case 'tooFew':
       return `${shots(actualShots)} fired, but only ${shots(evaluation.recordedShots)} recorded. Mark the missing hits, or declare them as misses or unresolved.`;
     case 'tooMany':

@@ -10,6 +10,8 @@ export type AnalysisCandidate = {
   readonly id: string;
   readonly x: number;
   readonly y: number;
+  // Estimated hole diameter in photo pixels, when the service gives one. Never used for scoring.
+  readonly diameterPx: number | null;
   readonly confidence: number;
   readonly uncertain: boolean;
 };
@@ -61,7 +63,10 @@ function parseCandidate(value: unknown, width: number, height: number): Analysis
   const y = get(value, 'y');
   const confidence = get(value, 'confidence');
   const uncertain = get(value, 'uncertain');
+  const diameterPx = get(value, 'diameterPx') ?? null;
   if (
+    (diameterPx !== null &&
+      (typeof diameterPx !== 'number' || !Number.isFinite(diameterPx) || diameterPx <= 0)) ||
     typeof id !== 'string' ||
     id.length === 0 ||
     id.length > 64 ||
@@ -79,7 +84,7 @@ function parseCandidate(value: unknown, width: number, height: number): Analysis
   ) {
     return null;
   }
-  return { id, x, y, confidence, uncertain };
+  return { id, x, y, diameterPx, confidence, uncertain };
 }
 
 export function parseAnalysisResponse(
@@ -108,9 +113,11 @@ export function parseAnalysisResponse(
   ) {
     return invalid;
   }
+  // The size may be missing only when the service could not decode the photo at all.
+  const undecoded = image === null && status === 'unusableImage';
   if (
-    get(image, 'width') !== expected.imageWidth ||
-    get(image, 'height') !== expected.imageHeight
+    !undecoded &&
+    (get(image, 'width') !== expected.imageWidth || get(image, 'height') !== expected.imageHeight)
   ) {
     return { ok: false, error: 'imageMismatch' };
   }

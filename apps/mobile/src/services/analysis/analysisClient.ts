@@ -1,3 +1,4 @@
+import type { Quad } from '../../domain/target/homography';
 import type { AnalysisConfig } from './analysisConfig';
 import { type AnalysisResult, parseAnalysisResponse } from './analysisContract';
 
@@ -5,6 +6,8 @@ export type AnalysisRequest = {
   readonly roundId: string;
   readonly attemptId: string;
   readonly targetId: string;
+  // Taps on the after photo in its pixels: top, right, bottom, left of the outer ring.
+  readonly calibration: Quad;
   readonly after: AnalysisPhoto;
   readonly before: AnalysisPhoto | null;
 };
@@ -21,6 +24,7 @@ export type AnalysisError =
   | 'network'
   | 'timeout'
   | 'rejected' // 4xx other than rate limiting: the request or images were not accepted
+  | 'calibrationRejected' // the service could not use the calibration with this photo
   | 'rateLimited'
   | 'serverError'
   | 'invalidResponse'
@@ -68,6 +72,18 @@ function appendPhoto(form: FormData, field: string, photo: AnalysisPhoto): void 
   );
 }
 
+// The stable code of a structured error body, or null. Never shown to the user as is.
+async function errorCode(response: Response): Promise<string | null> {
+  try {
+    const body: unknown = await response.json();
+    const code: unknown =
+      typeof body === 'object' && body !== null ? Reflect.get(body, 'code') : null;
+    return typeof code === 'string' ? code : null;
+  } catch {
+    return null;
+  }
+}
+
 // Sends the photos only when called, which happens only after the user taps Analyze.
 export async function requestAnalysis(
   config: AnalysisConfig,
@@ -87,6 +103,10 @@ export async function requestAnalysis(
   form.append('attemptId', request.attemptId);
   form.append('mode', request.before === null ? 'single' : 'paired');
   form.append('targetId', request.targetId);
+  form.append(
+    'calibration',
+    JSON.stringify({ points: request.calibration.map((point) => ({ x: point.x, y: point.y })) }),
+  );
   appendPhoto(form, 'after', request.after);
   if (request.before !== null) {
     appendPhoto(form, 'before', request.before);
@@ -108,8 +128,13 @@ export async function requestAnalysis(
     clearTimeout(timer);
   }
 
+  if (response.status === 413) return { ok: false, error: 'fileTooLarge' };
   if (response.status === 429) return { ok: false, error: 'rateLimited' };
+  if (response.status === 504) return { ok: false, error: 'timeout' };
   if (response.status >= 500) return { ok: false, error: 'serverError' };
+  if (response.status === 422 && (await errorCode(response)) === 'invalidCalibration') {
+    return { ok: false, error: 'calibrationRejected' };
+  }
   if (response.status !== 200) return { ok: false, error: 'rejected' };
 
   let body: unknown;

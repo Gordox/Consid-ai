@@ -11,6 +11,12 @@ const REQUEST: AnalysisRequest = {
   roundId: 'r1',
   attemptId: 'a1',
   targetId: 'demo-synthetic-v1',
+  calibration: [
+    { x: 200, y: 10 },
+    { x: 390, y: 150 },
+    { x: 200, y: 290 },
+    { x: 10, y: 150 },
+  ],
   after: PHOTO,
   before: null,
 };
@@ -58,7 +64,21 @@ describe('requestAnalysis', () => {
     if (form instanceof FormData) {
       expect(form.get('mode')).toBe('paired');
       expect(form.get('attemptId')).toBe('a1');
+      expect(JSON.parse(String(form.get('calibration')))).toEqual({
+        points: REQUEST.calibration,
+      });
     }
+  });
+
+  it('separates a rejected calibration from other rejections', async () => {
+    const result = await requestAnalysis(
+      CONFIG,
+      REQUEST,
+      deps(async () =>
+        jsonResponse(422, { code: 'invalidCalibration', message: 'x', requestId: 'r' }),
+      ),
+    );
+    expect(result).toEqual({ ok: false, error: 'calibrationRejected' });
   });
 
   it('refuses photos over the size limit, or unreadable ones, without sending anything', async () => {
@@ -77,9 +97,11 @@ describe('requestAnalysis', () => {
   it.each([
     [429, 'rateLimited'],
     [500, 'serverError'],
-    [504, 'serverError'],
+    // The service answers 504 when its own processing time limit is reached (contract 1.1).
+    [504, 'timeout'],
     [400, 'rejected'],
-    [413, 'rejected'],
+    [413, 'fileTooLarge'],
+    [415, 'rejected'],
     [401, 'rejected'],
   ])('classifies HTTP %s as %s', async (status, error) => {
     expect(

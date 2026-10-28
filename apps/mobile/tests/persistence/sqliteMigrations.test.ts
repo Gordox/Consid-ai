@@ -79,3 +79,33 @@ describe('migrations on SQLite', () => {
     });
   });
 });
+
+describe('migration 4 on SQLite', () => {
+  it('keeps marks and makes only untouched suggestions pending', async () => {
+    const db = openNodeSqlite();
+    for (const sql of MIGRATIONS.slice(0, 3)) {
+      await db.execAsync(sql);
+    }
+    db.raw.exec(`INSERT INTO sessions VALUES ('s1','t','UTC','P','pistol','9 mm',25,5,NULL,NULL)`);
+    db.raw.exec(`INSERT INTO rounds (id, session_id, sequence, state, created_at_utc, actual_shots,
+      declared_misses, unresolved_shots, target_id, hit_diameter_mm)
+      VALUES ('r1','s1',1,'draft','t',3,0,0,'demo-synthetic-v1',9)`);
+    db.raw
+      .exec(`INSERT INTO round_marks (id, round_id, ordinal, x, y, shots, source, uncertain, candidate_id)
+      VALUES ('m','r1',0,1,1,1,'manual',0,NULL), ('s','r1',1,2,2,1,'suggested',1,'c1'),
+             ('e','r1',2,3,3,1,'suggestedEdited',0,'c2')`);
+    db.raw.exec(`INSERT INTO analysis_attempts (id, round_id, created_at_utc, source, status)
+      VALUES ('a1','r1','t','demo','succeeded')`);
+
+    await db.execAsync(MIGRATIONS[3] ?? '');
+
+    expect(db.raw.prepare('SELECT id, accepted FROM round_marks ORDER BY ordinal').all()).toEqual([
+      { id: 'm', accepted: 1 },
+      { id: 's', accepted: 0 },
+      { id: 'e', accepted: 1 },
+    ]);
+    expect(db.raw.prepare('SELECT after_file_name FROM analysis_attempts').get()).toEqual({
+      after_file_name: null,
+    });
+  });
+});

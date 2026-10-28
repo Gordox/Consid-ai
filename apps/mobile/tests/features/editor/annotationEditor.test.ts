@@ -13,6 +13,7 @@ const suggestion: HitMark = {
   shots: 1,
   source: 'suggested',
   uncertain: true,
+  accepted: false,
   candidateId: 'c1',
 };
 
@@ -47,6 +48,7 @@ describe('editorReducer', () => {
         shots: 1,
         source: 'manual',
         uncertain: false,
+        accepted: true,
         candidateId: null,
       },
     ]);
@@ -97,21 +99,58 @@ describe('editorReducer', () => {
     expect(state.history).toEqual([]);
   });
 
-  it('replaces only untouched suggestions and keeps manual and edited marks', () => {
+  it('replaces only pending suggestions and keeps manual, edited and accepted marks', () => {
     const manual: HitMark = {
       ...suggestion,
       id: 'm',
       source: 'manual',
       uncertain: false,
+      accepted: true,
       candidateId: null,
     };
-    const edited: HitMark = { ...suggestion, id: 'e', source: 'suggestedEdited', uncertain: false };
+    const edited: HitMark = {
+      ...suggestion,
+      id: 'e',
+      source: 'suggestedEdited',
+      uncertain: false,
+      accepted: true,
+    };
+    const accepted: HitMark = { ...suggestion, id: 'a', accepted: true };
     const fresh: HitMark = { ...suggestion, id: 'n', candidateId: 'c9' };
-    const state = apply(initialEditorState(null, [suggestion, manual, edited]), {
+    const state = apply(initialEditorState(null, [suggestion, manual, edited, accepted]), {
       type: 'replaceSuggestions',
       marks: [fresh],
     });
-    expect(state.marks.map((mark) => mark.id)).toEqual(['m', 'e', 'n']);
+    expect(state.marks.map((mark) => mark.id)).toEqual(['m', 'e', 'a', 'n']);
+  });
+
+  it('accepts one suggestion, clearing its uncertainty but keeping its provenance', () => {
+    const state = apply(initialEditorState(null, [suggestion]), {
+      type: 'acceptMark',
+      id: suggestion.id,
+    });
+    expect(state.marks[0]).toMatchObject({ source: 'suggested', accepted: true, uncertain: false });
+    expect(apply(state, { type: 'undo' }).marks[0]).toMatchObject({ accepted: false });
+  });
+
+  it('accepts all certain suggestions at once but leaves uncertain ones for review', () => {
+    const certain: HitMark = { ...suggestion, id: 'c', uncertain: false };
+    const state = apply(initialEditorState(null, [suggestion, certain]), {
+      type: 'acceptCertainSuggestions',
+    });
+    expect(state.marks.map((mark) => [mark.id, mark.accepted])).toEqual([
+      [suggestion.id, false],
+      ['c', true],
+    ]);
+  });
+
+  it('counts a moved suggestion as accepted and edited', () => {
+    const state = apply(initialEditorState(null, [suggestion]), {
+      type: 'moveMark',
+      id: suggestion.id,
+      point: { x: 1, y: 1 },
+    });
+    expect(state.marks[0]).toMatchObject({ source: 'suggestedEdited', accepted: true });
   });
 });
 

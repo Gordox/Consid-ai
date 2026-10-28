@@ -32,6 +32,9 @@ export type HitMark = {
   readonly source: MarkSource;
   // Analysis flagged the suggestion as uncertain and the user has not changed it.
   readonly uncertain: boolean;
+  // A suggestion counts as a hit only after the user accepts, moves or resizes it. Manual and
+  // edited marks are always accepted.
+  readonly accepted: boolean;
   readonly candidateId: string | null;
 };
 
@@ -56,6 +59,8 @@ export type DraftRound = {
 
 export type ConfirmedShot = {
   readonly markId: string;
+  // Where the hit came from; absent in results confirmed before suggestions needed acceptance.
+  readonly source?: MarkSource;
   readonly shots: number;
   readonly centreMm: Point;
   readonly value: number;

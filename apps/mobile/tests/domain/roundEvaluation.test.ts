@@ -21,6 +21,7 @@ function mark(id: string, xMm: number, yMm: number, shots = 1): HitMark {
     shots,
     source: 'manual',
     uncertain: false,
+    accepted: true,
     candidateId: null,
   };
 }
@@ -141,5 +142,43 @@ describe('buildConfirmedResult', () => {
     expect(() => buildConfirmedResult(draft({ actualShots: 9 }), DEMO_TARGET)).toThrow(
       RoundNotConfirmableError,
     );
+  });
+});
+
+describe('pending suggestions', () => {
+  const pending: HitMark = {
+    ...mark('s', 0, 0),
+    source: 'suggested',
+    accepted: false,
+    candidateId: 'c1',
+  };
+
+  it('are not hits, are not scored and block confirmation', () => {
+    const evaluation = evaluateDraft(
+      draft({ actualShots: 2, marks: [mark('a', 44.5, 0), pending] }),
+      DEMO_TARGET,
+    );
+    expect(evaluation.hitShots).toBe(1);
+    expect(evaluation.pendingSuggestions).toBe(1);
+    expect(evaluation.shots?.map((shot) => shot.markId)).toEqual(['a']);
+    expect(evaluation.score?.subtotal).toBe(7);
+    expect(evaluation.blockReason).toBe('suggestionsPending');
+    expect(() =>
+      buildConfirmedResult(
+        draft({ actualShots: 2, marks: [mark('a', 44.5, 0), pending] }),
+        DEMO_TARGET,
+      ),
+    ).toThrow(RoundNotConfirmableError);
+  });
+
+  it('count once accepted, and the result records where each hit came from', () => {
+    const result = buildConfirmedResult(
+      draft({ actualShots: 2, marks: [mark('a', 44.5, 0), { ...pending, accepted: true }] }),
+      DEMO_TARGET,
+    );
+    expect(result.shots.map((shot) => [shot.markId, shot.source, shot.value])).toEqual([
+      ['a', 'manual', 7],
+      ['s', 'suggested', 10],
+    ]);
   });
 });
