@@ -4,7 +4,14 @@
 export type AnalysisStatus = 'succeeded' | 'unusableImage' | 'registrationFailed';
 
 export type WarningCode =
-  'blur' | 'glare' | 'shadow' | 'clipping' | 'partialTarget' | 'stickerEdges' | 'other';
+  | 'blur'
+  | 'glare'
+  | 'shadow'
+  | 'clipping'
+  | 'partialTarget'
+  | 'stickerEdges'
+  | 'numberColumnsSkipped'
+  | 'other';
 
 export type AnalysisCandidate = {
   readonly id: string;
@@ -40,6 +47,7 @@ const WARNINGS: readonly WarningCode[] = [
   'clipping',
   'partialTarget',
   'stickerEdges',
+  'numberColumnsSkipped',
   'other',
 ];
 const MAX_CANDIDATES = 100;

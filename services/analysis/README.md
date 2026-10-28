@@ -106,8 +106,10 @@ The app's own timeout is 60 s.
    - **Single** (`opencv-single-morph-v1`):
      - Black-hat finds dark holes on light paper. Top-hat finds light holes on the black area.
      - The edge of the black area is ignored.
-     - The number columns on the axes are not searched, because printed digits look like
-       holes. Holes there must be marked by hand.
+     - The number columns on the axes (6 % of the outer radius on each side of both axes) are
+       not searched, because printed digits look like holes. The result always carries the
+       warning `numberColumnsSkipped`, and the app tells the user to mark holes there by hand.
+       An unsuggested hole is never treated as a miss.
      - Sticker edges are always reported as a risk.
 4. **Find candidates.**
    - Structures thinner than about 0.7 of the smallest hole are removed (ring lines,

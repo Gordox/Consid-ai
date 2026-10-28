@@ -1,4 +1,8 @@
-import { analysisBlock, latestAttemptText } from '../../../src/features/analysis/analysisText';
+import {
+  analysisBlock,
+  latestAttemptText,
+  modeText,
+} from '../../../src/features/analysis/analysisText';
 
 const READY = {
   hasAfter: true,
@@ -19,6 +23,13 @@ describe('analysisBlock', () => {
 
   it('names the first thing to fix', () => {
     expect(analysisBlock({ ...READY, hasAfter: false, calibrated: false })).toBe('noAfterPhoto');
+  });
+});
+
+describe('modeText', () => {
+  it('tells, before analysis, that single-photo mode skips the number columns', () => {
+    expect(modeText(false)).toContain('not suggested');
+    expect(modeText(true)).not.toContain('number');
   });
 });
 

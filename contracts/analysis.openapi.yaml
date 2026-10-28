@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Target Practice analysis
-  version: 1.1.0
+  version: 1.2.0
   description: >
     Suggests hit locations on the after photo of one round. Suggestions are untrusted: the app
     validates every field, the user confirms or corrects each hit, and scores are calculated in
@@ -9,6 +9,7 @@ info:
     is services/analysis (Python, FastAPI, OpenCV); it stores nothing and calls no other
     service. Version 1.1 adds the required calibration field, the registration object and a
     nullable image size, and limits formats to those the service decodes (JPEG, PNG, WebP).
+    Version 1.2 adds the warning numberColumnsSkipped.
 servers:
   - url: http://127.0.0.1:8000
     description: Local development on this computer, or on a phone via adb reverse tcp:8000 tcp:8000.
@@ -211,8 +212,21 @@ components:
       properties:
         code:
           type: string
+          description: >
+            numberColumnsSkipped is not a photo problem: single-photo analysis did not search
+            the columns of printed numbers on the axes, so holes there are never suggested. The
+            app must say so, and an unsuggested hole is never counted as a miss.
           enum:
-            [blur, glare, shadow, clipping, partialTarget, stickerEdges, other]
+            [
+              blur,
+              glare,
+              shadow,
+              clipping,
+              partialTarget,
+              stickerEdges,
+              numberColumnsSkipped,
+              other,
+            ]
     Error:
       type: object
       required: [code, message, requestId]

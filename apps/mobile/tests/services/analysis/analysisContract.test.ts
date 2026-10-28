@@ -30,6 +30,15 @@ describe('parseAnalysisResponse', () => {
     });
   });
 
+  it('accepts the numberColumnsSkipped warning of contract 1.2', () => {
+    expect(
+      parseAnalysisResponse(
+        body({ warnings: [{ code: 'stickerEdges' }, { code: 'numberColumnsSkipped' }] }),
+        EXPECTED,
+      ),
+    ).toMatchObject({ ok: true, value: { warnings: ['stickerEdges', 'numberColumnsSkipped'] } });
+  });
+
   it('allows a missing image size only when the photo could not be decoded', () => {
     expect(
       parseAnalysisResponse(

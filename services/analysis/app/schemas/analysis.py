@@ -21,7 +21,16 @@ class CandidateOut(BaseModel):
 
 
 class WarningOut(BaseModel):
-    code: Literal["blur", "glare", "shadow", "clipping", "partialTarget", "stickerEdges", "other"]
+    code: Literal[
+        "blur",
+        "glare",
+        "shadow",
+        "clipping",
+        "partialTarget",
+        "stickerEdges",
+        "numberColumnsSkipped",
+        "other",
+    ]
 
 
 class RegistrationOut(BaseModel):

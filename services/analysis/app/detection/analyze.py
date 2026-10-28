@@ -234,10 +234,12 @@ def analyze_single(after: DecodedImage, calibration: Calibration) -> AnalysisOut
             warnings=[*warnings, "other"],
         )
     # Without a before photo old holes under stickers and sticker edges cannot be told apart
-    # from new holes with certainty, so sticker edges are always a stated risk.
+    # from new holes with certainty, so sticker edges are always a stated risk. The number
+    # columns were not searched at all, which the result must say: a hole there is not found,
+    # and the app must not treat it as a miss.
     return AnalysisOutcome(
         status=Status.SUCCEEDED,
         algorithm_version=SINGLE_ALGORITHM_VERSION,
         candidates=_to_candidates(search.blobs, scale, after, region, size),
-        warnings=[*warnings, "stickerEdges"],
+        warnings=[*warnings, "stickerEdges", "numberColumnsSkipped"],
     )

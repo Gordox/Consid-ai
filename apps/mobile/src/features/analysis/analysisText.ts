@@ -28,7 +28,9 @@ export const ANALYSIS_ERROR_TEXT: Record<
     "The target couldn't be found in the photo. Retake it with the whole target in view, or mark hits yourself.",
 };
 
-const WARNING_TEXT: Record<WarningCode, string> = {
+// Photo problems the analysis noticed. numberColumnsSkipped is about what was searched, not
+// about the photo, and gets its own sentence.
+const WARNING_TEXT: Record<Exclude<WarningCode, 'numberColumnsSkipped'>, string> = {
   blur: 'blur',
   glare: 'glare',
   shadow: 'shadows',
@@ -38,13 +40,27 @@ const WARNING_TEXT: Record<WarningCode, string> = {
   other: 'other photo problems',
 };
 
+export const NUMBER_COLUMNS_SKIPPED_TEXT =
+  'The columns of printed numbers were not searched. Mark any holes there yourself; a hole that is not marked is never counted as a miss.';
+
 export function suggestionSummary(count: number, warnings: readonly WarningCode[]): string {
-  const found =
+  const skipped = warnings.includes('numberColumnsSkipped');
+  const where = skipped ? ' outside the number columns' : '';
+  const parts = [
     count === 0
-      ? 'No new holes were found. Mark any hits yourself.'
-      : `${count === 1 ? '1 suggestion' : `${count} suggestions`} added. Check each one before confirming.`;
-  if (warnings.length === 0) return found;
-  return `${found} The analysis noticed: ${[...new Set(warnings)].map((code) => WARNING_TEXT[code]).join(', ')}.`;
+      ? `No new holes were found${where}. Mark any hits yourself.`
+      : `${count === 1 ? '1 suggestion' : `${count} suggestions`} added. Check each one before confirming.`,
+  ];
+  if (skipped) {
+    parts.push(NUMBER_COLUMNS_SKIPPED_TEXT);
+  }
+  const problems = [...new Set(warnings)].flatMap((code) =>
+    code === 'numberColumnsSkipped' ? [] : [WARNING_TEXT[code]],
+  );
+  if (problems.length > 0) {
+    parts.push(`The analysis noticed: ${problems.join(', ')}.`);
+  }
+  return parts.join(' ');
 }
 
 export type AnalysisBlock =
@@ -80,7 +96,7 @@ export function analysisBlock(input: {
 export function modeText(paired: boolean): string {
   return paired
     ? 'Compares the before and after photos to find new holes.'
-    : 'Without a before photo only the after photo is used. This is less reliable: sticker edges can look like holes, and holes on the columns of printed numbers are not suggested.';
+    : 'Without a before photo only the after photo is used. This is less reliable: sticker edges can look like holes, and holes on the columns of printed numbers are not suggested. Mark those yourself; an unmarked hole is never counted as a miss.';
 }
 
 const STORED_ERROR_TEXT: Record<string, string> = {

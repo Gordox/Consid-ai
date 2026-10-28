@@ -51,4 +51,13 @@ describe('suggestionSummary', () => {
     expect(suggestionSummary(0, [])).toBe('No new holes were found. Mark any hits yourself.');
     expect(suggestionSummary(1, ['glare', 'glare', 'blur'])).toContain('glare, blur');
   });
+
+  it('says that the number columns were not searched and that unmarked holes are not misses', () => {
+    const none = suggestionSummary(0, ['stickerEdges', 'numberColumnsSkipped']);
+    expect(none).toContain('No new holes were found outside the number columns.');
+    expect(none).toContain('The columns of printed numbers were not searched.');
+    expect(none).toContain('never counted as a miss');
+    expect(none).toContain('The analysis noticed: sticker edges that may look like holes.');
+    expect(none).not.toContain('numberColumnsSkipped');
+  });
 });

@@ -57,6 +57,8 @@ def test_paired_analysis_returns_suggestions_in_after_photo_pixels(client: TestC
     assert body["candidates"]
     assert set(body["candidates"][0]) == {"id", "x", "y", "diameterPx", "confidence", "uncertain"}
     assert body["registration"]["method"] in {"features+ecc", "features"}
+    # Paired mode searches the whole target, number columns included.
+    assert {"code": "numberColumnsSkipped"} not in body["warnings"]
 
 
 def test_single_analysis_takes_only_the_after_photo(client: TestClient) -> None:
@@ -65,6 +67,7 @@ def test_single_analysis_takes_only_the_after_photo(client: TestClient) -> None:
     body = response.json()
     assert body["algorithmVersion"] == "opencv-single-morph-v1"
     assert {"code": "stickerEdges"} in body["warnings"]
+    assert {"code": "numberColumnsSkipped"} in body["warnings"]
     assert body["registration"] == {"method": "none", "inliers": None}
 
 
