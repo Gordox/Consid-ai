@@ -7,6 +7,7 @@ import { Banner } from '../../components/Banner';
 import { Button } from '../../components/Button';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { colors, radius, spacing, typography } from '../../components/tokens';
+import { calibrationProblem } from '../../domain/round/calibrationCheck';
 import type { DraftRound } from '../../domain/round/round';
 import { findTarget } from '../../domain/target/targetDefinition';
 import {
@@ -108,14 +109,17 @@ export function AnalysisPanel({
     oldPhotoCopy:
       (after !== null && after.originalFileName === null) ||
       (before !== null && before.originalFileName === null),
-    calibrated: draft.calibration !== null,
+    // A crossed or folded calibration counts as not calibrated: it cannot frame the search.
+    calibrated:
+      draft.calibration !== null &&
+      (after === null || calibrationProblem(draft.calibration, after) === null),
     targetKnown: target !== null,
   });
 
   async function run(): Promise<void> {
     setConfirmReplace(false);
     if (running || config === null || after === null || target === null) return;
-    if (draft.calibration === null) return;
+    if (draft.calibration === null || block !== null) return;
     onRunningChange(true);
     setMessage(null);
     setCancelling(false);
@@ -180,6 +184,7 @@ export function AnalysisPanel({
         resultJson: JSON.stringify(result.value),
         suggestions: candidatesToMarks(result.value.candidates, newId),
         duplicateRadiusPx: duplicateRadiusPx(result.value.candidates, after),
+        calibration: draft.calibration,
       });
       setMessage(
         outcome.kind === 'stale'

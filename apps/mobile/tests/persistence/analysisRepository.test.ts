@@ -1,4 +1,4 @@
-import type { HitMark, RoundPhoto } from '../../src/domain/round/round';
+import type { Calibration, HitMark, RoundPhoto } from '../../src/domain/round/round';
 import {
   applyAnalysisResult,
   createAnalysisAttempt,
@@ -61,6 +61,7 @@ const apply = (
   db: Awaited<ReturnType<typeof draftWithAfter>>,
   attemptId: string,
   suggestions: HitMark[],
+  calibration: Calibration | null = null,
 ) =>
   applyAnalysisResult(db, {
     attemptId,
@@ -69,6 +70,7 @@ const apply = (
     resultJson: '{}',
     suggestions,
     duplicateRadiusPx: 20,
+    calibration,
   });
 
 async function marks(db: Awaited<ReturnType<typeof draftWithAfter>>) {
@@ -163,5 +165,37 @@ describe('analysis attempts on SQLite', () => {
       id: 'a2',
       status: 'pending',
     });
+  });
+});
+
+describe('applyAnalysisResult: calibration changed meanwhile', () => {
+  const sent: Calibration = [
+    { x: 1500, y: 500 },
+    { x: 2500, y: 2000 },
+    { x: 1500, y: 3500 },
+    { x: 500, y: 2000 },
+  ];
+  const adjusted: Calibration = [{ x: 1520, y: 510 }, sent[1], sent[2], sent[3]];
+  const hit: HitMark = { ...suggestion('h', 900, 900), source: 'manual', accepted: true };
+
+  it('ignores an answer for an earlier calibration and keeps the marks', async () => {
+    const db = await draftWithAfter();
+    await saveDraftAnnotations(db, ROUND_ID, sent, [hit]);
+    await startAttempt(db, 'a1', '2026-10-28T10:00:00.000Z');
+    await saveDraftAnnotations(db, ROUND_ID, adjusted, [hit]);
+
+    await expect(apply(db, 'a1', [suggestion('s', 100, 100)], sent)).resolves.toEqual({
+      kind: 'stale',
+    });
+    expect(await marks(db)).toEqual([['h', 'manual', true]]);
+    expect((await getLatestAttempt(db, ROUND_ID))?.errorCode).toBe('stale');
+  });
+
+  it('applies an answer for the calibration still in place', async () => {
+    const db = await draftWithAfter();
+    await saveDraftAnnotations(db, ROUND_ID, sent, [hit]);
+    await startAttempt(db, 'a1', '2026-10-28T10:00:00.000Z');
+    const outcome = await apply(db, 'a1', [suggestion('s', 100, 100)], sent);
+    expect(outcome.kind).toBe('applied');
   });
 });

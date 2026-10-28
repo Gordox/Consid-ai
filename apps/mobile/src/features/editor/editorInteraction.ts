@@ -33,8 +33,24 @@ export function nextSelection(
   return candidates[(index + 1) % candidates.length]?.id ?? null;
 }
 
+// The placed calibration point within reach, nearest first, or null.
+export function pointNear(points: readonly Point[], at: Point, reach: number): number | null {
+  let best: number | null = null;
+  let bestDistance = reach;
+  points.forEach((point, index) => {
+    const distance = Math.hypot(point.x - at.x, point.y - at.y);
+    if (distance <= bestDistance) {
+      best = index;
+      bestDistance = distance;
+    }
+  });
+  return best;
+}
+
 export type Release = {
   readonly tool: EditorTool;
+  // Placed calibration points; with four, a tap away from them only clears the selection.
+  readonly calibrationPoints: readonly Point[];
   // The finger moved beyond the tap slop.
   readonly moved: boolean;
   readonly start: Point;
@@ -52,7 +68,10 @@ export type Release = {
 export function releaseAction(release: Release): EditorAction | null {
   const { tool, moved, start, end, marks, selectedId, reach } = release;
   if (tool === 'calibrate') {
-    return { type: 'addCalibrationPoint', point: end };
+    if (release.calibrationPoints.length < 4) {
+      return { type: 'addCalibrationPoint', point: end };
+    }
+    return moved ? null : { type: 'selectPoint', index: null };
   }
   if (!moved) {
     const candidates = marksNear(marks, start, reach);

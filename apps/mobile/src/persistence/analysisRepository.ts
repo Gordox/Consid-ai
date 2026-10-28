@@ -1,7 +1,7 @@
-import type { HitMark } from '../domain/round/round';
+import type { Calibration, HitMark } from '../domain/round/round';
 import type { SessionDatabase } from './database';
 import { RoundNotEditableError, RoundNotFoundError } from './roundRepository';
-import { readNullableString, readString } from './roundRow';
+import { readNullableString, readString, serializeCalibration } from './roundRow';
 
 export type AttemptSource = 'service' | 'demo';
 
@@ -72,7 +72,9 @@ function readNumberField(row: unknown, key: string): number {
 // Stores the validated result and replaces pending suggestions with the new ones. Manual,
 // edited and accepted marks always stay. Only the newest attempt of a draft round may apply,
 // and only while the round still has the photos that attempt analysed, so a late answer to an
-// earlier attempt, after a photo change or after confirmation changes nothing.
+// earlier attempt, after a photo change, after the calibration was changed or after confirmation
+// changes nothing. Suggestions are photo positions found inside the calibrated area, so an answer
+// for another calibration is discarded as a whole; marks already on the round are untouched.
 export async function applyAnalysisResult(
   db: SessionDatabase,
   input: {
@@ -82,11 +84,16 @@ export async function applyAnalysisResult(
     resultJson: string;
     suggestions: readonly HitMark[];
     duplicateRadiusPx: number;
+    // The calibration the request was sent with.
+    calibration: Calibration | null;
   },
 ): Promise<ApplyOutcome> {
   let outcome: ApplyOutcome = { kind: 'stale' };
   await db.withExclusiveTransactionAsync(async (txn) => {
-    const round = await txn.getFirstAsync('SELECT state FROM rounds WHERE id = ?', [input.roundId]);
+    const round = await txn.getFirstAsync(
+      'SELECT state, calibration_json FROM rounds WHERE id = ?',
+      [input.roundId],
+    );
     if (round === null || round === undefined) {
       throw new RoundNotFoundError();
     }
@@ -108,7 +115,9 @@ export async function applyAnalysisResult(
       latest !== undefined &&
       readString(latest, 'id') === input.attemptId &&
       readNullableString(latest, 'after_file_name') === currentFile('after') &&
-      readNullableString(latest, 'before_file_name') === currentFile('before');
+      readNullableString(latest, 'before_file_name') === currentFile('before') &&
+      readNullableString(round, 'calibration_json') ===
+        (input.calibration === null ? null : serializeCalibration(input.calibration));
     if (readString(round, 'state') !== 'draft' || !isCurrent) {
       await txn.runAsync(
         "UPDATE analysis_attempts SET status = 'failed', error_code = 'stale' WHERE id = ? AND status = 'pending'",

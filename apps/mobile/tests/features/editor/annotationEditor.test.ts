@@ -141,3 +141,73 @@ describe('editorReducer', () => {
     expect(state.marks[0]).toMatchObject({ source: 'suggestedEdited', accepted: true });
   });
 });
+
+describe('editable calibration', () => {
+  const points = [
+    { x: 500, y: 100 },
+    { x: 900, y: 500 },
+    { x: 500, y: 900 },
+    { x: 100, y: 500 },
+  ];
+  const hit: HitMark = {
+    id: 'h1',
+    position: { x: 420, y: 380 },
+    shots: 1,
+    source: 'manual',
+    uncertain: false,
+    accepted: true,
+    candidateId: null,
+  };
+
+  function calibrated(): EditorState {
+    return initialEditorState(
+      [
+        points[0] ?? { x: 0, y: 0 },
+        points[1] ?? { x: 0, y: 0 },
+        points[2] ?? { x: 0, y: 0 },
+        points[3] ?? { x: 0, y: 0 },
+      ],
+      [hit],
+    );
+  }
+
+  it('moves one point, selects it and keeps every hit at its photo position', () => {
+    const state = editorReducer(calibrated(), {
+      type: 'moveCalibrationPoint',
+      index: 1,
+      point: { x: 880, y: 510 },
+    });
+    expect(state.calibrationPoints[1]).toEqual({ x: 880, y: 510 });
+    expect(state.calibrationPoints[0]).toEqual(points[0]);
+    expect(state.selectedPoint).toBe(1);
+    expect(state.marks).toEqual([hit]);
+  });
+
+  it('undoes a drag in one step', () => {
+    const moved = editorReducer(calibrated(), {
+      type: 'moveCalibrationPoint',
+      index: 2,
+      point: { x: 1, y: 1 },
+    });
+    expect(editorReducer(moved, { type: 'undo' }).calibrationPoints).toEqual(points);
+  });
+
+  it('ignores a point that does not exist', () => {
+    const state = calibrated();
+    expect(
+      editorReducer(state, { type: 'moveCalibrationPoint', index: 4, point: { x: 1, y: 1 } }),
+    ).toBe(state);
+    expect(editorReducer(state, { type: 'selectPoint', index: 7 })).toBe(state);
+  });
+
+  it('selects the point just placed and clears the selection on reset', () => {
+    const placed = editorReducer(initialEditorState(null, []), {
+      type: 'addCalibrationPoint',
+      point: { x: 1, y: 2 },
+    });
+    expect(placed.selectedPoint).toBe(0);
+    const reset = editorReducer(placed, { type: 'restartCalibration' });
+    expect(reset.selectedPoint).toBeNull();
+    expect(reset.calibrationPoints).toEqual([]);
+  });
+});

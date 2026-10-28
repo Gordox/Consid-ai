@@ -13,6 +13,8 @@ export type Annotations = {
 
 export type EditorState = Annotations & {
   readonly selectedId: string | null;
+  // The calibration point being adjusted (0 top … 3 left). Selection only; never saved.
+  readonly selectedPoint: number | null;
   // Earlier annotations, newest last. Selection is not an edit and is not undone.
   readonly history: readonly Annotations[];
 };
@@ -20,6 +22,10 @@ export type EditorState = Annotations & {
 export type EditorAction =
   | { readonly type: 'addCalibrationPoint'; readonly point: Point }
   | { readonly type: 'restartCalibration' }
+  // A placed point dragged to a new place. Marks keep their photo positions; only how they map
+  // onto the target changes, and the domain rescores them.
+  | { readonly type: 'moveCalibrationPoint'; readonly index: number; readonly point: Point }
+  | { readonly type: 'selectPoint'; readonly index: number | null }
   | { readonly type: 'addMark'; readonly id: string; readonly point: Point }
   | { readonly type: 'select'; readonly id: string | null }
   | { readonly type: 'moveMark'; readonly id: string; readonly point: Point }
@@ -35,7 +41,13 @@ export function initialEditorState(
   calibration: Calibration | null,
   marks: readonly HitMark[],
 ): EditorState {
-  return { calibrationPoints: calibration ?? [], marks, selectedId: null, history: [] };
+  return {
+    calibrationPoints: calibration ?? [],
+    marks,
+    selectedId: null,
+    selectedPoint: null,
+    history: [],
+  };
 }
 
 export function calibrationOf(state: Annotations): Calibration | null {
@@ -43,11 +55,18 @@ export function calibrationOf(state: Annotations): Calibration | null {
   return a && b && c && d ? [a, b, c, d] : null;
 }
 
-function edit(state: EditorState, next: Annotations, selectedId: string | null): EditorState {
+function edit(
+  state: EditorState,
+  next: Annotations,
+  selectedId: string | null,
+  selectedPoint: number | null = state.selectedPoint,
+): EditorState {
   const snapshot: Annotations = { calibrationPoints: state.calibrationPoints, marks: state.marks };
   return {
-    ...next,
+    calibrationPoints: next.calibrationPoints,
+    marks: next.marks,
     selectedId,
+    selectedPoint,
     history: [...state.history, snapshot].slice(-HISTORY_LIMIT),
   };
 }
@@ -71,10 +90,26 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
         state,
         { ...state, calibrationPoints: [...state.calibrationPoints, action.point] },
         state.selectedId,
+        state.calibrationPoints.length,
       );
     case 'restartCalibration':
       if (state.calibrationPoints.length === 0) return state;
-      return edit(state, { ...state, calibrationPoints: [] }, state.selectedId);
+      return edit(state, { ...state, calibrationPoints: [] }, state.selectedId, null);
+    case 'moveCalibrationPoint': {
+      if (action.index < 0 || action.index >= state.calibrationPoints.length) return state;
+      const calibrationPoints = state.calibrationPoints.map((point, index) =>
+        index === action.index ? action.point : point,
+      );
+      return edit(state, { ...state, calibrationPoints }, state.selectedId, action.index);
+    }
+    case 'selectPoint':
+      if (
+        action.index !== null &&
+        (action.index < 0 || action.index >= state.calibrationPoints.length)
+      ) {
+        return state;
+      }
+      return { ...state, selectedPoint: action.index };
     case 'addMark': {
       const mark: HitMark = {
         id: action.id,
@@ -148,7 +183,17 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       const selectedId = previous.marks.some((mark) => mark.id === state.selectedId)
         ? state.selectedId
         : null;
-      return { ...previous, selectedId, history: state.history.slice(0, -1) };
+      const selectedPoint =
+        state.selectedPoint !== null && state.selectedPoint < previous.calibrationPoints.length
+          ? state.selectedPoint
+          : null;
+      return {
+        calibrationPoints: previous.calibrationPoints,
+        marks: previous.marks,
+        selectedId,
+        selectedPoint,
+        history: state.history.slice(0, -1),
+      };
     }
   }
 }

@@ -1,4 +1,5 @@
 import type { HitMark } from '../../../src/domain/round/round';
+import { calibrationProblem } from '../../../src/domain/round/calibrationCheck';
 import {
   MAGNIFIER,
   magnifiedView,
@@ -6,10 +7,17 @@ import {
   markerNumbers,
   marksNear,
   nextSelection,
+  pointNear,
   releaseAction,
   type Release,
 } from '../../../src/features/editor/editorInteraction';
-import { imageToScreen } from '../../../src/features/editor/viewTransform';
+import {
+  fitView,
+  imageToScreen,
+  scaleOf,
+  screenToImage,
+  zoomAround,
+} from '../../../src/features/editor/viewTransform';
 
 function mark(id: string, x: number, y: number, accepted = true): HitMark {
   return {
@@ -35,6 +43,7 @@ function release(overrides: Partial<Release>): Release {
     end: { x: 0, y: 0 },
     marks: [A, B, S],
     selectedId: null,
+    calibrationPoints: [],
     reach: 10,
     newId: () => 'new',
     ...overrides,
@@ -148,5 +157,76 @@ describe('magnifiedView', () => {
     );
     expect(centre.x).toBeCloseTo(MAGNIFIER.size / 2);
     expect(centre.y).toBeCloseTo(MAGNIFIER.size / 2);
+  });
+});
+
+const IMAGE = { width: 1000, height: 1000 };
+const CLOCKWISE = [
+  { x: 500, y: 100 },
+  { x: 900, y: 500 },
+  { x: 500, y: 900 },
+  { x: 100, y: 500 },
+];
+
+describe('calibration points', () => {
+  it('adds points until there are four, then a tap only clears the point selection', () => {
+    expect(releaseAction(release({ tool: 'calibrate', end: { x: 5, y: 6 } }))).toEqual({
+      type: 'addCalibrationPoint',
+      point: { x: 5, y: 6 },
+    });
+    expect(
+      releaseAction(
+        release({ tool: 'calibrate', calibrationPoints: CLOCKWISE, end: { x: 5, y: 6 } }),
+      ),
+    ).toEqual({ type: 'selectPoint', index: null });
+    expect(
+      releaseAction(release({ tool: 'calibrate', calibrationPoints: CLOCKWISE, moved: true })),
+    ).toBeNull();
+  });
+
+  it('finds the placed point under the finger', () => {
+    expect(pointNear(CLOCKWISE, { x: 895, y: 505 }, 20)).toBe(1);
+    expect(pointNear(CLOCKWISE, { x: 700, y: 700 }, 20)).toBeNull();
+  });
+
+  it('accepts four points in order round the target', () => {
+    expect(calibrationProblem(CLOCKWISE, IMAGE)).toBeNull();
+    expect(calibrationProblem(CLOCKWISE.slice(0, 3), IMAGE)).toBeNull();
+  });
+
+  it('explains points placed in the wrong order or crossed', () => {
+    const swapped = [CLOCKWISE[0], CLOCKWISE[3], CLOCKWISE[2], CLOCKWISE[1]].filter(
+      (point) => point !== undefined,
+    );
+    expect(calibrationProblem(swapped, IMAGE)).toBe('wrongOrder');
+    const crossed = [CLOCKWISE[0], CLOCKWISE[2], CLOCKWISE[1], CLOCKWISE[3]].filter(
+      (point) => point !== undefined,
+    );
+    expect(calibrationProblem(crossed, IMAGE)).toBe('wrongOrder');
+  });
+
+  it('explains points on top of each other', () => {
+    const doubled = [CLOCKWISE[0], { x: 505, y: 102 }, CLOCKWISE[2], CLOCKWISE[3]].filter(
+      (point) => point !== undefined,
+    );
+    expect(calibrationProblem(doubled, IMAGE)).toBe('tooClose');
+  });
+});
+
+describe('calibration points after zoom and pan', () => {
+  it('finds the touched point in screen space and maps the drop back to photo pixels', () => {
+    const view = zoomAround(
+      fitView({ width: 1000, height: 1000 }, { width: 360, height: 480 }),
+      3,
+      { x: 300, y: 200 },
+      { width: 1000, height: 1000 },
+      { width: 360, height: 480 },
+    );
+    const screenPoints = CLOCKWISE.map((point) => imageToScreen(view, point));
+    const right = screenPoints[1] ?? { x: 0, y: 0 };
+    expect(pointNear(screenPoints, { x: right.x + 10, y: right.y - 10 }, 28)).toBe(1);
+    const drop = screenToImage(view, { x: right.x + 30, y: right.y });
+    expect(drop.x).toBeCloseTo(900 + 30 / scaleOf(view));
+    expect(drop.y).toBeCloseTo(500);
   });
 });

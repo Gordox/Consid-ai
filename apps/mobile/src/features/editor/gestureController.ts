@@ -7,7 +7,7 @@ import {
 import type { HitMark } from '../../domain/round/round';
 import type { Point } from '../../domain/target/homography';
 import type { EditorAction } from './annotationEditor';
-import { type EditorTool, releaseAction } from './editorInteraction';
+import { type EditorTool, pointNear, releaseAction } from './editorInteraction';
 import {
   imageToScreen,
   panBy,
@@ -21,6 +21,8 @@ import {
 // Touch handling for the photo canvas, outside React so the responder is created once.
 // - calibrate and add: one finger places a point; dragging before lifting fine-positions it
 //   under the magnifier. The photo does not pan, so placing never moves the view by accident.
+// - calibrate: a placed point under the finger is picked up and follows the finger; with all
+//   four placed, a drag elsewhere pans.
 // - pan: one finger pans; a tap selects (and steps through overlapping marks).
 // - In add and pan, a drag that starts on the selected mark moves it.
 // - Two fingers always zoom and cancel whatever one finger started.
@@ -32,7 +34,13 @@ export type GestureSnapshot = {
   readonly tool: EditorTool;
   readonly marks: readonly HitMark[];
   readonly selectedId: string | null;
+  readonly calibrationPoints: readonly Point[];
 };
+
+// What follows the finger before the edit is committed on release.
+export type DragPreview =
+  | { readonly kind: 'mark'; readonly id: string; readonly point: Point }
+  | { readonly kind: 'calibration'; readonly index: number; readonly point: Point };
 
 // What the magnifier shows: the finger on the canvas and the image point being edited.
 export type MagnifierFocus = { readonly finger: Point; readonly image: Point };
@@ -40,7 +48,7 @@ export type MagnifierFocus = { readonly finger: Point; readonly image: Point };
 export type GestureCallbacks = {
   readonly dispatch: (action: EditorAction) => void;
   readonly setView: (view: ViewTransform) => void;
-  readonly setDragPreview: (preview: { id: string; point: Point } | null) => void;
+  readonly setDragPreview: (preview: DragPreview | null) => void;
   readonly setMagnifier: (focus: MagnifierFocus | null) => void;
 };
 
@@ -57,6 +65,8 @@ type Gesture =
       readonly startView: ViewTransform;
       // Set when the drag started on the selected mark.
       readonly dragId: string | null;
+      // Set when the touch started on a placed calibration point.
+      readonly pointIndex: number | null;
       readonly moved: boolean;
     }
   | { readonly kind: 'pinch'; readonly startDistance: number; readonly startView: ViewTransform };
@@ -74,7 +84,17 @@ export function createGestureController(newMarkId: () => string) {
     }));
   }
 
-  const places = (tool: EditorTool) => tool === 'calibrate' || tool === 'add';
+  // Whether a one-finger touch away from existing items places a new point (or pans).
+  const places = (current: GestureSnapshot) =>
+    current.tool === 'add' ||
+    (current.tool === 'calibrate' && current.calibrationPoints.length < 4);
+
+  function calibrationTarget(start: Point): number | null {
+    const view = snapshot?.view;
+    if (view == null || snapshot?.tool !== 'calibrate') return null;
+    const screenPoints = snapshot.calibrationPoints.map((point) => imageToScreen(view, point));
+    return pointNear(screenPoints, start, TOUCH_REACH);
+  }
 
   function dragTarget(start: Point): string | null {
     if (snapshot?.view == null || snapshot.tool === 'calibrate') return null;
@@ -104,9 +124,23 @@ export function createGestureController(newMarkId: () => string) {
     onPanResponderGrant: (event) => {
       const [first] = touches(event);
       if (snapshot?.view == null || first === undefined) return;
-      const dragId = dragTarget(first);
-      gesture = { kind: 'single', start: first, startView: snapshot.view, dragId, moved: false };
-      if (dragId === null && places(snapshot.tool)) {
+      const pointIndex = calibrationTarget(first);
+      const dragId = pointIndex === null ? dragTarget(first) : null;
+      gesture = {
+        kind: 'single',
+        start: first,
+        startView: snapshot.view,
+        dragId,
+        pointIndex,
+        moved: false,
+      };
+      if (pointIndex !== null) {
+        callbacks?.dispatch({ type: 'selectPoint', index: pointIndex });
+        const point = snapshot.calibrationPoints[pointIndex];
+        if (point !== undefined) {
+          callbacks?.setMagnifier({ finger: first, image: point });
+        }
+      } else if (dragId === null && places(snapshot)) {
         callbacks?.setMagnifier({ finger: first, image: screenToImage(snapshot.view, first) });
       }
     },
@@ -137,11 +171,16 @@ export function createGestureController(newMarkId: () => string) {
       gesture = { ...gesture, moved };
       const finger = fingerAt(gesture, state);
       const image = screenToImage(gesture.startView, finger);
-      if (gesture.dragId !== null) {
+      if (gesture.pointIndex !== null) {
         if (!moved) return;
-        callbacks.setDragPreview({ id: gesture.dragId, point: image });
+        // The point follows the finger; the rings are redrawn from this preview.
+        callbacks.setDragPreview({ kind: 'calibration', index: gesture.pointIndex, point: image });
         callbacks.setMagnifier({ finger, image });
-      } else if (places(snapshot.tool)) {
+      } else if (gesture.dragId !== null) {
+        if (!moved) return;
+        callbacks.setDragPreview({ kind: 'mark', id: gesture.dragId, point: image });
+        callbacks.setMagnifier({ finger, image });
+      } else if (places(snapshot)) {
         callbacks.setMagnifier({ finger, image });
       } else if (moved) {
         callbacks.setView(
@@ -156,7 +195,16 @@ export function createGestureController(newMarkId: () => string) {
         return;
       }
       const endPoint = screenToImage(finished.startView, fingerAt(finished, state));
-      if (finished.dragId !== null && finished.moved) {
+      if (finished.pointIndex !== null) {
+        // One history entry and one save per drag, written when the finger lifts.
+        if (finished.moved) {
+          callbacks.dispatch({
+            type: 'moveCalibrationPoint',
+            index: finished.pointIndex,
+            point: endPoint,
+          });
+        }
+      } else if (finished.dragId !== null && finished.moved) {
         // One history entry per drag, written when the finger lifts.
         callbacks.dispatch({ type: 'moveMark', id: finished.dragId, point: endPoint });
       } else {
@@ -167,6 +215,7 @@ export function createGestureController(newMarkId: () => string) {
           end: endPoint,
           marks: snapshot.marks,
           selectedId: snapshot.selectedId,
+          calibrationPoints: snapshot.calibrationPoints,
           reach: TOUCH_REACH / scaleOf(finished.startView),
           newId: newMarkId,
         });

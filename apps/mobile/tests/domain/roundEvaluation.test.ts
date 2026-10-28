@@ -183,3 +183,45 @@ describe('pending suggestions', () => {
     ]);
   });
 });
+
+describe('calibration geometry', () => {
+  const after = {
+    role: 'after' as const,
+    fileName: 'a.jpg',
+    originalFileName: 'a.o.jpg',
+    width: 1000,
+    height: 1000,
+    addedAtUtc: 't',
+  };
+
+  it('scores nothing from a crossed calibration even though a homography exists', () => {
+    const crossed = [CALIBRATION[0], CALIBRATION[2], CALIBRATION[1], CALIBRATION[3]] as const;
+    const evaluation = evaluateDraft(
+      draft({ calibration: crossed, photos: { before: null, after } }),
+      DEMO_TARGET,
+    );
+    expect(evaluation.blockReason).toBe('calibrationInvalid');
+    expect(evaluation.score).toBeNull();
+  });
+
+  it('rescores the same photo positions when the calibration moves', () => {
+    const base = evaluateDraft(draft({ photos: { before: null, after } }), DEMO_TARGET);
+    // Shifting every point 120 px (30 mm) right moves the target centre under the marks.
+    const shifted = CALIBRATION.map((point) => ({ x: point.x + 120, y: point.y }));
+    const moved = evaluateDraft(
+      draft({
+        calibration: [
+          shifted[0] ?? CALIBRATION[0],
+          shifted[1] ?? CALIBRATION[1],
+          shifted[2] ?? CALIBRATION[2],
+          shifted[3] ?? CALIBRATION[3],
+        ],
+        photos: { before: null, after },
+      }),
+      DEMO_TARGET,
+    );
+    expect(base.shots?.[0]?.value).toBe(10);
+    expect(moved.shots?.[0]?.centreMm.x).toBeCloseTo(-30);
+    expect(moved.shots?.[0]?.value).toBeLessThan(10);
+  });
+});

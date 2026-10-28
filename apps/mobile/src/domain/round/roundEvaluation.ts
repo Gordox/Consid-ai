@@ -6,6 +6,7 @@ import {
 } from '../target/homography';
 import { SCORING_RULE_VERSION, scoreShot } from '../target/scoring';
 import type { TargetDefinition } from '../target/targetDefinition';
+import { calibrationProblem } from './calibrationCheck';
 import type { ConfirmedResult, ConfirmedShot, DraftRound } from './round';
 import { accountShots, type AccountingStatus, type RoundScore, scoreRound } from './shotAccounting';
 
@@ -75,6 +76,10 @@ export function evaluateDraft(draft: DraftRound, target: TargetDefinition | null
   if (draft.marks.length > 0) {
     if (draft.calibration === null) {
       return blocked('calibrationNeeded');
+    }
+    const after = draft.photos.after;
+    if (after !== null && calibrationProblem(draft.calibration, after) !== null) {
+      return blocked('calibrationInvalid');
     }
     const homography = photoToTarget(draft.calibration, target);
     if (homography === null) {
