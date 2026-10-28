@@ -29,6 +29,7 @@ import {
   updateTemplate,
 } from '../../persistence/libraryRepository';
 import { newId, nowUtcIso } from '../../services/deviceContext';
+import { CalibreField } from '../calibre/CalibreField';
 import { createActionGuard } from '../rounds/nextRound';
 import { fieldErrorMessage } from '../sessions/fieldErrorMessages';
 import { FIREARM_TYPE_LABELS } from '../sessions/firearmTypeLabels';
@@ -226,11 +227,10 @@ export function ProfileForm({
         placeholder="Choose a firearm type"
         value={FIREARM_TYPES.find((type) => type === input.firearmType) ?? null}
       />
-      <TextField
+      <CalibreField
         error={errors.calibreLabel && fieldErrorMessage('calibreLabel', errors.calibreLabel)}
-        label="Calibre"
         locked={flow.saving}
-        onChangeText={(value) => setInput({ ...input, calibreLabel: value })}
+        onChange={(value) => setInput({ ...input, calibreLabel: value })}
         value={input.calibreLabel}
       />
     </FormFrame>

@@ -32,6 +32,7 @@ import { useSessionStore } from '../startup/sessionStoreContext';
 import { fieldErrorMessage } from './fieldErrorMessages';
 import { FIREARM_TYPE_LABELS } from './firearmTypeLabels';
 import { createSessionFormController, type SessionFormView } from './sessionFormController';
+import { CalibreField } from '../calibre/CalibreField';
 import { useStartingPoints } from './StartingPointsSection';
 import { isEditable } from './sessionFormState';
 
@@ -50,7 +51,7 @@ const FIELD_ORDER: readonly SessionField[] = [
   'plannedRounds',
 ];
 
-type TextFieldName = Exclude<SessionField, 'firearmType'>;
+type TextFieldName = Exclude<SessionField, 'firearmType' | 'calibreLabel'>;
 
 type PendingDialog = { kind: 'discard' | 'uncertain'; repeat: () => void };
 
@@ -153,7 +154,7 @@ export function SessionForm() {
   const typeTriggerRef = useRef<HostInstance>(null);
   const fieldOffsets = useRef<Partial<Record<SessionField, number>>>({});
   const firearmNameRef = useRef<TextInputInstance>(null);
-  const calibreLabelRef = useRef<TextInputInstance>(null);
+  const calibreTriggerRef = useRef<HostInstance>(null);
   const distanceMetresRef = useRef<TextInputInstance>(null);
   const plannedShotsPerRoundRef = useRef<TextInputInstance>(null);
   const plannedRoundsRef = useRef<TextInputInstance>(null);
@@ -225,14 +226,14 @@ export function SessionForm() {
       y: Math.max(0, (fieldOffsets.current[field] ?? 0) - spacing.field),
       animated: false,
     });
-    if (field === 'firearmType') {
-      if (typeTriggerRef.current !== null) {
-        AccessibilityInfo.sendAccessibilityEvent(typeTriggerRef.current, 'focus');
+    if (field === 'firearmType' || field === 'calibreLabel') {
+      const trigger = field === 'firearmType' ? typeTriggerRef.current : calibreTriggerRef.current;
+      if (trigger !== null) {
+        AccessibilityInfo.sendAccessibilityEvent(trigger, 'focus');
       }
     } else {
       const inputs: Record<TextFieldName, TextInputInstance | null> = {
         firearmName: firearmNameRef.current,
-        calibreLabel: calibreLabelRef.current,
         distanceMetres: distanceMetresRef.current,
         plannedShotsPerRound: plannedShotsPerRoundRef.current,
         plannedRounds: plannedRoundsRef.current,
@@ -303,8 +304,7 @@ export function SessionForm() {
             label="Firearm name"
             placeholder="Enter firearm name"
             onLayout={(event) => recordOffset(event, 'firearmName')}
-            onSubmitEditing={() => calibreLabelRef.current?.focus()}
-            returnKeyType="next"
+            returnKeyType="done"
           />
 
           <SelectSheet
@@ -319,13 +319,13 @@ export function SessionForm() {
             value={FIREARM_TYPES.find((type) => type === form.input.firearmType) ?? null}
           />
 
-          <TextField
-            {...textFieldProps('calibreLabel')}
-            inputRef={calibreLabelRef}
-            label="Calibre"
+          <CalibreField
+            error={errorFor('calibreLabel')}
+            locked={locked}
+            onChange={(value) => controller.changeField('calibreLabel', value)}
             onLayout={(event) => recordOffset(event, 'calibreLabel')}
-            onSubmitEditing={() => distanceMetresRef.current?.focus()}
-            returnKeyType="next"
+            triggerRef={calibreTriggerRef}
+            value={form.input.calibreLabel}
           />
 
           <TextField
