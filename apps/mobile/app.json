@@ -28,6 +28,14 @@
           "photosPermission": "Target Practice lets you choose photos of your target to mark and score hits.",
           "cameraPermission": "Target Practice uses the camera to photograph your target before and after a round."
         }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Target Practice uses the camera to photograph your target before and after a round.",
+          "microphonePermission": false,
+          "recordAudioAndroid": false
+        }
       ]
     ]
   }

@@ -1,9 +1,7 @@
 import {
   getPendingResultAsync,
   type ImagePickerOptions,
-  launchCameraAsync,
   launchImageLibraryAsync,
-  requestCameraPermissionsAsync,
 } from 'expo-image-picker';
 
 import { type PickOutcome, toPickOutcome } from './pickedPhoto';
@@ -22,20 +20,6 @@ function reportDevError(error: unknown): void {
   }
 }
 
-// Asks for camera access only when the user chooses to take a photo.
-export async function takePhoto(): Promise<PickOutcome> {
-  try {
-    const permission = await requestCameraPermissionsAsync();
-    if (!permission.granted) {
-      return { kind: 'permissionDenied', canAskAgain: permission.canAskAgain };
-    }
-    return toPickOutcome(await launchCameraAsync(OPTIONS));
-  } catch (error) {
-    reportDevError(error);
-    return { kind: 'failed' };
-  }
-}
-
 // The system photo picker needs no library permission on current Android versions.
 export async function choosePhoto(): Promise<PickOutcome> {
   try {
@@ -45,6 +29,9 @@ export async function choosePhoto(): Promise<PickOutcome> {
     return { kind: 'failed' };
   }
 }
+
+// Photos are taken with the in-app camera (features/camera); this module only opens the
+// system photo library.
 
 // The result of a pick that was open when Android ended the app, delivered once on the next
 // start. Null when there is none (and always on iOS).

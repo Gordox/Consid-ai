@@ -3,7 +3,7 @@ import ScanSearch from 'lucide-react-native/icons/scan-search';
 import ChevronRight from 'lucide-react-native/icons/chevron-right';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Image, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Banner } from '../../components/Banner';
 import { Button } from '../../components/Button';
@@ -18,7 +18,7 @@ import { clearPendingPick, recordPendingPick } from '../../persistence/pendingPh
 import { getRound, removeDraftPhoto } from '../../persistence/roundRepository';
 import { getSession } from '../../persistence/sessionRepository';
 import { nowUtcIso } from '../../services/deviceContext';
-import { choosePhoto, takePhoto } from '../../services/photoPicker';
+import { choosePhoto } from '../../services/photoPicker';
 import type { PickOutcome } from '../../services/pickedPhoto';
 import { AnalysisPanel } from '../analysis/AnalysisPanel';
 import { usePhotoStore } from '../startup/photoStoreContext';
@@ -119,9 +119,6 @@ function DraftRoundView({
   const { counts, change, saveFailed } = useDraftCounts(db, draft, reportDevError);
   const [step, setStep] = useState<RoundStep>(() => initialRoundStep(draft));
   const [message, setMessage] = useState<string | null>(null);
-  const [permission, setPermission] = useState<{ role: PhotoRole; canAskAgain: boolean } | null>(
-    null,
-  );
   const [busy, setBusy] = useState(false);
   // While analysis runs, photos and marks stay as the request saw them.
   const [analysisRunning, setAnalysisRunning] = useState(false);
@@ -143,9 +140,24 @@ function DraftRoundView({
     wasCalibrated.current = calibrated;
   }, [draft.calibration]);
 
+  // One camera screen at a time; reopened when this screen is focused again.
+  const cameraGuard = useRef(createActionGuard());
+  useFocusEffect(
+    useCallback(() => {
+      cameraGuard.current.release();
+    }, []),
+  );
+
   async function runPick({ role, source }: PendingPick): Promise<void> {
     setMessage(null);
-    setPermission(null);
+    if (source === 'camera') {
+      // The in-app camera with its guide (expo-camera). It saves the photo itself, so there is
+      // no pending system picker result to recover.
+      if (cameraGuard.current.tryEnter()) {
+        router.push(`${roundPath}/camera?role=${role}`);
+      }
+      return;
+    }
     try {
       // If Android ends the app while the picker is open, the next start finds the photo
       // through this record (PhotoRecovery).
@@ -155,13 +167,11 @@ function DraftRoundView({
       setMessage("Couldn't prepare the photo. Nothing was changed. Try again.");
       return;
     }
-    const outcome: PickOutcome = source === 'camera' ? await takePhoto() : await choosePhoto();
+    const outcome: PickOutcome = await choosePhoto();
     if (outcome.kind !== 'picked') {
       // Cancelling keeps the current photo.
       await clearPendingPick(db).catch(reportDevError);
-      if (outcome.kind === 'permissionDenied') {
-        setPermission({ role, canAskAgain: outcome.canAskAgain });
-      } else if (outcome.kind === 'failed') {
+      if (outcome.kind === 'failed') {
         setMessage("Couldn't use that photo. Try again or choose another one.");
       }
       return;
@@ -217,30 +227,6 @@ function DraftRoundView({
         />
       ) : null}
       {message === null ? null : <Banner body={message} tone="error" />}
-      {permission === null ? null : (
-        <Banner
-          body={
-            permission.canAskAgain
-              ? 'Camera access was not allowed. Try again, or choose a photo from the library.'
-              : 'Camera access is turned off for this app. Allow it in Settings, or choose a photo from the library.'
-          }
-          title="No camera access"
-          tone="error"
-        >
-          {permission.canAskAgain ? null : (
-            <Button
-              label="Open settings"
-              onPress={() => void Linking.openSettings()}
-              variant="secondary"
-            />
-          )}
-          <Button
-            label="Use library instead"
-            onPress={() => requestPick({ role: permission.role, source: 'library' })}
-            variant="secondary"
-          />
-        </Banner>
-      )}
     </>
   );
 
