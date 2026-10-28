@@ -38,11 +38,15 @@ const GOOD = {
   warnings: [],
 };
 
+// A minimal metadata-free JPEG head: SOI, then the start of scan.
+const CLEAN_JPEG = new Uint8Array([0xff, 0xd8, 0xff, 0xda, 0x00, 0x08]);
+
 function deps(
   fetch: (url: string, init: RequestInit) => Promise<Response>,
   size: number | null = 1000,
+  head: Uint8Array = CLEAN_JPEG,
 ) {
-  return { fetch, fileSize: () => size, timeoutMs: 1000 };
+  return { fetch, fileSize: () => size, readHead: () => head, timeoutMs: 1000 };
 }
 
 describe('requestAnalysis', () => {
@@ -67,6 +71,22 @@ describe('requestAnalysis', () => {
       expect(JSON.parse(String(form.get('calibration')))).toEqual({
         points: REQUEST.calibration,
       });
+    }
+  });
+
+  it('sends nothing when a photo still carries EXIF metadata or is not a JPEG', async () => {
+    // EXIF block with a GPS directory entry (tag 0x8825), then the start of scan.
+    const exif = new Uint8Array([
+      0xff, 0xd8, 0xff, 0xe1, 0x00, 0x1c, 0x45, 0x78, 0x69, 0x66, 0, 0, 0x4d, 0x4d, 0, 42, 0, 0, 0,
+      8, 0, 1, 0x88, 0x25, 0, 4, 0, 0, 0, 1, 0, 0, 0, 26, 0xff, 0xda, 0, 8,
+    ]);
+    for (const head of [exif, new Uint8Array([0x89, 0x50, 0x4e, 0x47])]) {
+      const fetch = jest.fn();
+      await expect(requestAnalysis(CONFIG, REQUEST, deps(fetch, 1000, head))).resolves.toEqual({
+        ok: false,
+        error: 'unsafePhoto',
+      });
+      expect(fetch).not.toHaveBeenCalled();
     }
   });
 

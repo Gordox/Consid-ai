@@ -12,6 +12,8 @@ export const ANALYSIS_ERROR_TEXT: Record<
     "Couldn't reach the analysis service. Check the connection and try again. Your photos and marks are kept.",
   timeout: 'Analysis took too long and was stopped. Try again, or mark hits yourself.',
   rejected: "The analysis service didn't accept the photos. Retake them or mark hits yourself.",
+  unsafePhoto:
+    "The photo copy to send isn't an upright JPEG without location data, so nothing was sent. Take or choose the photo again.",
   calibrationRejected:
     "The analysis service couldn't use the calibration with this photo. Calibrate again, then try again.",
   rateLimited: 'The analysis service is busy. Try again in a moment.',

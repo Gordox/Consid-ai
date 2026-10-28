@@ -1,6 +1,7 @@
 import type { Quad } from '../../domain/target/homography';
 import type { AnalysisConfig } from './analysisConfig';
 import { type AnalysisResult, parseAnalysisResponse } from './analysisContract';
+import { checkJpegForUpload, type UploadCheck } from './uploadSafety';
 
 export type AnalysisRequest = {
   readonly roundId: string;
@@ -25,6 +26,7 @@ export type AnalysisError =
   | 'timeout'
   | 'rejected' // 4xx other than rate limiting: the request or images were not accepted
   | 'calibrationRejected' // the service could not use the calibration with this photo
+  | 'unsafePhoto' // the file to send is not a metadata-free JPEG; nothing was sent
   | 'rateLimited'
   | 'serverError'
   | 'invalidResponse'
@@ -35,8 +37,13 @@ export type AnalysisClientDeps = {
   readonly fetch: (url: string, init: RequestInit) => Promise<Response>;
   // Size in bytes of an app photo file, or null when it cannot be read.
   readonly fileSize: (photo: AnalysisPhoto) => number | null;
+  // The first bytes of an app photo file, enough to reach the start of the image data.
+  readonly readHead: (photo: AnalysisPhoto) => Uint8Array;
   readonly timeoutMs: number;
 };
+
+// Metadata segments come before the image data; 256 KB covers them with a wide margin.
+export const UPLOAD_CHECK_BYTES = 256 * 1024;
 
 // Matches the service limit in contracts/analysis.openapi.yaml.
 export const MAX_PHOTO_BYTES = 15 * 1024 * 1024;
@@ -95,6 +102,15 @@ export async function requestAnalysis(
     const size = deps.fileSize(photo);
     if (size === null || size > MAX_PHOTO_BYTES) {
       return { ok: false, error: 'fileTooLarge' };
+    }
+    let check: UploadCheck;
+    try {
+      check = checkJpegForUpload(deps.readHead(photo));
+    } catch {
+      check = 'unreadable';
+    }
+    if (check !== 'ok') {
+      return { ok: false, error: 'unsafePhoto' };
     }
   }
 

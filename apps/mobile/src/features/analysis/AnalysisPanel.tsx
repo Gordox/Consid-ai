@@ -5,7 +5,7 @@ import { Banner } from '../../components/Banner';
 import { Button } from '../../components/Button';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { colors, radius, spacing, typography } from '../../components/tokens';
-import type { DraftRound, RoundPhoto } from '../../domain/round/round';
+import type { DraftRound } from '../../domain/round/round';
 import { findTarget } from '../../domain/target/targetDefinition';
 import {
   applyAnalysisResult,
@@ -17,12 +17,11 @@ import {
 } from '../../persistence/analysisRepository';
 import {
   ANALYSIS_TIMEOUT_MS,
-  type AnalysisPhoto,
   requestAnalysis,
+  UPLOAD_CHECK_BYTES,
 } from '../../services/analysis/analysisClient';
 import { readAnalysisConfig } from '../../services/analysis/analysisConfig';
 import { newId, nowUtcIso } from '../../services/deviceContext';
-import type { PhotoStore } from '../../services/photoStorage';
 import { formatCreatedAt } from '../sessions/formatSession';
 import { usePhotoStore } from '../startup/photoStoreContext';
 import { useSessionStore } from '../startup/sessionStoreContext';
@@ -34,6 +33,7 @@ import {
   modeText,
   suggestionSummary,
 } from './analysisText';
+import { uploadablePhoto } from './analysisPhotos';
 import {
   candidatesToMarks,
   DEMO_ALGORITHM_VERSION,
@@ -45,15 +45,6 @@ function reportDevError(error: unknown): void {
   if (__DEV__) {
     console.warn('Analysis error:', error instanceof Error ? error.name : typeof error);
   }
-}
-
-function toAnalysisPhoto(photo: RoundPhoto, photos: PhotoStore): AnalysisPhoto {
-  return {
-    uri: photos.uri(photo.fileName),
-    fileName: photo.fileName,
-    width: photo.width,
-    height: photo.height,
-  };
 }
 
 type Message = { readonly tone: 'info' | 'error'; readonly text: string };
@@ -142,6 +133,13 @@ export function AnalysisPanel({
         return;
       }
       if (config === null) return;
+      const afterUpload = uploadablePhoto(after, photos.uri);
+      const beforeUpload = before === null ? null : uploadablePhoto(before, photos.uri);
+      if (afterUpload === null || (before !== null && beforeUpload === null)) {
+        await failAnalysisAttempt(db, attemptId, 'oldPhotoCopy');
+        setMessage({ tone: 'error', text: ANALYSIS_BLOCK_TEXT.oldPhotoCopy });
+        return;
+      }
       const result = await requestAnalysis(
         config,
         {
@@ -149,12 +147,13 @@ export function AnalysisPanel({
           attemptId,
           targetId: draft.targetId,
           calibration: draft.calibration,
-          after: toAnalysisPhoto(after, photos),
-          before: before === null ? null : toAnalysisPhoto(before, photos),
+          after: afterUpload,
+          before: beforeUpload,
         },
         {
           fetch: (url, init) => fetch(url, init),
           fileSize: (photo) => photos.size(photo.fileName),
+          readHead: (photo) => photos.readHead(photo.fileName, UPLOAD_CHECK_BYTES),
           timeoutMs: ANALYSIS_TIMEOUT_MS,
         },
       );
