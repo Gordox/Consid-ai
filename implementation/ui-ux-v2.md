@@ -35,6 +35,57 @@ Varje branch kör formatkontroll, lint, typkontroll och tester innan den slås i
 - En skärm i designen blir en route bara där det behövs; övriga blir tillstånd i befintliga routes.
 - Designens maxpoäng ("/ 200") visas inte: tavlans maxpoäng är inte verifierad.
 
-## 4. Resultat
+## 4. Resultat (2026-10-28)
 
-Fylls i när arbetet är klart, se avsnitt 5.
+### Brancher och commits (alla sammanslagna i lokal `main` med fast-forward)
+
+| Branch | Commits |
+| --- | --- |
+| `docs/ui-ux-v2-plan` | `4dbfa00` plan |
+| `refactor/remove-developer-checks` | `c4b8061` |
+| `feature/ui-foundation-v2` | `4dc4b14` |
+| `feature/ui-sessions-v2` | `be01749`, `5d26b05` |
+| `feature/ui-round-flow-v2` | `1c17065` |
+| `feature/ui-editor-v2` | `752715a`, `7710ce8`, `791e1f7` |
+| `docs/ui-ux-v2` | denna dokumentation |
+
+### Användarflödet
+
+- **Designgrund:** `src/components/tokens.ts` har exakt värdena i `tokens.json`. Knappar har tryckt, fokus, inaktiv och upptagen form utan opacitet. Fälten är 56 höga och har låst läge. Nya små kontroller: `IconButton`, `StatusBadge`, `SegmentedControl`, `SelectSheet` och `ScoreSummary`. `Banner` har tonerna error, warning, success och info. Dialoger och sheets följer systemets inställning för reducerad rörelse.
+- **Sessions:** filtren All, In progress och Finished bygger på sessionens faktiska status. Oläsbara poster visas i alla filter, efter träffarna och med en förklaring. "No matching sessions" skiljs från det tomma läget. Korten har statusbadge, rundor och poäng märkt `demo pts`.
+- **New session:** vapentypen väljs i en select-sheet, och Cancel behåller tidigare val. Fältparet staplas vid stor text. Validering, fryst kopia, Retry, konflikt, avvisning och dialoger är oförändrade.
+- **Session detail:** delsumma medan sessionen pågår, separata summeringar för demo och verifierad poäng, rundkort och ett utkast med Continue och Discard. Ett utkast som blockerar avslut visar dialogen "Finish the draft first". En avslutad session visar "Session complete" med statistik.
+- **Runda:**
+  - Stegen är inställning (faktiska skott och diameterantagande), foton (före valfri, efter krävs, Camera och Library, nekad behörighet med Settings och Library) och analysval (destinationen förklaras, ingen procentsiffra, manuell väg).
+  - Den nya routen `confirm` granskar skottredovisningen genom domänen och visar sedan "Round confirmed".
+  - En bekräftad runda är skrivskyddad.
+- **Editor:**
+  - Verktygen Align, Add och Select and pan är uttryckliga. Panorering lägger aldrig till en träff.
+  - En förstorare på cirka 120 pt visar bilden ungefär 2× förstorad, placerad bort från fingret och inom bildytan. Den tar inga tryck.
+  - Accepterade träffar är numrerade, förslag streckade med `?`, och den valda markören har en fokusring.
+  - Överlappande markörer stegas igenom med upprepade tryck och finns i en markörlista.
+  - Inspectorn visar status, antal skott och rundans diameter.
+  - Accept all är borttaget.
+- **Developer checks:** route, skärm, testbanner, lägesbyte, testdatabasradering, `databaseModeContext`, `contentOffsetContext` och demoförslag är borttagna. `/dev/checks` och andra okända länkar visar appens "Not found". `DatabaseGate`, migrationerna, versionsskyddet, `trackedConnection` och sparkoordinatorn finns kvar.
+
+### Kontroller som har körts
+
+- Från `apps/mobile` på integrerad `main`: `format:check`, `lint` och `typecheck` gav inga fel. Jest: 51 sviter och 688 tester godkända. Antalet sjönk först från 688 till 666 när testerna för testdatabaser, lägesbyte, demoförslag och Accept all togs bort. Därefter tillkom tester för filter, kortsammanfattning, rundsteg, felrubriker, editorinteraktion, förstorare och transformer.
+- `npx expo export` för Android och iOS fungerar. Bundlarna innehåller inte strängarna "Developer checks", "UI check database", "Test mode", "target-practice-ui-check" eller "Add demo suggestions".
+- Inga beroenden ändrades, så `expo install --check` behövdes inte. Servern och kontraktet är oförändrade.
+
+### Avvikelser från designen
+
+- **Maxpoäng** som "/ 200" visas inte, eftersom tavlans maxpoäng inte är verifierad.
+- **Diametern** gäller hela rundan i domänen. Inspectorn visar därför rundans diameter, och den ändras i rundans inställningssteg, inte per träff.
+- **Rundkorten** visar ingen klocktid, eftersom rundsammanfattningen inte läser tiden. Det skulle kräva en ändring i persistensen.
+- **Analysen kan inte avbrytas** med en knapp. Klienten stoppar efter 60 sekunder. Att lämna skärmen raderar inte rundan, och sena svar avvisas som förut.
+- **Vikt 650** finns inte i React Native, så 600 används (tillåtet enligt §4).
+- **Fotokällan** väljs med två knappar direkt på fotokortet i stället för ett separat blad. Kamera och bibliotek är plattformens egna skärmar.
+- **Ikonerna** `trash-2` och `history` finns som typer men inte som moduler i Lucide 1.56.0, så `trash` och `chevron-left` används.
+
+### Inte verifierat
+
+- Ingen skärm har körts på en telefon, emulator, simulator eller webb: miljön saknar Android SDK, Xcode-simulator och `react-native-web`. Layout vid 320, 360 och 390 dp, stor text, tangentbordet, safe area, gester, förstoraren, TalkBack och VoiceOver är bara granskade i koden.
+- `router.dismissTo` följt av `push` (Start next round) och spärren mot bakåt på "Round confirmed" behöver kontrolleras på enhet.
+- Steg 7 är fortfarande pausat. Den riktiga tavlan, riktiga foton och serverns precision är oförändrat overifierade.

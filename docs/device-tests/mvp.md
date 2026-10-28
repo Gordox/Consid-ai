@@ -1,19 +1,20 @@
-# Enhetskontroller: MVP med rundor och analys (Galaxy S20, Expo Go)
+# Enhetskontroller: MVP med UI v2.1 (Galaxy S20, Expo Go)
 
-Checklista för hela flödet efter fas 2 (`implementation/mvp-plan.md` §9–11).
+Checklista för hela flödet efter omdesignen UI/UX v2.1 (`implementation/ui-ux-v2.md`).
 
 **Läge 2026-10-28:**
-- Du har rapporterat att grundflödet fungerade före fas 2.
-- Ingen punkt nedan är genomförd eller godkänd.
-- Automatiska tester verifierar inte UI på telefonen.
+- Grundflödet fungerade på S20 före fas 2 och före omdesignen, enligt din rapport.
+- Ingen punkt nedan är genomförd eller godkänd. Den nya UI:n har inte körts på någon telefon.
+- Automatiska tester och Android-exporten verifierar inte UI på telefonen.
 
 **Regler:**
 - Fyll i resultat först när de har körts.
 - Skriv inga sessionsuppgifter eller bilder i rapporten.
-- Kör G2–G5 i testläge (`Developer checks` → `Use UI check database`). G1 körs i normalläge.
+- **Developer checks och testläget finns inte längre.** Appen öppnar alltid den vanliga databasen. Steg som skapar sessioner eller rundor (G2–G5, V1–V4) **skapar riktiga lokala sessioner** bland dina egna. Använd ett tydligt vapennamn, till exempel "Test UI", om du vill känna igen dem. Det finns ingen raderingsfunktion för sessioner.
+- Gamla testdatabaser och bildmappen `photos-ui-check` på telefonen raderas inte och visas inte i appen.
 
 **Förberedelse:**
-1. **Starta appen.** I `apps/mobile`: `npm ci` och `npx expo start`. Ladda om Expo Go helt, eftersom `expo-image-manipulator` är en ny native-modul.
+1. **Starta appen.** I `apps/mobile`: `npm ci` och `npx expo start`. Ladda om Expo Go helt.
 2. **Starta servern** (behövs för G4). Se startguiden i `services/analysis/README.md`.
 3. **Ha en riktig tavla** med klistermärken till hands.
 
@@ -21,21 +22,22 @@ Checklista för hela flödet efter fas 2 (`implementation/mvp-plan.md` §9–11)
 
 | # | Handling | Förväntat | Resultat |
 | --- | --- | --- | --- |
-| G1 | Starta i **normalläge** med dina befintliga sessioner. | Allt finns kvar efter migration 3–6. Gamla bekräftade rundor visar poäng med `(demo)`. Listan visar `Demo scores: …`. | Ej genomförd |
-| G2 | Ny session → `Start round 1`. Läs `Hole diameter` och tryck `Use 9.0 mm`, eller ändra värdet. | Först står det `Assumed, not set: 9.0 mm …` med din kaliber. Efteråt står det `Set by you`. | Ej genomförd |
-| G3 | Ta en före-bild och en efter-bild med kameran i porträttläge. Öppna `Calibrate and mark hits` och tryck de fyra kalibreringspunkterna. | Båda bilderna är rättvända. Det visas ingen varning om storleken. Punkterna hamnar där du trycker, och ringarna ritas över tavlan (måtten är demo). | Ej genomförd |
-| G4 | Tillbaka på rundskärmen: `Analyze photos`. Öppna sedan editorn. Godkänn, ta bort och flytta förslag, och markera eventuella missade hål själv. | Under analysen står `Analysing…` och bild- och editorknapparna är låsta. Därefter står det `N suggestions added …`. Förslagen är streckade tills de godkänns. `Confirm round` är spärrad medan förslag väntar. | Ej genomförd |
-| G5 | Stäm av skotten (missar och oklara skott vid behov) och tryck `Confirm round`. Starta runda 2, kassera den, tryck `Finish session` och gå till listan. | Rundan bekräftas en gång. Med oklara skott står det `Subtotal …, N unresolved shot(s) not counted`. Runda 2 får diametern från runda 1. Listan visar `Finished · Demo scores: 1 round · …`. | Ej genomförd |
+| G1 | Starta appen med dina befintliga sessioner. Pröva filtren **All / In progress / Finished**. Leta efter `Developer checks` och testbannern. | Allt finns kvar. Korten visar status, rundor och poäng med `demo pts`. Filtren visar rätt sessioner, och oläsbara poster (om några) syns i alla filter. Ingen `Developer checks`-länk och ingen testbanner finns. | Ej genomförd |
+| G2 | **Skapar en riktig session.** `New session`: lämna fälten tomma och tryck `Create session`, fyll sedan i. Välj typ i bladet och prova `Cancel` en gång. Starta runda 1. | Fel visas först efter första försöket, och fokus hamnar på första felet. `Cancel` behåller tidigare val. Rundan börjar med `Actual shots` = planerat och `Hole diameter` märkt `Assumed`; `Use this diameter` ändrar till `Set by you`. | Ej genomförd |
+| G3 | `Add photos`: före- och efterbild med `Camera` i porträttläge, och en ur `Library`. Avbryt kameran en gång. `Align target`: placera de fyra punkterna, dra innan du lyfter. | Avbrott behåller befintlig bild. Bilderna är rättvända. Förstoraren syns bort från fingret och inom bilden, och punkten hamnar under hårkorset. Ringarna ritas över tavlan. `Continue` leder till analysvalet. | Ej genomförd |
+| G4 | `Analyse photos`. Öppna `Review hits`. Använd `Select and pan`, zooma och panorera, välj ett förslag och `Accept`, ta bort ett annat, lägg till en träff med `Add hits`, flytta en träff, ångra. | Under analysen visas `Analysing photos…` utan procent, och bilderna är låsta. Förslag är streckade med `?`, accepterade numrerade. Panorering lägger aldrig till en träff. `Review round` är spärrad tills inga förslag väntar. Borttaget förslag blir ingen miss. | Ej genomförd |
+| G5 | `Review round`: ange missar/oklara så att skotten går jämnt upp, bekräfta. `Start next round`, gå tillbaka, `Discard round 2`, `Finish session`. | Med oklara skott står `Confirm incomplete round` och resultatet är en delsumma. `Round confirmed` visas med `Start next round` och `Back to session`. Bakåt från den skärmen leder till sessionen. `Finish session` med ett utkast visar `Finish the draft first`. Den avslutade sessionen visar `Session complete` och demo-märkning. | Ej genomförd |
 
 ## Sedan: övrigt flöde
 
 | # | Handling | Förväntat | Resultat |
 | --- | --- | --- | --- |
-| V1 | Bild i landskapsläge, och en bild ur biblioteket tagen i landskapsläge | Båda är rättvända, och tryck i editorn hamnar rätt | Ej genomförd |
-| V2 | Ta bort före-bilden och analysera igen | Texten om att sifferkolumnerna inte genomsöks visas före och efter analysen. Godkända markeringar och dina egna finns kvar. | Ej genomförd |
-| V3 | Stoppa servern och tryck `Analyze photos` | Ett felmeddelande om nätverket visas, och knappen heter `Try analysis again`. Foton och markeringar finns kvar. | Ej genomförd |
-| V4 | Flygplansläge med appen laddad: hela flödet utan analys | Allt utom analysen fungerar | Ej genomförd |
-| V5 | Största systemtext på rundskärmen och i editorns panel | Texterna radbryts och knapparna går att nå | Ej genomförd |
+| V1 | Bild i landskapsläge, och en bild ur biblioteket tagen i landskapsläge | Båda är rättvända, och tryck i editorn hamnar rätt även efter zoom och panorering | Ej genomförd |
+| V2 | Ta bort före-bilden och analysera igen | `No before photo` visas, och texten om att sifferkolumnerna inte genomsöks visas före och efter analysen. Godkända markeringar och dina egna finns kvar. | Ej genomförd |
+| V3 | Stoppa servern och tryck `Analyse photos` | `Couldn't reach analysis service` visas med `Try again` och `Mark hits manually`. Foton och markeringar finns kvar. | Ej genomförd |
+| V4 | Neka kameraåtkomst, försök ta en bild | `No camera access` med `Open settings` (om systemet inte frågar igen) och `Use library instead`. | Ej genomförd |
+| V5 | Största systemtext och 320–360 dp bredd: listan, formuläret med tangentbordet öppet, rundans steg, editorns panel och dialogerna | Texter radbryts, fältparet i formuläret staplas, primärknappar går att nå med tangentbordet öppet, inget hamnar bakom statusfält eller navigationsfält | Ej genomförd |
+| V6 | TalkBack: sessionskort, filter, select-sheet, markörlistan i editorn | Kort läses som en knapp med status och poängbas. Förslag går att välja och granska via listan. Att placera nya träffar kräver fortfarande touch. | Ej genomförd |
 
 ## Vänta: avancerad återställning
 

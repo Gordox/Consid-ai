@@ -1,5 +1,7 @@
 # Bugg: tangentbordet döljer de nedersta fälten i formuläret
 
+> **Notis (2026-10-28):** Test mode-bannern, `ContentOffsetContext` och den dynamiska `keyboardVerticalOffset` från experiment E2 är borttagna tillsammans med Developer checks. Formuläret har kvar `behavior="padding"` och offset 0, det värde som mättes som korrekt i normalläge (E1). Mätningarna nedan är historiska och oförändrade.
+
 > **Status:** **Åtgärdad för det testade flödet** (2026-10-27). Rättningen är godkänd av ägaren, och sluttestet utan diagnostik gick igenom på S20 i Expo Go. **Mekanismen i H1 stöds av mätning** i Expo Go på S20. **Den bakomliggande plattformsorsaken är inte fastställd** (H3 öppen). Egen Android-build, iOS och andra tangentbord är overifierade. Används som felsökningsövning i hemuppgift 3. Används som felsökningsövning i hemuppgift 3.
 
 ## Observation

@@ -16,8 +16,8 @@ A mobile app for logging recreational target-practice sessions, built with React
 >   counts.
 >
 > Automated checks pass (app: format, lint, types, Jest; service: ruff, mypy, pytest). The basic
-> flow has been tried on the Galaxy S20; the newer parts have not
-> ([S20 checklist](docs/device-tests/mvp.md)). iOS is untested. See
+> flow was tried on the Galaxy S20 before the v2.1 redesign; the redesigned interface has not
+> been run on any phone yet ([S20 checklist](docs/device-tests/mvp.md)). iOS is untested. See
 > [implementation/mvp-plan.md](implementation/mvp-plan.md).
 
 ## Prerequisites
@@ -116,31 +116,37 @@ npx expo-doctor
 
 ## Using the app
 
-1. **New session** on the Sessions list: firearm, calibre, distance and planned shots/rounds.
-2. Open the session and tap **Start round**. Shots fired defaults to the planned number; change it
-   if the round was interrupted.
-3. **Hole diameter:** a new session starts from an *assumed* 9.0 mm, shown as an assumption
-   next to your calibre. Set the diameter your bullets make, or tap **Use 9.0 mm** to confirm
-   it. Your choice carries over to the next round in the session. A hole touching a ring line
-   gets the higher score, so the diameter matters near lines.
-4. **Before photo (optional):** after covering old holes with matching stickers. **After photo:**
-   after the round, from the same spot. Fill the frame with the whole target, hold the phone
-   straight in front of it, and avoid glare and shadows. The app keeps an unchanged copy and an
-   upright copy without location data; marks and analysis use the upright copy.
-5. **Calibrate:** in the editor, tap where the outer ring crosses the line of numbers at the
-   top, right, bottom and left. The rings are drawn back onto the photo so you can check the fit.
-6. **Analyze photos** (when the service is set up, below). With a before photo the two are
-   compared; without one only the after photo is used, which is less reliable. Suggestions are
-   **dashed and not counted** until you accept them. Uncertain ones are marked **?**.
-7. **Edit hits:** accept or delete suggestions (or accept all certain ones at once), tap to add
-   your own marks, drag to move, set several shots for one hole, undo. Moving a suggestion
-   accepts it.
-8. Declare known **misses** and **unresolved** shots on the round screen. Missing marks are never
+The interface follows [docs/design/ui-ux.md](docs/design/ui-ux.md) (v2.1). The app always opens
+your normal database; there is no developer or test mode in the app.
+
+1. **Sessions** lists your sessions with **All / In progress / Finished** filters. Tap
+   **New session**: firearm name, firearm type (chosen in a sheet, nothing preselected), calibre,
+   distance and planned shots/rounds.
+2. Open a session and tap **Start round**. The round starts with **Actual shots** set to the
+   planned number; change it if the round was interrupted.
+3. **Hole diameter** starts as an *assumed* 9.0 mm, labelled **Assumed** next to your calibre.
+   Change it, or tap **Use this diameter** to confirm it. Your choice carries over to the next
+   round. A hole touching a ring line gets the higher score, so the diameter matters near lines.
+4. **Add photos:** the **Before** photo is optional and recommended for reused targets (after
+   covering old holes); the **After** photo is required for marking. Use **Camera** or
+   **Library**. The app keeps an unchanged copy and an upright copy without location data;
+   marks and analysis use the upright copy.
+5. **Align target:** in the editor, place the four points where the outer ring crosses the line
+   of numbers: top, right, bottom, left. Drag before lifting to fine-position a point under the
+   magnifier. The rings are drawn back onto the photo so you can check the fit.
+6. **Analyse photos** (when the service is set up, below) or **Mark hits manually**. With a
+   before photo the two are compared; without one only the after photo is used, which is less
+   reliable. Suggestions are **dashed with ?** and **not counted** until you accept them.
+7. **Review hits:** the editor has explicit tools: **Add hits** (touch to add), **Select and
+   pan** (nothing is added), **Align**, plus undo, zoom and fit. Accepted hits are numbered.
+   Select a marker to accept or remove it, move it, or set several shots for one hole. Every
+   marker is also listed below the photo. There is no "accept all": each suggestion is reviewed.
+8. **Review round:** declare known **misses** and **unresolved** shots. Missing marks are never
    counted as misses, and unresolved shots make the result a subtotal that names them.
-9. **Confirm round** when the shots add up and no suggestion is left to review. Confirmed rounds
-   cannot be changed.
-10. Start the next round, or **Finish session**. The list and the session show demo scores
-    separately from any verified ones.
+9. **Confirm round** when the shots add up and no suggestion is left. Confirmed rounds are
+   read-only. Then **Start next round** or go **Back to session**.
+10. **Finish session** (a draft round must be continued or discarded first). Demo scores are
+    always labelled and kept apart from any verified ones.
 
 If Android closes the app while the camera or photo picker is open, the app tries to save the
 photo on the next start and otherwise tells you the pick was interrupted. Which cases actually
@@ -167,7 +173,7 @@ computer, stores nothing and sends photos nowhere else. Its suggestions are heur
 processing, tested on synthetic images only. Setup, how to reach it from the S20 over Wi-Fi or
 USB, and its limits are in its [README](services/analysis/README.md).
 
-The app sends photos only after you tap **Analyze photos**, and only when an address is set:
+The app sends photos only after you tap **Analyse photos**, and only when an address is set:
 
 ```bash
 # apps/mobile/.env.local (ignored by Git); see apps/mobile/.env.example
@@ -190,10 +196,13 @@ yourself.
 - Every copy is recorded in the database before it is written. At start, the app deletes only
   recorded copies that no round refers to and that are more than ten minutes old (left behind
   if the app stopped mid-save), checking each one just before deleting it. Files it did not
-  record are never touched. Each database (normal, and the development UI-check database) has
-  its own folder.
+  record are never touched. The app uses one database and the `photos` folder. Earlier
+  development builds could also create test databases (`target-practice-ui-check.db`,
+  `target-practice-device-check.db`) and a `photos-ui-check` folder; this version never opens,
+  moves or deletes them, so they stay on the device until the app is
+  uninstalled.
 - Nothing is sent anywhere unless an analysis address is configured **and** you tap
-  **Analyze photos**. Only the upright copies are sent, and only after the app has checked that
+  **Analyse photos**. Only the upright copies are sent, and only after the app has checked that
   they carry no location data.
 
 ## License

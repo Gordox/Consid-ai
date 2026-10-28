@@ -248,7 +248,7 @@ Det verifierar **inte** UI på telefonen. S20-checklistan finns i `docs/device-t
 - **HEIC tas inte emot av servern**, eftersom OpenCV inte kan avkoda formatet. Appen skickar alltid sin JPEG-kopia.
 - **Servern har ingen inloggning.** Den är bara avsedd för ett betrott lokalt nätverk eller USB, och får inte exponeras eller driftsättas som den är.
 - **Bilder som sparades före migration 3** kan inte analyseras förrän de tas eller väljs igen. Editorn jämför bara deras proportioner.
-- **Bildkopior i testläget från före fas 2** ligger i den vanliga mappen och räknas där som övergivna. De städas efter en timme. Bara testdata berörs.
+- **Bildkopior i testläget från före fas 2** ligger i den vanliga mappen och räknas där som övergivna. De städas efter en timme. Bara testdata berörs. (Testläget är borttaget 2026-10-28; dess egen mapp `photos-ui-check` öppnas inte längre.)
 
 **Kvar:**
 - S20-checklistan V1–V18 i `docs/device-tests/mvp.md`.

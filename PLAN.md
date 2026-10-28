@@ -14,11 +14,12 @@ Kamera, bildanalys, poängberäkning, mål, backend, autentisering, synk, redige
 | 1 | Scaffold och verktyg | Klart, enhetstest på S20 återstår |
 | 2 | Domän: inställningar och validering | Klart |
 | 3 | Persistens: migration och repository | Implementerat och enhetstestat, ej verifierat på S20 |
-| 4 | UI/UX-design: sessionslista och formulär | Klart som dokumentation (godkänt). Ingen UI är implementerad. |
+| 4 | UI/UX-design: sessionslista och formulär | Klart som dokumentation (godkänt). **Ersatt 2026-10-28** av designpaketet v2.1 (`docs/design/ui-ux.md`, `tokens.json`, bilder per komponent och skärm). |
 | 5 | Skapa session | Implementerat och enhetstestat. Lyckat flöde kontrollerat på S20, och persistens efter omstart verifierad via listan (steg 6, M5). Tangentbordsbuggen är åtgärdad för det testade flödet (`840e8c7`). Felflöden återstår (steg 7). iOS overifierat. |
 | 6 | Lista sessioner | Implementerat och enhetstestat. M1–M5 och M7–M10 godkända på S20, och M6 delvis kontrollerad men inte verifierad. Felinjektion återstår (steg 7). iOS overifierat. |
-| 7 | Dokumentation och integrationstester på enhet | **Pausat** (2026-10-27). 7a (checklistan) och 7b (testgrunden) är klara. T1–T6 och N4 är godkända på S20. Tangentbordsfelet i testläge är åtgärdat efter E2. 7c–7f och den kvarstående verifieringen återstår (`implementation/step-7-verification.md` §11). |
+| 7 | Dokumentation och integrationstester på enhet | **Pausat** (2026-10-27), inte klart. 7a (checklistan) och 7b (testgrunden) är klara. T1–T6 och N4 är godkända på S20. Developer checks och testläget är **borttagna 2026-10-28** på ägarens beslut, så 7c–7f kan inte återupptas i den formen; kvarstående verifiering måste planeras om (`implementation/step-7-verification.md`). |
 | 8 | CI | **Verifierat i GitHub Actions**: PR #2 (`679c863`) och push till `main` (`d802586`), med alla steg gröna. |
+| UI v2.1 | Omdesign av hela MVP:n och borttagning av Developer checks | **Implementerat och enhetstestat 2026-10-28** (`implementation/ui-ux-v2.md`). Android-exporten fungerar. Ingen skärm är körd på S20 eller iOS; telefonchecklistan finns i `docs/device-tests/mvp.md`. |
 | MVP | Rundor, foton, editor, poäng, lokal analys | **Delvis klar MVP** med fungerande manuellt flöde och lokal, heuristisk analysserver (`implementation/mvp-plan.md` §9–10). Demotavla. Analysen är bara testad på syntetiska bilder. Grundflödet från före fas 2 fungerar på S20. Fas 2 är **inte testad på S20** (`docs/device-tests/mvp.md`). |
 
 ## Verifierade versioner (npm-registret och Expo-dokumentationen för SDK 58, 2026-10-27)
@@ -231,6 +232,8 @@ Detaljplanen, med kontrakt, migrationsordning, teststrategi och testplan för S2
 
 ## Steg 4 – UI/UX-design för sessionslistan och formuläret (klart som dokumentation, ingen UI implementerad)
 
+> **Ersatt 2026-10-28.** Designdokumentet och de fem tavlorna nedan är ersatta av UI/UX v2.1: `docs/design/ui-ux.md` (beteende), `docs/design/tokens.json` (värden) och bilderna i `docs/design/images/components/` och `docs/design/images/screens/`. De gamla tavlorna finns inte längre i arbetskatalogen. Avsnittet nedan beskriver steget som det var.
+
 Steget tillkom 2026-10-27, innan några skärmar byggs. Tidigare steg 4–7 heter nu steg 5–8.
 
 1. **Filer:**
@@ -405,7 +408,7 @@ Detaljplanen, med beslut, tillstånd, nycklar och checklistan M1–M10 med resul
    - lokal tid visas korrekt efter byte av enhetens tidszon
    - en andra start kör inte migrationen igen
    - flygplansläge påverkar inte appen.
-   - Tema och plattform enligt `docs/design/ui-ux.md` avsnitt 11. På Android kontrolleras mörk bakgrund utan vit blinkning, statusfält, navigationsfält, systemets tangentbord, bakåtknappen och dialogerna. iOS-punkterna markeras som overifierade tills de har testats på en riktig enhet. Ett behov av `expo-system-ui` eller `expo-navigation-bar` redovisas innan något installeras.
+   - Tema och plattform enligt `docs/design/ui-ux.md` (v1 avsnitt 11; i v2.1 avsnitt 5 och 10). På Android kontrolleras mörk bakgrund utan vit blinkning, statusfält, navigationsfält, systemets tangentbord, bakåtknappen och dialogerna. iOS-punkterna markeras som overifierade tills de har testats på en riktig enhet. Ett behov av `expo-system-ui` eller `expo-navigation-bar` redovisas innan något installeras.
    - Persistensen enligt testplanen i `implementation/step-3-persistence.md`, avsnitt 7. Den körs mot en separat testdatabas, `target-practice-device-check.db`, och aldrig mot riktiga sessioner. Den täcker:
      - ny databas och upprepad initiering
      - nyare version och rollback när en migration misslyckas

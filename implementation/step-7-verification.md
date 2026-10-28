@@ -1,5 +1,7 @@
 # Detaljplan steg 7: verifiering på enhet, felinjektion och dokumentation
 
+> **Notis (2026-10-28):** Developer checks, testläget, scenarioväljare och testdatabasradering är borttagna ur appen på ägarens beslut (`implementation/ui-ux-v2.md`). Delarna 7c–7f kan inte återupptas i den form som beskrivs här. Steget är fortfarande pausat och inte klart. Beslut och resultat nedan står kvar som historik.
+
 > **Status (2026-10-27):** Planens riktning är godkänd av ägaren, med besluten Ö1–Ö8 (§8). **7a:** Checklistan är skapad och godkänd. **7b:** Grunden för testverktyget är implementerad och enhetstestad (§10). T1–T6 och N4 är godkända på S20. **7c–7f är pausade** (ägarbeslut 2026-10-27, §11) till förmån för appens funktioner. 7b är committad i `4e9dd1b` och tangentbordsrättningen efter E2 i `0fec9d9`. 7a, alltså planen och checklistan, committas tillsammans med den här statusen.
 > **Utgångsläge och branch:** `feature/session-verification`, skapad från `feature/session-list` vid `3063e63` (Ö7). Ingen push eller sammanslagning görs utan ägarens besked.
 
