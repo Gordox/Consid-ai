@@ -19,11 +19,10 @@ import {
   discardDraftRound,
   getRound,
   removeDraftPhoto,
-  setDraftPhoto,
   updateDraftCounts,
 } from '../../persistence/roundRepository';
 import { getSession } from '../../persistence/sessionRepository';
-import { newId, nowUtcIso } from '../../services/deviceContext';
+import { nowUtcIso } from '../../services/deviceContext';
 import type { PickOutcome } from '../../services/pickedPhoto';
 import { choosePhoto, takePhoto } from '../../services/photoPicker';
 import { clearPendingPick, recordPendingPick } from '../../persistence/pendingPhotoPick';
@@ -33,6 +32,7 @@ import { usePhotoStore } from '../startup/photoStoreContext';
 import { useSessionStore } from '../startup/sessionStoreContext';
 import { useFocusLoad } from '../useFocusLoad';
 import { PhotoSlot } from './PhotoSlot';
+import { discardPhotos, photoSaveDeps } from './photoActions';
 import { savePickedPhoto } from './roundPhotos';
 import { roundStatusText } from './roundText';
 
@@ -138,15 +138,11 @@ function DraftRoundView({
     }
     setBusy(true);
     try {
-      await savePickedPhoto(role, outcome.photo, {
-        copyOriginal: photos.copyOriginal,
-        createNormalized: photos.createNormalized,
-        saveRow: (photo) => setDraftPhoto(db, draft.id, photo),
-        deleteFile: photos.delete,
-        newId,
-        now: nowUtcIso,
-        reportError: reportDevError,
-      });
+      await savePickedPhoto(
+        role,
+        outcome.photo,
+        photoSaveDeps(db, photos, draft.id, reportDevError),
+      );
       onChanged();
     } catch (error) {
       reportDevError(error);
@@ -169,13 +165,7 @@ function DraftRoundView({
     setBusy(true);
     try {
       const removed = await removeDraftPhoto(db, draft.id, role);
-      for (const file of removed) {
-        try {
-          photos.delete(file);
-        } catch (error) {
-          reportDevError(error);
-        }
-      }
+      await discardPhotos(db, photos, removed, reportDevError);
       onChanged();
     } catch (error) {
       reportDevError(error);
@@ -208,13 +198,7 @@ function DraftRoundView({
     try {
       await writes.current;
       const files = await discardDraftRound(db, draft.id);
-      for (const file of files) {
-        try {
-          photos.delete(file);
-        } catch (error) {
-          reportDevError(error);
-        }
-      }
+      await discardPhotos(db, photos, files, reportDevError);
       router.back();
     } catch (error) {
       reportDevError(error);

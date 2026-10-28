@@ -1,12 +1,12 @@
 import { Directory, File, Paths } from 'expo-file-system';
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 
-import { isPhotoFileName, photoFileName } from './photoFiles';
+import { isPhotoFileName } from './photoFiles';
 
 // Copies picked photos into a folder in the app's document directory, which the system does
-// not clear. Each database has its own folder, so cleaning up one database's unused copies can
-// never touch photos another database refers to. The originals in the phone's library are never
-// modified or deleted.
+// not clear. Each database has its own folder. This module only reads and writes files; which
+// files may be deleted is decided from the database (roundPhotos.ts). The originals in the
+// phone's library are never modified or deleted.
 
 // Long side of the normalised photo. The S20's 12 MP photos (4032 px) keep their full size;
 // larger ones are scaled down so the upload stays below the 15 MB analysis limit.
@@ -14,32 +14,26 @@ export const NORMALIZED_MAX_SIDE_PX = 4096;
 // High JPEG quality keeps hole edges sharp; 1.0 would roughly double the size for no visible gain.
 const NORMALIZED_JPEG_QUALITY = 0.95;
 
-export type NormalizedPhoto = {
-  readonly fileName: string;
-  readonly width: number;
-  readonly height: number;
-};
-
-export type StoredPhotoFile = {
-  readonly fileName: string;
-  // Milliseconds since the epoch, or null when the system cannot tell.
-  readonly modifiedAtMs: number | null;
-};
-
 export type PhotoStore = {
-  // Copies the picked file unchanged and returns its generated name.
-  copyOriginal(sourceUri: string, id: string): Promise<string>;
+  // Copies the picked file unchanged under the given generated name. The copy keeps the photo's
+  // metadata, including any location, and is never uploaded.
+  copyOriginal(sourceUri: string, fileName: string): Promise<void>;
   // Writes an upright JPEG without metadata (orientation applied, location removed) from a copy
-  // in this store. Its size is the coordinate system for marks and analysis.
-  createNormalized(originalFileName: string, id: string): Promise<NormalizedPhoto>;
+  // in this store. Its size is the coordinate system for marks and analysis, and it is the only
+  // copy that is ever sent to the analysis service.
+  createNormalized(
+    originalFileName: string,
+    fileName: string,
+  ): Promise<{ readonly width: number; readonly height: number }>;
   uri(fileName: string): string;
   exists(fileName: string): boolean;
   // Size in bytes, or null when the copy is missing or cannot be read.
   size(fileName: string): number | null;
-  // Deletes a copy that no row refers to any more. A missing file is already gone.
+  // Deletes a copy. Callers check first that no row refers to it. A missing file is already
+  // gone.
   delete(fileName: string): void;
-  // Files in this store's folder with generated names; anything else is ignored.
-  list(): StoredPhotoFile[];
+  // Reads the first bytes of a copy, for checking the normalised file before upload.
+  readHead(fileName: string, length: number): Uint8Array;
 };
 
 export function createPhotoStore(folderName: string): PhotoStore {
@@ -52,15 +46,12 @@ export function createPhotoStore(folderName: string): PhotoStore {
   };
 
   return {
-    async copyOriginal(sourceUri, id) {
-      const fileName = photoFileName(id, sourceUri);
+    async copyOriginal(sourceUri, fileName) {
       folder().create({ intermediates: true, idempotent: true });
       await new File(sourceUri).copy(fileFor(fileName));
-      return fileName;
     },
 
-    async createNormalized(originalFileName, id) {
-      const fileName = photoFileName(id, 'normalized.jpg');
+    async createNormalized(originalFileName, fileName) {
       // The image loader (Glide on Android) applies the EXIF orientation while decoding, and the
       // saved JPEG carries no EXIF, so what every viewer shows is exactly what is stored.
       const context = ImageManipulator.manipulate(fileFor(originalFileName).uri, {
@@ -80,7 +71,7 @@ export function createPhotoStore(folderName: string): PhotoStore {
           } finally {
             if (temporary.exists) temporary.delete();
           }
-          return { fileName, width: saved.width, height: saved.height };
+          return { width: saved.width, height: saved.height };
         } finally {
           image.release();
         }
@@ -106,16 +97,13 @@ export function createPhotoStore(folderName: string): PhotoStore {
       }
     },
 
-    list() {
-      const directory = folder();
-      if (!directory.exists) return [];
-      const files: StoredPhotoFile[] = [];
-      for (const entry of directory.list()) {
-        if (entry instanceof File && isPhotoFileName(entry.name)) {
-          files.push({ fileName: entry.name, modifiedAtMs: entry.modificationTime });
-        }
+    readHead(fileName, length) {
+      const handle = fileFor(fileName).open();
+      try {
+        return handle.readBytesSync(length);
+      } finally {
+        handle.close();
       }
-      return files;
     },
   };
 }

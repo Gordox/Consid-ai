@@ -66,6 +66,7 @@ function createHarness(): Harness {
         openedModes.push(mode);
         return open.promise;
       },
+      photoFolderFor: (mode) => `photos-${mode}`,
       createCoordinator: () => createSaveCoordinator(),
       reportError: (error) => {
         reported.push(error);

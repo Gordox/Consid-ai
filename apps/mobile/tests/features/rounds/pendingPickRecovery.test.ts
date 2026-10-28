@@ -44,9 +44,13 @@ describe('recoverPendingPick', () => {
     expect(events).toEqual(['save r1 after file:///cache/p.jpg', 'clear']);
   });
 
-  it('clears a record when Android delivered nothing', async () => {
+  it('reports an interrupted pick when Android kept no result, and clears the record', async () => {
     const { events, deps: d } = deps({ takePendingResult: async () => null });
-    await expect(recoverPendingPick(d)).resolves.toEqual({ kind: 'nothingPending' });
+    await expect(recoverPendingPick(d)).resolves.toEqual({
+      kind: 'notSaved',
+      pick: PICK,
+      reason: 'noPhoto',
+    });
     expect(events).toEqual(['clear']);
   });
 

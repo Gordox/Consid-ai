@@ -35,6 +35,7 @@ function createAppDatabaseLifecycle() {
         open: () => openDatabaseAsync(databaseNameForMode(mode)),
         reportCloseFailure: reportDevError,
       }),
+    photoFolderFor: (mode) => photoFolderForMode(mode),
     createCoordinator: () => createSaveCoordinator(),
     reportError: reportDevError,
   });
@@ -49,7 +50,11 @@ export function DatabaseGate({ children }: { children: ReactNode }) {
   const [measuredContentOffsetY, setMeasuredContentOffsetY] = useState(0);
   // Only the banner moves the content, so normal mode never reuses a value from test mode.
   const contentOffsetY = mode === 'test' ? measuredContentOffsetY : 0;
-  const photos = useMemo(() => createPhotoStore(photoFolderForMode(mode)), [mode]);
+  const store = state.status === 'ready' ? state.store : null;
+  const photos = useMemo(
+    () => (store === null ? null : createPhotoStore(store.photoFolder)),
+    [store],
+  );
   const modeControl = useMemo<DatabaseModeControl>(
     () => ({
       mode,
@@ -71,7 +76,7 @@ export function DatabaseGate({ children }: { children: ReactNode }) {
   let content: ReactNode;
   if (state.status === 'failed') {
     content = <StartupErrorScreen errorKind={state.errorKind} onRetry={lifecycle.retry} />;
-  } else if (state.status === 'loading') {
+  } else if (state.status === 'loading' || photos === null) {
     content = (
       <Screen>
         <View style={styles.loading}>

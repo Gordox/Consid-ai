@@ -31,8 +31,9 @@ export async function recoverPendingPick(deps: RecoveryDeps): Promise<RecoveryOu
   try {
     const result = await deps.takePendingResult();
     if (result === null || result === undefined) {
-      // The picker returned normally earlier, or Android delivered nothing.
-      return { kind: 'nothingPending' };
+      // The record is cleared whenever the picker returns while the app runs, so a record left
+      // over means the pick was interrupted and Android kept no result: say so, guess nothing.
+      return { kind: 'notSaved', pick, reason: 'noPhoto' };
     }
     const outcome = toPickOutcome(result);
     if (outcome.kind !== 'picked') {

@@ -8,6 +8,9 @@ import { trackConnection, type TrackedConnection } from './trackedConnection';
 export type SessionStore = {
   readonly db: SessionDatabase;
   readonly coordinator: SaveCoordinator;
+  // The photo folder that belongs to this database. Set together with the connection, so rows
+  // and photo files of different databases can never be mixed.
+  readonly photoFolder: string;
 };
 
 export type StartupErrorKind = 'newerVersion' | 'other';
@@ -23,6 +26,7 @@ export type DatabaseLifecycleState =
 
 export type DatabaseLifecycleDeps = {
   openAndMigrate: (mode: DatabaseMode) => Promise<ClosableSessionDatabase>;
+  photoFolderFor: (mode: DatabaseMode) => string;
   createCoordinator: () => SaveCoordinator;
   reportError: (error: unknown) => void;
 };
@@ -116,7 +120,10 @@ export function createDatabaseLifecycle(deps: DatabaseLifecycleDeps): DatabaseLi
       const connection = trackConnection(db);
       const coordinator = deps.createCoordinator();
       open = { connection, coordinator };
-      setState({ status: 'ready', store: { db: connection.db, coordinator } });
+      setState({
+        status: 'ready',
+        store: { db: connection.db, coordinator, photoFolder: deps.photoFolderFor(wantedMode) },
+      });
     });
   }
 

@@ -97,6 +97,19 @@ ALTER TABLE analysis_attempts ADD COLUMN before_file_name TEXT;`;
 // become 'assumed': nothing recorded that the user chose their diameter. Only adds.
 const MIGRATION_5_DIAMETER_SOURCE = `ALTER TABLE rounds ADD COLUMN hit_diameter_source TEXT NOT NULL DEFAULT 'assumed' CHECK (hit_diameter_source IN ('assumed','userSet'));`;
 
+// Every photo file this database creates is recorded here before it is written. Cleanup only
+// ever deletes files listed here, so files of other databases, older app versions or anything
+// else in the folder are never touched. Existing photo rows are recorded so a copy orphaned
+// later (for example by a crash after a replacement) can still be cleaned up. Only adds.
+const MIGRATION_6_PHOTO_FILE_JOURNAL = `CREATE TABLE photo_files (
+  file_name TEXT PRIMARY KEY NOT NULL,
+  created_at_utc TEXT NOT NULL
+) STRICT;
+INSERT OR IGNORE INTO photo_files (file_name, created_at_utc)
+  SELECT file_name, added_at_utc FROM round_photos;
+INSERT OR IGNORE INTO photo_files (file_name, created_at_utc)
+  SELECT original_file_name, added_at_utc FROM round_photos WHERE original_file_name IS NOT NULL;`;
+
 // Append only: index + 1 is the schema version. Never edit or reorder a shipped entry.
 export const MIGRATIONS: readonly string[] = [
   MIGRATION_1_CREATE_SESSIONS,
@@ -104,6 +117,7 @@ export const MIGRATIONS: readonly string[] = [
   MIGRATION_3_PHOTO_RELIABILITY,
   MIGRATION_4_SUGGESTION_REVIEW,
   MIGRATION_5_DIAMETER_SOURCE,
+  MIGRATION_6_PHOTO_FILE_JOURNAL,
 ];
 
 export const LATEST_SCHEMA_VERSION = MIGRATIONS.length;
