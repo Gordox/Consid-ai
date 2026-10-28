@@ -204,3 +204,54 @@ Det verifierar **inte** UI på telefonen. S20-checklistan finns i `docs/device-t
 | `feature/mvp-docs-2` | README, start av servern och nätverket till S20, S20-checklistan och resultatet. |
 
 **Nytt beroende:** `expo-image-manipulator ~58.0.15`. Det behövs för att faktiskt rotera pixlarna och ta bort metadata. Paketet ingår inte i stacken i `CLAUDE.md` och tas med under ägarens mandat för självständigt MVP-arbete. Beslutet redovisas i slutrapporten.
+
+## 10. Resultat av fas 2 (2026-10-28)
+
+**Integrerat i lokal `main`** (fast-forward per branch, inget pushat):
+
+| Branch | Commit | Innehåll |
+| --- | --- | --- |
+| `feature/photo-reliability` | `f15b436`, `38c269b` | Planen för fas 2 (§9), migration 3, rättvända kopior utan metadata, återställning efter att appen avslutats, en bildmapp per databas, städning, SQLite-tester |
+| `feature/analysis-server` | `0850203` | `services/analysis` (FastAPI och OpenCV), kontrakt 1.1, syntetiska tester, `docs/evaluation.md` |
+| `feature/analysis-review` | `96fbc0f` | Migration 4, förslag som måste godkännas, försök som knyts till bildfiler, sparad status med återförsök, LAN i utvecklingsläge |
+| `feature/target-and-diameter` | `bec1aeb` | Migration 5, diameterns källa, demopoäng skilda från verklig poäng, oklara skott i summeringarna, `docs/target-calibration.md` |
+| `feature/analysis-ci` | `7244d28` | Serverns kontroller i CI (`setup-python` v7.0.0 fäst på SHA) |
+| `fix/analysis-status-while-running` | `84efc72` | Statusen visar pågående analys |
+| `feature/mvp-docs-2` | se git log | README, S20-checklistan, utvärderingen på svenska och den här statusen |
+
+**Kontroller på den integrerade `main`:**
+- **App:** `format:check`, `lint` och `typecheck` gav exit 0. `npm test -- --runInBand` gav 46 sviter och 672 tester. `npx expo install --check` var OK, `expo-doctor` gav 20/20, och `expo export --platform android` gav 1437 moduler. `npm audit` är oförändrad: 3 high och 11 low.
+- **Server:** `ruff format --check`, `ruff check` och `mypy --strict` var OK. Pytest gav 26 tester. Samma steg i en ny virtuell miljö från `requirements-lock.txt` gick igenom.
+- **Riktiga HTTP-anrop mot uvicorn lokalt:**
+  - Läget med före- och efter-bild gav 5 av 5 hål på 0,8 s. Läget med en bild gav 5 kandidater.
+  - HEIC gav 415. Före-bild som saknades gav 400. 40 MB gav 413, både med `Content-Length` och med chunked.
+  - Appens `parseAnalysisResponse` godtog serverns svar i båda lägena.
+- **CI-jobbet för servern har inte körts på GitHub**, eftersom inget är pushat.
+
+**Vad som nu är verkligt och vad som är demo:**
+- **Verkligt:**
+  - orientering och metadata
+  - återställning och städning
+  - analysserver som läser bildinnehållet med registrering
+  - granskning av förslag och sena svar
+  - status med återförsök
+  - diameterns källa
+  - separata summeringar.
+- **Fortfarande demo:**
+  - tavlans geometri, och därmed all poäng
+  - demoförslagen i utvecklingsläge.
+- **Heuristiskt och bara syntetiskt testat:** träffdetektionen.
+
+**Avvikelser och val:**
+- **Analysen kräver kalibrering** i båda lägena. Utan den kom väggen och papperets kant med i jämförelsen. Det gav 17 missade hål av 30 i läget med före- och efter-bild på syntetiska bilder.
+- **Läget med en bild letar inte i sifferkolumnerna**, eftersom tryckta siffror ser ut som hål. Hål där markeras för hand.
+- **HEIC tas inte emot av servern**, eftersom OpenCV inte kan avkoda formatet. Appen skickar alltid sin JPEG-kopia.
+- **Servern har ingen inloggning.** Den är bara avsedd för ett betrott lokalt nätverk eller USB, och får inte exponeras eller driftsättas som den är.
+- **Bilder som sparades före migration 3** kan inte analyseras förrän de tas eller väljs igen. Editorn jämför bara deras proportioner.
+- **Bildkopior i testläget från före fas 2** ligger i den vanliga mappen och räknas där som övergivna. De städas efter en timme. Bara testdata berörs.
+
+**Kvar:**
+- S20-checklistan V1–V18 i `docs/device-tests/mvp.md`.
+- Riktiga bilder enligt `docs/evaluation.md`.
+- Tavelmåtten enligt `docs/target-calibration.md`.
+- Beslut om kalibrar och håldiameter.

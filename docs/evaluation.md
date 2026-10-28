@@ -1,76 +1,76 @@
-# Evaluation of hit suggestions
+# Utvärdering av träffförslag
 
-Status 2026-10-28: **evaluated only on synthetic images. No real photo has been analysed.**
-Nothing here shows that the analysis works on real photos.
+Status 2026-10-28: **Analysen är bara utvärderad på syntetiska bilder. Inget riktigt foto har analyserats.** Inget här visar att analysen fungerar på riktiga foton.
 
-## Synthetic results
+## Syntetiskt resultat
 
-Source: `services/analysis/tests/synthetic.py`.
+Källa: `services/analysis/tests/synthetic.py`.
 
-**What the images contain:**
-- A ten-ring target with the black area for 7–10 and numbers on the axes.
-- Six old holes covered by stickers that match the background, with visible edges.
-- Five new torn holes, 36 px wide in the photo.
-- Before and after photos, each with its own perspective, lighting gradient, blur, noise and
-  JPEG compression.
-- Calibration taps with ±3 px jitter.
+**Vad bilderna innehåller:**
+- En tavla med tio ringar, svart område för 7–10 och siffror på axlarna.
+- Sex gamla hål täckta med klistermärken i bakgrundens färg, med synliga kanter.
+- Fem nya, trasiga hål som är 36 px i bild.
+- Före- och efter-bild, var och en med eget perspektiv, ljusgradient, oskärpa, brus och JPEG-komprimering.
+- Kalibreringstryck med ±3 px spridning.
 
-New holes are kept off the number columns.
+De nya hålen hålls borta från sifferkolumnerna.
 
-**Results:**
+**Resultat:**
 
-| Mode | Rounds | New holes | Found | False suggestions | Time per photo (M-series Mac) |
+| Läge | Rundor | Nya hål | Hittade | Falska förslag | Tid per bild (Mac med M-serien) |
 | --- | --- | --- | --- | --- | --- |
-| Paired | 10 | 50 | 50 | 2 | ~0.7 s |
-| Single | 10 | 50 | 47 | 4 | ~0.5 s |
+| Före + efter | 10 | 50 | 50 | 2 | ~0,7 s |
+| Bara efter | 10 | 50 | 47 | 4 | ~0,5 s |
 
-**Also verified:**
-- Two overlapping holes become one uncertain suggestion.
-- No new holes gives `succeeded` with no candidates.
-- A before photo without the target gives `registrationFailed`.
-- A JPEG with EXIF orientation 6 is analysed upright.
+**Dessutom verifierat:**
+- Två överlappande hål blir ett osäkert förslag.
+- Inga nya hål ger `succeeded` utan kandidater.
+- En före-bild utan tavlan ger `registrationFailed`.
+- En JPEG med EXIF-orientering 6 analyseras rättvänd.
+- Appens parser godtar serverns riktiga HTTP-svar i båda lägena.
 
-The automated tests require at least 90 % found and 90 % correct in paired mode, and 85 %
-found and 80 % correct in single mode, on 6 synthetic rounds. These thresholds only guard
-against regressions. They are not acceptance criteria.
+**Gränser i de automatiska testerna** (6 syntetiska rundor):
+- Före + efter: minst 90 % hittade och minst 90 % korrekta förslag.
+- Bara efter: minst 85 % hittade och minst 80 % korrekta förslag.
 
-## What the synthetic images do not cover
+Gränserna skyddar bara mot regressioner. De är inga acceptanskriterier.
 
-- Real paper texture, torn fibres and holes that do not show the backing clearly.
-- Real stickers: shine, curled edges, and holes through stickers.
-- Shadows from the holes themselves, uneven light, glare on glossy stickers, and motion blur.
-- Before and after photos taken far apart, or with different zoom.
-- The real target's printing, colours and number placement.
+## Vad de syntetiska bilderna inte täcker
 
-## Photos needed from the S20
+- Riktig papperstextur, trasiga fibrer och hål som inte visar underlaget tydligt.
+- Riktiga klistermärken: glans, uppvikta kanter och hål genom märken.
+- Hålens egna skuggor, ojämnt ljus, blänk på blanka märken och rörelseoskärpa.
+- Före- och efter-bilder tagna långt ifrån varandra eller med olika zoom.
+- Den riktiga tavlans tryck, färger och sifferplacering.
+- Hål i sifferkolumnerna. Läget med bara efter-bild letar inte där.
 
-Take them with the S20 as JPEG, with the whole target in the frame, from roughly the same spot
-before and after.
+## Bilder som behövs från S20
 
-1. **5–10 rounds as before/after pairs**, preferably from at least two separate sessions.
-   Analysis in single-photo mode uses the same after photos.
-2. **At least one of each:**
-   - holes in the white and in the black area
-   - a hole through a sticker
-   - two overlapping holes
-   - a hole touching a ring line
-   - a hole in the number columns
-   - an angled photo (about 30°)
-   - shadow or glare
-   - a slightly blurred photo
-3. **The true answer for each round:** the number of shots, and where each hole is (its ring
-   value, or a screenshot from the app with the holes marked by hand).
+Ta dem med S20 som JPEG, med hela tavlan i bild, från ungefär samma plats före och efter.
 
-The photos stay on the computer (`services/analysis/evaluation-photos/` is in `.gitignore`)
-and are not committed. Split them into tuning photos and evaluation photos by session.
+1. **5–10 rundor som före/efter-par**, helst från minst två olika sessioner. Läget med bara efter-bild använder samma efter-bilder.
+2. **Minst en av varje:**
+   - hål i vitt och i svart område
+   - hål genom ett klistermärke
+   - två överlappande hål
+   - hål som rör en ringlinje
+   - hål i en sifferkolumn
+   - snett tagen bild, cirka 30°
+   - skugga eller blänk
+   - lätt suddig bild
+3. **Facit per runda:** antal skott, och var varje hål sitter (ringvärde eller en skärmdump från appen med hålen markerade för hand).
 
-## To measure once real photos exist
+**Hantering av bilderna:**
+- Bilderna stannar på datorn. Mappen `services/analysis/evaluation-photos/` ignoreras av Git, och bilderna committas inte.
+- Dela upp dem per session i bilder för justering och bilder för utvärdering.
 
-For each mode on the same after photos:
-- found and correct share against the hand-checked answer
-- rejection rate (`registrationFailed` / `unusableImage`)
-- how often the score from accepted suggestions differs from the hand-checked score
-- correction time in the app
-- time per analysis.
+## Att mäta när riktiga bilder finns
 
-Acceptance thresholds are proposed from these numbers. None are agreed yet.
+För varje läge, på samma efter-bilder:
+- andelen hittade hål och andelen korrekta förslag, mot facit
+- andelen avvisade analyser (`registrationFailed` och `unusableImage`)
+- hur ofta poängen från godkända förslag skiljer sig från facit
+- korrigeringstiden i appen
+- tiden per analys.
+
+Acceptansgränser föreslås utifrån de siffrorna. Inga är överenskomna ännu.

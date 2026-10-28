@@ -3,19 +3,21 @@
 A mobile app for logging recreational target-practice sessions, built with React Native, Expo
 (SDK 58) and TypeScript. The app lives in [`apps/mobile`](apps/mobile).
 
-> **Status: partial MVP with a working manual flow.** You can create a session, open it, run
-> rounds with before and after photos, calibrate the after photo, mark and correct hits, confirm
-> rounds, finish the session and see the results in the list. Two things are **not** real yet:
+> **Status: partial MVP with a working manual flow and a local, heuristic analysis service.**
+> You can create a session, run rounds with before and after photos, calibrate, get hit
+> suggestions from the local analysis service (or mark hits yourself), accept or correct them,
+> confirm rounds, finish the session and see the results in the list. What is **not** real yet:
 >
-> - **Scores use a synthetic demo target.** The real target's dimensions and scoring rules are
->   not verified, so scores are only for trying the workflow (see *Target and scoring*).
-> - **No automatic analysis is connected.** The analysis boundary is built, but no service has
->   been chosen, so hits are marked by hand. Development builds can add fixed demo suggestions,
->   clearly labelled as not real analysis.
+> - **Scores use a synthetic demo target** and are labelled as demo everywhere, including the
+>   summaries. The real target looks like an ISSF 25/50 m pistol target, but its dimensions are
+>   not verified (see [docs/target-calibration.md](docs/target-calibration.md)).
+> - **Hit suggestions are tested on synthetic images only.** No real photo has been analysed
+>   ([docs/evaluation.md](docs/evaluation.md)). Every suggestion must be accepted by you before it
+>   counts.
 >
-> Automated checks pass (format, lint, types, 611 Jest tests; CI on GitHub). The new MVP screens
-> have **not yet been tested on a phone**; see the
-> [S20 checklist](docs/device-tests/mvp.md). iOS is untested. See [PLAN.md](PLAN.md) and
+> Automated checks pass (app: format, lint, types, Jest; service: ruff, mypy, pytest). The basic
+> flow has been tried on the Galaxy S20; the newer parts have not
+> ([S20 checklist](docs/device-tests/mvp.md)). iOS is untested. See
 > [implementation/mvp-plan.md](implementation/mvp-plan.md).
 
 ## Prerequisites
@@ -91,7 +93,19 @@ npm run typecheck
 npm test -- --runInBand
 ```
 
-**CI:** [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs `npm ci` and the same four checks on every pull request to `main` and every push to `main`, using the Node version in `apps/mobile/.nvmrc`. It has no builds, deployment or device tests, so a green run does not mean the app has been checked on a phone. It passed in GitHub Actions for pull request #2 and the push to `main` (`d802586`).
+Some persistence tests run the app's SQL on Node's built-in SQLite (`node:sqlite`): a different
+SQLite build from the phone's, so they do not replace device checks.
+
+Run from `services/analysis` (see its [README](services/analysis/README.md) for setup):
+
+```bash
+ruff format --check app tests
+ruff check app tests
+mypy
+python -m pytest -q
+```
+
+**CI:** [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs both sets of checks on every pull request to `main` and every push to `main`. It has no builds, deployment or device tests, so a green run does not mean the app has been checked on a phone. The app job passed in GitHub Actions for pull request #2 and the push to `main` (`d802586`). The analysis job was added later and has not run on GitHub yet; its steps pass locally in a clean environment.
 
 **Run manually when dependencies change** (not part of CI, because they depend on Expo's online services and can fail when Expo publishes a new patch):
 
@@ -105,54 +119,73 @@ npx expo-doctor
 1. **New session** on the Sessions list: firearm, calibre, distance and planned shots/rounds.
 2. Open the session and tap **Start round**. Shots fired defaults to the planned number; change it
    if the round was interrupted.
-3. **Before photo (optional):** after covering old holes with matching stickers. **After photo:**
+3. **Hole diameter:** a new session starts from an *assumed* 9.0 mm, shown as an assumption
+   next to your calibre. Set the diameter your bullets make, or tap **Use 9.0 mm** to confirm
+   it. Your choice carries over to the next round in the session. A hole touching a ring line
+   gets the higher score, so the diameter matters near lines.
+4. **Before photo (optional):** after covering old holes with matching stickers. **After photo:**
    after the round, from the same spot. Fill the frame with the whole target, hold the phone
-   straight in front of it, and avoid glare and shadows.
-4. **Calibrate and mark hits:** tap where the outer ring crosses the line of numbers at the top,
-   right, bottom and left. The rings are drawn back onto the photo so you can check the fit.
-   Then tap each hole. Tap a mark to select it, drag to move it, set several shots for one hole,
-   delete or undo. Pinch or use +/− to zoom.
-5. Declare known **misses** and **unresolved** shots on the round screen. Missing marks are never
-   counted as misses, and unresolved shots make the result a subtotal.
-6. **Confirm round** when the shots add up. Confirmed rounds cannot be changed.
-7. Start the next round, or **Finish session**. The list shows status, rounds and points.
+   straight in front of it, and avoid glare and shadows. The app keeps an unchanged copy and an
+   upright copy without location data; marks and analysis use the upright copy.
+5. **Calibrate:** in the editor, tap where the outer ring crosses the line of numbers at the
+   top, right, bottom and left. The rings are drawn back onto the photo so you can check the fit.
+6. **Analyze photos** (when the service is set up, below). With a before photo the two are
+   compared; without one only the after photo is used, which is less reliable. Suggestions are
+   **dashed and not counted** until you accept them. Uncertain ones are marked **?**.
+7. **Edit hits:** accept or delete suggestions (or accept all certain ones at once), tap to add
+   your own marks, drag to move, set several shots for one hole, undo. Moving a suggestion
+   accepts it.
+8. Declare known **misses** and **unresolved** shots on the round screen. Missing marks are never
+   counted as misses, and unresolved shots make the result a subtotal that names them.
+9. **Confirm round** when the shots add up and no suggestion is left to review. Confirmed rounds
+   cannot be changed.
+10. Start the next round, or **Finish session**. The list and the session show demo scores
+    separately from any verified ones.
 
-Hole diameter is an assumed value per round (default 9.0 mm). A hole touching a ring line gets
-the higher score.
+If Android closes the app while the camera or photo picker is open, the photo is saved to its
+round on the next start (Android only).
 
 ## Target and scoring
 
-The owner's target is an X-Targets precision target (ten rings, 1–10). Its physical dimensions,
-line treatment and scoring rules are **not verified**, so the app ships only
-`demo-synthetic-v1`: the same ten-ring structure with invented radii (10 mm per ring). Every
-score in the app is labelled as demo. To enable real scoring the app needs, from a reliable
-source: the outer radius of each scoring zone in millimetres, how printed lines count, whether
-the inner ring matters, the target's size, and where nominal hole diameters come from.
+The owner's target is an X-Targets precision target whose layout matches the ISSF 25 m precision
+and 50 m pistol target (rule 6.3.4.5: ring 10 is 50 mm, ring 1 is 500 mm, black area 200 mm).
+The manufacturer does not state its dimensions, so the match is **not verified**; the app ships
+only `demo-synthetic-v1`, the same ten-ring structure with invented radii (10 mm per ring). Every
+score is labelled as demo and kept apart from verified scores. What is needed to enable the real
+target, and a measuring template, are in
+[docs/target-calibration.md](docs/target-calibration.md).
 
-## Analysis service (not connected)
+## Analysis service
 
-The contract is [`contracts/analysis.openapi.yaml`](contracts/analysis.openapi.yaml). The app
-sends photos only after the user taps **Analyze photos**, and only when an address is
-configured:
+[`services/analysis`](services/analysis) is a local Python service (FastAPI, OpenCV) that
+implements [`contracts/analysis.openapi.yaml`](contracts/analysis.openapi.yaml). It runs on your
+computer, stores nothing and sends photos nowhere else. Its suggestions are heuristic image
+processing, tested on synthetic images only. Setup, how to reach it from the S20 over Wi-Fi or
+USB, and its limits are in its [README](services/analysis/README.md).
+
+The app sends photos only after you tap **Analyze photos**, and only when an address is set:
 
 ```bash
 # apps/mobile/.env.local (ignored by Git); see apps/mobile/.env.example
-EXPO_PUBLIC_ANALYSIS_URL=https://analysis.example
+EXPO_PUBLIC_ANALYSIS_URL=http://192.168.1.23:8000
 ```
 
-HTTPS is required; plain HTTP is accepted only for `localhost`/`127.0.0.1` in development (with
-`adb reverse tcp:8000 tcp:8000` on a USB-connected Android phone). The address is not a secret.
-Provider keys must stay on the server. No service or provider has been chosen, so nothing is
-configured and no server code exists yet.
+HTTPS is required in release builds. Development builds also accept plain HTTP to `localhost`,
+`127.0.0.1` and private network addresses (10.x, 172.16–31.x, 192.168.x). Restart
+`npx expo start` after changing the file. Without an address, analysis is off and you mark hits
+yourself.
 
 ## Data and privacy
 
 - Sessions, rounds, marks and results are stored locally in SQLite (`target-practice.db`).
-- Photos are **copied** into the app's own document folder under generated names; the
-  originals in the phone's library are never changed or deleted. Discarding a round or
-  replacing a photo deletes only the app's copy.
-- Nothing is sent to a server unless an analysis address is configured **and** you tap
-  **Analyze photos**.
+- Photos are **copied** into the app's own document folder under generated names: an unchanged
+  copy and an upright JPEG without metadata. The originals in the phone's library are never
+  changed or deleted. Discarding a round or replacing a photo deletes only the app's copies.
+- At start, the app removes copies in its own photo folder that no round refers to and that are
+  more than an hour old (left behind if the app stopped mid-save). Each database (normal, and
+  the development UI-check database) has its own folder.
+- Nothing is sent anywhere unless an analysis address is configured **and** you tap
+  **Analyze photos**. Only the upright copies without location data are sent.
 
 ## License
 

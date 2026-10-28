@@ -19,7 +19,7 @@ Kamera, bildanalys, poängberäkning, mål, backend, autentisering, synk, redige
 | 6 | Lista sessioner | Implementerat och enhetstestat. M1–M5 och M7–M10 godkända på S20, och M6 delvis kontrollerad men inte verifierad. Felinjektion återstår (steg 7). iOS overifierat. |
 | 7 | Dokumentation och integrationstester på enhet | **Pausat** (2026-10-27). 7a (checklistan) och 7b (testgrunden) är klara. T1–T6 och N4 är godkända på S20. Tangentbordsfelet i testläge är åtgärdat efter E2. 7c–7f och den kvarstående verifieringen återstår (`implementation/step-7-verification.md` §11). |
 | 8 | CI | **Verifierat i GitHub Actions**: PR #2 (`679c863`) och push till `main` (`d802586`), med alla steg gröna. |
-| MVP | Rundor, foton, editor, poäng och analysgräns | **Delvis klar MVP** med fungerande manuellt flöde (`implementation/mvp-plan.md`). Demotavla och ingen ansluten analys. **Inte testad på S20** (`docs/device-tests/mvp.md`). |
+| MVP | Rundor, foton, editor, poäng, lokal analys | **Delvis klar MVP** med fungerande manuellt flöde och lokal, heuristisk analysserver (`implementation/mvp-plan.md` §9–10). Demotavla. Analysen är bara testad på syntetiska bilder. Grundflödet från före fas 2 fungerar på S20. Fas 2 är **inte testad på S20** (`docs/device-tests/mvp.md`). |
 
 ## Verifierade versioner (npm-registret och Expo-dokumentationen för SDK 58, 2026-10-27)
 
