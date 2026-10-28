@@ -32,7 +32,7 @@ const SESSION_FIELDS: readonly SessionField[] = [
   'plannedRounds',
 ];
 
-function parseFirearmType(
+export function parseFirearmType(
   raw: string | null,
 ): Result<FirearmType, 'required' | 'unsupportedValue'> {
   if (raw === null || raw === '') {
@@ -41,7 +41,7 @@ function parseFirearmType(
   return isFirearmType(raw) ? { ok: true, value: raw } : { ok: false, error: 'unsupportedValue' };
 }
 
-function parsePlannedRounds(raw: string): Result<number | null, WholeNumberError> {
+export function parsePlannedRounds(raw: string): Result<number | null, WholeNumberError> {
   if (raw.trim() === '') {
     return { ok: true, value: null };
   }

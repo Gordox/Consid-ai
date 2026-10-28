@@ -140,3 +140,28 @@ describe('sessionFormReducer', () => {
     expect(reduce(state, { type: 'saveSettled', outcome: 'saved' })).toBe(state);
   });
 });
+
+describe('prefilled', () => {
+  it('fills an untouched form without marking it changed', () => {
+    const state = sessionFormReducer(initialSessionFormState, {
+      type: 'prefilled',
+      values: { firearmName: 'Club pistol', distanceMetres: '25' },
+    });
+    expect(state.input.firearmName).toBe('Club pistol');
+    expect(state.input.distanceMetres).toBe('25');
+    expect(state.dirty).toBe(false);
+  });
+
+  it('never overwrites what the user has typed', () => {
+    const typed = sessionFormReducer(initialSessionFormState, {
+      type: 'fieldChanged',
+      field: 'firearmName',
+      value: 'Mine',
+    });
+    const state = sessionFormReducer(typed, {
+      type: 'prefilled',
+      values: { firearmName: 'Club pistol' },
+    });
+    expect(state).toBe(typed);
+  });
+});

@@ -91,6 +91,7 @@ type HeaderProps = {
   onFilter: (filter: SessionFilter) => void;
   titleRef: RefObject<TextInstance | null>;
   onNewSession: () => void;
+  onLibrary: () => void;
   onRetry: () => void;
 };
 
@@ -103,6 +104,7 @@ function ListHeader({
   onFilter,
   titleRef,
   onNewSession,
+  onLibrary,
   onRetry,
 }: HeaderProps) {
   return (
@@ -132,6 +134,7 @@ function ListHeader({
         // Available while loading too: the database is ready once this screen renders.
         <Button icon={Plus} label="New session" onPress={onNewSession} />
       )}
+      <Button label="Profiles and templates" onPress={onLibrary} variant="secondary" />
 
       {view.status === 'loaded' && view.refreshFailed ? (
         <>
@@ -230,6 +233,7 @@ export function SessionList() {
             isEmpty={isEmpty}
             noMatches={noMatches}
             onFilter={setFilter}
+            onLibrary={() => router.push('/library')}
             onNewSession={openForm}
             onRetry={controller.retry}
             titleRef={titleRef}

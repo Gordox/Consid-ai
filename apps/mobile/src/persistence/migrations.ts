@@ -110,6 +110,31 @@ INSERT OR IGNORE INTO photo_files (file_name, created_at_utc)
 INSERT OR IGNORE INTO photo_files (file_name, created_at_utc)
   SELECT original_file_name, added_at_utc FROM round_photos WHERE original_file_name IS NOT NULL;`;
 
+// Saved firearm profiles and training templates. Only adds two tables: sessions keep their own
+// settings snapshot and get no reference to these, so editing or archiving one never changes
+// history. Archived rows are kept (no deletion in this version).
+const MIGRATION_7_PROFILES_AND_TEMPLATES = `CREATE TABLE firearm_profiles (
+  id TEXT PRIMARY KEY NOT NULL,
+  firearm_name TEXT NOT NULL CHECK (length(firearm_name) BETWEEN 1 AND 100),
+  firearm_type TEXT NOT NULL CHECK (firearm_type IN ('pistol','revolver','rifle','other')),
+  calibre_label TEXT NOT NULL CHECK (length(calibre_label) BETWEEN 1 AND 50),
+  created_at_utc TEXT NOT NULL,
+  updated_at_utc TEXT NOT NULL,
+  archived_at_utc TEXT,
+  last_used_at_utc TEXT
+) STRICT;
+CREATE TABLE training_templates (
+  id TEXT PRIMARY KEY NOT NULL,
+  name TEXT NOT NULL CHECK (length(name) BETWEEN 1 AND 100),
+  distance_m REAL NOT NULL CHECK (distance_m BETWEEN 0.1 AND 1000),
+  planned_shots_per_round INTEGER NOT NULL CHECK (planned_shots_per_round BETWEEN 1 AND 100),
+  planned_rounds INTEGER CHECK (planned_rounds IS NULL OR planned_rounds BETWEEN 1 AND 100),
+  created_at_utc TEXT NOT NULL,
+  updated_at_utc TEXT NOT NULL,
+  archived_at_utc TEXT,
+  last_used_at_utc TEXT
+) STRICT;`;
+
 // Append only: index + 1 is the schema version. Never edit or reorder a shipped entry.
 export const MIGRATIONS: readonly string[] = [
   MIGRATION_1_CREATE_SESSIONS,
@@ -118,6 +143,7 @@ export const MIGRATIONS: readonly string[] = [
   MIGRATION_4_SUGGESTION_REVIEW,
   MIGRATION_5_DIAMETER_SOURCE,
   MIGRATION_6_PHOTO_FILE_JOURNAL,
+  MIGRATION_7_PROFILES_AND_TEMPLATES,
 ];
 
 export const LATEST_SCHEMA_VERSION = MIGRATIONS.length;

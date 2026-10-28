@@ -24,6 +24,9 @@ export type SessionFormState = {
 
 export type SessionFormAction =
   | { readonly type: 'fieldChanged'; readonly field: SessionField; readonly value: string | null }
+  // Starting values from the last used profile or template. Only for an untouched form, and it
+  // leaves the form untouched: leaving without edits still needs no confirmation.
+  | { readonly type: 'prefilled'; readonly values: Partial<SessionFormInput> }
   | { readonly type: 'validationFailed'; readonly fieldErrors: SessionFieldErrors }
   | { readonly type: 'prepareFailed' }
   | { readonly type: 'saveStarted'; readonly snapshot: Session }
@@ -98,6 +101,11 @@ export function sessionFormReducer(
           : state.visibleErrors,
       };
     }
+    case 'prefilled':
+      if (state.phase !== 'editing' || state.dirty || state.submitAttempted) {
+        return state;
+      }
+      return { ...state, input: { ...state.input, ...action.values } };
     case 'validationFailed':
       if (!isEditable(state.phase)) {
         return state;

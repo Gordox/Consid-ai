@@ -32,6 +32,7 @@ import { useSessionStore } from '../startup/sessionStoreContext';
 import { fieldErrorMessage } from './fieldErrorMessages';
 import { FIREARM_TYPE_LABELS } from './firearmTypeLabels';
 import { createSessionFormController, type SessionFormView } from './sessionFormController';
+import { useStartingPoints } from './StartingPointsSection';
 import { isEditable } from './sessionFormState';
 
 const FIREARM_TYPE_OPTIONS = FIREARM_TYPES.map((type) => ({
@@ -142,6 +143,7 @@ export function SessionForm() {
   const view = useSyncExternalStore(controller.subscribe, controller.getView);
   const { form } = view;
   const locked = !isEditable(form.phase);
+  const startingPoints = useStartingPoints(controller, form.input, locked);
 
   const [dialog, setDialog] = useState<PendingDialog | null>(null);
   // Set when Stay or Keep editing closes a dialog; focus returns to Back once it has closed.
@@ -186,6 +188,8 @@ export function SessionForm() {
 
   // The form is left for good after a successful save, so the flag is never reset.
   const leaveAfterSave = useEffectEvent(() => {
+    // Records which profile and template the saved session started from.
+    startingPoints.markUsed();
     leaveWithoutPrompt();
   });
 
@@ -291,6 +295,7 @@ export function SessionForm() {
             title="New session"
           />
           <StatusBanner view={view} />
+          {startingPoints.section}
 
           <TextField
             {...textFieldProps('firearmName')}

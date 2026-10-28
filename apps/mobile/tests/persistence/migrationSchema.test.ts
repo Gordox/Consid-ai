@@ -91,7 +91,7 @@ describe('MIGRATIONS', () => {
 
   it('derives the latest schema version from the migration list', () => {
     expect(LATEST_SCHEMA_VERSION).toBe(MIGRATIONS.length);
-    expect(LATEST_SCHEMA_VERSION).toBe(6);
+    expect(LATEST_SCHEMA_VERSION).toBe(7);
   });
 
   // If a domain limit changes, this fails and forces a decision about stored rows and a
