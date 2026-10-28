@@ -2,8 +2,8 @@ import ChevronRight from 'lucide-react-native/icons/chevron-right';
 import ChevronLeft from 'lucide-react-native/icons/chevron-left';
 import Plus from 'lucide-react-native/icons/plus';
 import Trash2 from 'lucide-react-native/icons/trash';
-import { useRouter } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { useCallback, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Banner } from '../../components/Banner';
@@ -22,11 +22,10 @@ import {
   finishSession,
   getSessionProgress,
   type RoundSummary,
-  SessionFinishedError,
-  startRound,
 } from '../../persistence/roundRepository';
 import { getSession } from '../../persistence/sessionRepository';
 import { newId, nowUtcIso } from '../../services/deviceContext';
+import { createActionGuard, startNextRound } from '../rounds/nextRound';
 import { discardPhotos } from '../rounds/photoActions';
 import { usePhotoStore } from '../startup/photoStoreContext';
 import { useSessionStore } from '../startup/sessionStoreContext';
@@ -134,6 +133,13 @@ export function SessionDetail({ sessionId }: { sessionId: string }) {
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<ActionError>(null);
   const [dialog, setDialog] = useState<Dialog>(null);
+  // Stops a second tap in the same frame, before busy has re-rendered.
+  const startGuard = useRef(createActionGuard());
+  useFocusEffect(
+    useCallback(() => {
+      startGuard.current.release();
+    }, []),
+  );
 
   const load = useCallback(async () => {
     const found = await getSession(db, sessionId);
@@ -189,29 +195,28 @@ export function SessionDetail({ sessionId }: { sessionId: string }) {
   const shots = (summary.demo?.shots ?? 0) + (summary.verified?.shots ?? 0);
 
   const start = async () => {
-    if (busy) return;
+    if (!startGuard.current.tryEnter()) return;
     setBusy(true);
     setActionError(null);
-    const roundId = newId();
-    try {
-      await startRound(db, {
-        roundId,
-        sessionId,
-        createdAtUtc: nowUtcIso(),
-        actualShots: settings.plannedShotsPerRound,
-        targetId: DEMO_TARGET.id,
-      });
-      openRound(roundId);
-    } catch (error) {
-      if (error instanceof DraftRoundExistsError) {
-        openRound(error.draftRoundId);
-      } else if (error instanceof SessionFinishedError) {
-        reload();
-      } else {
-        setActionError('startFailed');
-      }
-    } finally {
-      setBusy(false);
+    const outcome = await startNextRound(db, {
+      sessionId,
+      actualShots: settings.plannedShotsPerRound,
+      targetId: DEMO_TARGET.id,
+      newId,
+      now: nowUtcIso,
+    });
+    setBusy(false);
+    if (outcome.kind === 'open') {
+      // Stays closed while the round opens; reopened when this screen is focused again.
+      openRound(outcome.roundId);
+      return;
+    }
+    startGuard.current.release();
+    if (outcome.kind === 'sessionFinished') {
+      reload();
+    } else {
+      reportDevError(outcome.error);
+      setActionError('startFailed');
     }
   };
 

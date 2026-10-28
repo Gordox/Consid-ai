@@ -13,17 +13,12 @@ import { colors, radius, spacing, typography } from '../../components/tokens';
 import type { ConfirmedResult, DraftRound } from '../../domain/round/round';
 import { buildConfirmedResult, evaluateDraft } from '../../domain/round/roundEvaluation';
 import { DEMO_TARGET, findTarget } from '../../domain/target/targetDefinition';
-import {
-  confirmRound,
-  DraftRoundExistsError,
-  getRound,
-  SessionFinishedError,
-  startRound,
-} from '../../persistence/roundRepository';
+import { confirmRound, getRound } from '../../persistence/roundRepository';
 import { getSession } from '../../persistence/sessionRepository';
 import { newId, nowUtcIso } from '../../services/deviceContext';
 import { useSessionStore } from '../startup/sessionStoreContext';
 import { useFocusLoad } from '../useFocusLoad';
+import { createActionGuard, startNextRound } from './nextRound';
 import { ShotAccounting } from './RoundCounts';
 import { roundStatusText } from './roundText';
 import { useDraftCounts } from './useDraftCounts';
@@ -69,10 +64,15 @@ function RoundComplete({
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [startFailed, setStartFailed] = useState(false);
+  const guard = useRef(createActionGuard());
   const sessionPath = `/sessions/${sessionId}` as const;
-  // Back from here returns to the session, not to the editor of a round that is now confirmed.
+  // Every way back (header, Android Back, iOS swipe) returns to the session, never to the
+  // editor of a round that is now confirmed. The hook only redirects; it never keeps the user.
   const allowLeaveRef = useRef<() => void>(() => undefined);
   const allowLeave = usePreventRemove(true, () => {
+    // While the next round is being created, Back waits for it; that call always finishes and
+    // then navigates or reopens the guard.
+    if (!guard.current.tryEnter()) return;
     allowLeaveRef.current();
     router.dismissTo(sessionPath);
   });
@@ -83,44 +83,44 @@ function RoundComplete({
   const demo = findTarget(result.targetId)?.isDemo !== false;
 
   const backToSession = () => {
+    if (!guard.current.tryEnter()) return;
     allowLeave();
     router.dismissTo(sessionPath);
   };
 
   const startNext = async () => {
-    if (busy) return;
+    if (!guard.current.tryEnter()) return;
     setBusy(true);
     setStartFailed(false);
-    const roundId = newId();
-    try {
-      await startRound(db, {
-        roundId,
-        sessionId,
-        createdAtUtc: nowUtcIso(),
-        actualShots: plannedShots,
-        targetId: DEMO_TARGET.id,
-      });
-      allowLeave();
-      router.dismissTo(sessionPath);
-      router.push(`${sessionPath}/rounds/${roundId}`);
-    } catch (error) {
-      if (error instanceof DraftRoundExistsError) {
-        allowLeave();
-        router.dismissTo(sessionPath);
-        router.push(`${sessionPath}/rounds/${error.draftRoundId}`);
-      } else if (error instanceof SessionFinishedError) {
-        backToSession();
-      } else {
-        reportDevError(error);
-        setStartFailed(true);
-      }
-    } finally {
+    const outcome = await startNextRound(db, {
+      sessionId,
+      actualShots: plannedShots,
+      targetId: DEMO_TARGET.id,
+      newId,
+      now: nowUtcIso,
+    });
+    if (outcome.kind === 'failed') {
+      reportDevError(outcome.error);
+      setStartFailed(true);
       setBusy(false);
+      guard.current.release();
+      return;
+    }
+    // The guard stays closed: this screen is leaving.
+    allowLeave();
+    router.dismissTo(sessionPath);
+    if (outcome.kind === 'open') {
+      router.push(`${sessionPath}/rounds/${outcome.roundId}`);
     }
   };
 
   return (
     <>
+      <ScreenHeader
+        onBack={backToSession}
+        subtitle="Saved on this device"
+        title="Round confirmed"
+      />
       <Banner
         body="Your reviewed result is now part of this session."
         title={`Round ${sequence} saved`}
@@ -168,6 +168,7 @@ function ReviewDraft({
   const { counts, change, written, saveFailed } = useDraftCounts(db, draft, reportDevError);
   const [busy, setBusy] = useState(false);
   const [confirmFailed, setConfirmFailed] = useState(false);
+  const confirmGuard = useRef(createActionGuard());
   const current: DraftRound = { ...draft, ...counts };
   const evaluation = evaluateDraft(current, target);
   const incomplete = evaluation.status === 'incomplete';
@@ -175,7 +176,7 @@ function ReviewDraft({
   const editorPath = `/sessions/${draft.sessionId}/rounds/${draft.id}/editor` as const;
 
   const confirm = async () => {
-    if (busy || evaluation.blockReason !== null) return;
+    if (evaluation.blockReason !== null || !confirmGuard.current.tryEnter()) return;
     setBusy(true);
     setConfirmFailed(false);
     try {
@@ -184,15 +185,17 @@ function ReviewDraft({
       // cannot be confirmed.
       const result = buildConfirmedResult(current, target);
       const outcome = await confirmRound(db, draft.id, result, nowUtcIso());
+      // A confirmed round is never confirmed again, so the guard stays closed on success.
       if (outcome === 'confirmed') {
         onConfirmed(result);
       } else {
-        // Confirmed earlier (e.g. a repeated press): show the stored round, not this result.
+        // Confirmed earlier: show the stored round, not this result.
         onChanged();
       }
     } catch (error) {
       reportDevError(error);
       setConfirmFailed(true);
+      confirmGuard.current.release();
       onChanged();
     } finally {
       setBusy(false);
@@ -306,11 +309,6 @@ export function RoundConfirmScreen({ sessionId, roundId }: { sessionId: string; 
     return (
       <Screen scroll>
         <View style={styles.stack}>
-          <ScreenHeader
-            onBack={() => router.dismissTo(`/sessions/${sessionId}`)}
-            subtitle="Saved on this device"
-            title="Round confirmed"
-          />
           <RoundComplete
             plannedShots={confirmed.plannedShots}
             result={confirmed.result}
