@@ -112,3 +112,18 @@ export async function listSessions(db: SessionDatabase): Promise<SessionListing>
   }
   return { sessions, invalidRows };
 }
+
+const SELECT_SESSION_SQL = `SELECT ${COLUMN_LIST} FROM sessions WHERE id = ?`;
+
+// null when no row has the id; an unreadable row is returned as invalid, never as missing.
+export async function getSession(
+  db: SessionDatabase,
+  sessionId: string,
+): Promise<{ readonly session: Session } | { readonly invalid: InvalidSessionRow } | null> {
+  const row = await db.getFirstAsync(SELECT_SESSION_SQL, [sessionId]);
+  if (row === null || row === undefined) {
+    return null;
+  }
+  const parsed = parseSessionRow(row);
+  return parsed.ok ? { session: parsed.value } : { invalid: parsed.error };
+}

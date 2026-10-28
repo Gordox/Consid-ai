@@ -23,3 +23,8 @@ export function deviceTimeZone(): string {
 export function newSessionId(): string {
   return randomUUID().toLowerCase();
 }
+
+// Ids for rounds, marks, photos and analysis attempts use the same lowercase UUID v4 format.
+export function newId(): string {
+  return randomUUID().toLowerCase();
+}

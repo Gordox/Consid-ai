@@ -6,6 +6,11 @@ import {
   PLANNED_ROUNDS_RANGE,
   PLANNED_SHOTS_PER_ROUND_RANGE,
 } from '../../src/domain/session/sessionLimits';
+import {
+  ACTUAL_SHOTS_RANGE,
+  HIT_DIAMETER_MM_RANGE,
+  SHOTS_PER_HOLE_RANGE,
+} from '../../src/domain/round/roundRules';
 import { LATEST_SCHEMA_VERSION, MIGRATIONS } from '../../src/persistence/migrations';
 
 // Migration 1 may already exist on devices. This copy fails the test if it is edited;
@@ -32,7 +37,7 @@ describe('MIGRATIONS', () => {
 
   it('derives the latest schema version from the migration list', () => {
     expect(LATEST_SCHEMA_VERSION).toBe(MIGRATIONS.length);
-    expect(LATEST_SCHEMA_VERSION).toBe(1);
+    expect(LATEST_SCHEMA_VERSION).toBe(2);
   });
 
   // If a domain limit changes, this fails and forces a decision about stored rows and a
@@ -59,5 +64,26 @@ describe('MIGRATIONS', () => {
 
   it('stores no session status or target columns', () => {
     expect(migration1).not.toMatch(/status|target/i);
+  });
+
+  // Migration 2 must keep existing sessions: it may only add tables, indexes and a column.
+  it('only adds to the schema in migration 2', () => {
+    const migration2 = MIGRATIONS[1] ?? '';
+    expect(migration2).not.toMatch(/\bDROP\b|\bDELETE\b|\bUPDATE\b|\bRENAME\b/i);
+    expect(migration2.match(/ALTER TABLE/g)).toHaveLength(1);
+    expect(migration2).toContain('ALTER TABLE sessions ADD COLUMN finished_at_utc TEXT;');
+  });
+
+  it('matches the round limits in migration 2', () => {
+    const migration2 = MIGRATIONS[1] ?? '';
+    expect(migration2).toContain(
+      `actual_shots BETWEEN ${ACTUAL_SHOTS_RANGE.min} AND ${ACTUAL_SHOTS_RANGE.max}`,
+    );
+    expect(migration2).toContain(
+      `hit_diameter_mm BETWEEN ${HIT_DIAMETER_MM_RANGE.min} AND ${HIT_DIAMETER_MM_RANGE.max}`,
+    );
+    expect(migration2).toContain(
+      `shots BETWEEN ${SHOTS_PER_HOLE_RANGE.min} AND ${SHOTS_PER_HOLE_RANGE.max}`,
+    );
   });
 });
