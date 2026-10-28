@@ -2,72 +2,116 @@ import ChevronRight from 'lucide-react-native/icons/chevron-right';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Icon } from '../../components/Icon';
+import { StatusBadge } from '../../components/StatusBadge';
 import { colors, radius, spacing, typography } from '../../components/tokens';
 import type { SessionCardText } from './formatSession';
+import type { SessionCardSummary } from './sessionProgressText';
 
 type SessionCardProps = {
   text: SessionCardText;
-  // Status, confirmed rounds and points, e.g. "In progress · 2 rounds · 47 points".
-  progress: string;
+  summary: SessionCardSummary;
   onPress: () => void;
 };
 
-// Opens the session. Read as one button by screen readers, so the lines are not announced
-// again one by one.
-export function SessionCard({ text, progress, onPress }: SessionCardProps) {
+// components/12-session-card.png. The whole card opens the session and is read as one button:
+// name, date, state, rounds and score basis, without repeating the lines one by one.
+export function SessionCard({ text, summary, onPress }: SessionCardProps) {
   return (
     <Pressable
       accessibilityHint="Opens the session"
-      accessibilityLabel={`${text.accessibilityLabel}. ${progress}`}
+      accessibilityLabel={`${text.accessibilityLabel}. ${summary.spoken}`}
       accessibilityRole="button"
       onPress={onPress}
       style={({ pressed }) => [styles.card, pressed && styles.pressed]}
     >
-      <View style={styles.text}>
-        <Text style={styles.title}>{text.title}</Text>
-        <Text style={styles.secondary}>{text.createdAt}</Text>
-        <Text style={styles.detail}>{text.typeAndCalibre}</Text>
-        <Text style={styles.detail}>{text.distanceAndShots}</Text>
-        <Text style={styles.detail}>{text.plannedRounds}</Text>
-        <Text style={styles.progress}>{progress}</Text>
+      <View style={styles.top}>
+        <StatusBadge
+          label={summary.statusLabel}
+          tone={summary.status === 'finished' ? 'success' : 'accent'}
+        />
+        <Icon icon={ChevronRight} size="feature" color={colors.secondary} />
       </View>
-      <Icon icon={ChevronRight} size="action" color={colors.secondary} />
+      <Text style={styles.title}>{text.title}</Text>
+      <Text style={styles.meta}>{text.createdAt}</Text>
+      <View style={styles.bottom}>
+        <View style={styles.details}>
+          <Text style={styles.detail}>{text.typeAndCalibre}</Text>
+          <Text style={styles.secondary}>{text.distanceAndShots}</Text>
+          <Text style={styles.secondary}>{text.plannedRounds}</Text>
+          <Text style={styles.secondary}>{summary.roundsLine}</Text>
+          {summary.draftLine === null ? null : (
+            <Text style={styles.draft}>{summary.draftLine}</Text>
+          )}
+        </View>
+        {summary.verified === null ? null : (
+          <Text style={styles.score}>{summary.verified.short}</Text>
+        )}
+        {summary.demo === null ? null : (
+          <Text style={[styles.score, styles.demoScore]}>{summary.demo.short}</Text>
+        )}
+      </View>
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
   card: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.small,
+    gap: spacing.label,
     padding: spacing.field,
     borderRadius: radius.card,
+    borderWidth: 1,
+    borderColor: colors.border,
     backgroundColor: colors.surface,
   },
   pressed: {
     backgroundColor: colors.elevated,
   },
-  text: {
-    flex: 1,
-    gap: spacing.fine,
+  top: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   title: {
     ...typography.section,
     color: colors.text,
-    marginBottom: spacing.fine,
   },
-  secondary: {
-    ...typography.label,
-    color: colors.secondary,
+  meta: {
+    ...typography.body,
+    color: colors.muted,
+  },
+  bottom: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+    gap: spacing.small,
+    paddingTop: spacing.fine,
+  },
+  details: {
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: 180,
+    gap: spacing.fine,
   },
   detail: {
     ...typography.body,
     color: colors.text,
   },
-  progress: {
+  secondary: {
+    ...typography.body,
+    color: colors.secondary,
+  },
+  draft: {
     ...typography.label,
-    color: colors.accent,
-    marginTop: spacing.fine,
+    color: colors.warning,
+  },
+  score: {
+    ...typography.section,
+    color: colors.text,
+    fontVariant: ['tabular-nums'],
+  },
+  // Demo scores carry the warning colour and the word "demo" in the text itself.
+  demoScore: {
+    color: colors.warning,
   },
 });

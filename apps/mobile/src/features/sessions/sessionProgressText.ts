@@ -112,3 +112,72 @@ export function formatRoundResult(
   );
   return isVerified(round.targetId) ? points : `${points} (demo)`;
 }
+
+// Short score text for cards and rows, e.g. "174 demo pts" or "Subtotal 28 demo pts". Every
+// demo score says so; an incomplete result is a subtotal, never a total.
+export function formatShortScore(subtotal: number, complete: boolean, demo: boolean): string {
+  const points = `${subtotal} ${demo ? 'demo pts' : 'pts'}`;
+  return complete ? points : `Subtotal ${points}`;
+}
+
+export type ScoreText = {
+  readonly short: string;
+  readonly spoken: string;
+};
+
+function scoreText(result: ResultGroup, demo: boolean): ScoreText {
+  const points = formatPoints(result.subtotal, result.complete, result.unresolvedShots);
+  return {
+    short: formatShortScore(result.subtotal, result.complete, demo),
+    spoken: demo ? `Demo score: ${points}` : points,
+  };
+}
+
+export type SessionStatus = 'inProgress' | 'finished';
+
+export type SessionCardSummary = {
+  readonly status: SessionStatus;
+  readonly statusLabel: string;
+  // Confirmed rounds and shots fired in them, e.g. "2 confirmed rounds · 20 shots".
+  readonly roundsLine: string;
+  readonly draftLine: string | null;
+  // Verified and demo results are separate and never added together.
+  readonly verified: ScoreText | null;
+  readonly demo: ScoreText | null;
+  // Status, rounds, scores and draft in one sentence for the card's accessible name.
+  readonly spoken: string;
+};
+
+export function sessionStatus(finishedAtUtc: string | null): SessionStatus {
+  return finishedAtUtc === null ? 'inProgress' : 'finished';
+}
+
+export function summarizeSessionCard(
+  finishedAtUtc: string | null,
+  rounds: readonly RoundSummary[],
+  isVerified: IsVerified = isVerifiedTarget,
+): SessionCardSummary {
+  const summary = summarizeRounds(rounds, isVerified);
+  const status = sessionStatus(finishedAtUtc);
+  const shots = (summary.demo?.shots ?? 0) + (summary.verified?.shots ?? 0);
+  const roundsLine =
+    summary.confirmedRounds === 0
+      ? 'No confirmed rounds'
+      : `${plural(summary.confirmedRounds, 'confirmed round', 'confirmed rounds')} · ${plural(shots, 'shot', 'shots')}`;
+  const draftLine =
+    summary.draftSequence === null ? null : `Round ${summary.draftSequence} in progress`;
+  const verified = summary.verified === null ? null : scoreText(summary.verified, false);
+  const demo = summary.demo === null ? null : scoreText(summary.demo, true);
+  const statusLabel = status === 'finished' ? 'Finished' : 'In progress';
+  return {
+    status,
+    statusLabel,
+    roundsLine,
+    draftLine,
+    verified,
+    demo,
+    spoken: [statusLabel, roundsLine, verified?.spoken, demo?.spoken, draftLine]
+      .filter((part) => part !== null && part !== undefined)
+      .join('. '),
+  };
+}

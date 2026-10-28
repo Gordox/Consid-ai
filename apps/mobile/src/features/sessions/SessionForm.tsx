@@ -1,4 +1,3 @@
-import CircleAlert from 'lucide-react-native/icons/circle-alert';
 import Lock from 'lucide-react-native/icons/lock';
 import RefreshCw from 'lucide-react-native/icons/refresh-cw';
 import { useRouter, usePreventRemove } from 'expo-router';
@@ -13,16 +12,17 @@ import {
   StyleSheet,
   Text,
   type TextInputInstance,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Banner } from '../../components/Banner';
 import { Button } from '../../components/Button';
-import { ChoiceRow } from '../../components/ChoiceRow';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { Icon } from '../../components/Icon';
 import { ScreenHeader } from '../../components/ScreenHeader';
+import { SelectSheet } from '../../components/SelectSheet';
 import { TextField } from '../../components/TextField';
 import { colors, spacing, typography } from '../../components/tokens';
 import { FIREARM_TYPES } from '../../domain/session/firearmType';
@@ -34,6 +34,14 @@ import { fieldErrorMessage } from './fieldErrorMessages';
 import { FIREARM_TYPE_LABELS } from './firearmTypeLabels';
 import { createSessionFormController, type SessionFormView } from './sessionFormController';
 import { isEditable } from './sessionFormState';
+
+const FIREARM_TYPE_OPTIONS = FIREARM_TYPES.map((type) => ({
+  value: type,
+  label: FIREARM_TYPE_LABELS[type],
+}));
+
+// Above this text scale the paired number fields are stacked instead of side by side.
+const STACK_FIELDS_FONT_SCALE = 1.3;
 
 // Visual order, used to focus the first invalid field after Create session.
 const FIELD_ORDER: readonly SessionField[] = [
@@ -144,7 +152,8 @@ export function SessionForm() {
   const restoreFocusToBack = useRef(false);
   const backRef = useRef<HostInstance>(null);
   const scrollRef = useRef<ScrollViewInstance>(null);
-  const firstChoiceRef = useRef<HostInstance>(null);
+  const typeTriggerRef = useRef<HostInstance>(null);
+  const stackFields = useWindowDimensions().fontScale >= STACK_FIELDS_FONT_SCALE;
   const fieldOffsets = useRef<Partial<Record<SessionField, number>>>({});
   const firearmNameRef = useRef<TextInputInstance>(null);
   const calibreLabelRef = useRef<TextInputInstance>(null);
@@ -218,8 +227,8 @@ export function SessionForm() {
       animated: false,
     });
     if (field === 'firearmType') {
-      if (firstChoiceRef.current !== null) {
-        AccessibilityInfo.sendAccessibilityEvent(firstChoiceRef.current, 'focus');
+      if (typeTriggerRef.current !== null) {
+        AccessibilityInfo.sendAccessibilityEvent(typeTriggerRef.current, 'focus');
       }
     } else {
       const inputs: Record<TextFieldName, TextInputInstance | null> = {
@@ -288,30 +297,17 @@ export function SessionForm() {
             returnKeyType="next"
           />
 
-          <View
-            accessibilityLabel="Firearm type"
-            accessibilityRole="radiogroup"
+          <SelectSheet
+            error={typeError}
+            label="Firearm type"
+            locked={locked}
+            onChange={(type) => controller.changeField('firearmType', type)}
             onLayout={(event) => recordOffset(event, 'firearmType')}
-            style={styles.group}
-          >
-            <Text style={styles.groupLabel}>Firearm type</Text>
-            {FIREARM_TYPES.map((type, index) => (
-              <ChoiceRow
-                key={type}
-                label={FIREARM_TYPE_LABELS[type]}
-                locked={locked}
-                onSelect={() => controller.changeField('firearmType', type)}
-                rowRef={index === 0 ? firstChoiceRef : undefined}
-                selected={form.input.firearmType === type}
-              />
-            ))}
-            {typeError === undefined ? null : (
-              <View style={styles.errorRow}>
-                <Icon icon={CircleAlert} size="inline" color={colors.error} />
-                <Text style={styles.groupError}>{typeError}</Text>
-              </View>
-            )}
-          </View>
+            options={FIREARM_TYPE_OPTIONS}
+            placeholder="Choose a firearm type"
+            triggerRef={typeTriggerRef}
+            value={FIREARM_TYPES.find((type) => type === form.input.firearmType) ?? null}
+          />
 
           <TextField
             {...textFieldProps('calibreLabel')}
@@ -332,9 +328,9 @@ export function SessionForm() {
 
           <View
             onLayout={(event) => recordOffset(event, 'plannedShotsPerRound', 'plannedRounds')}
-            style={styles.row}
+            style={stackFields ? styles.stacked : styles.row}
           >
-            <View style={styles.column}>
+            <View style={stackFields ? null : styles.column}>
               <TextField
                 {...textFieldProps('plannedShotsPerRound')}
                 inputRef={plannedShotsPerRoundRef}
@@ -342,7 +338,7 @@ export function SessionForm() {
                 label="Shots per round"
               />
             </View>
-            <View style={styles.column}>
+            <View style={stackFields ? null : styles.column}>
               <TextField
                 {...textFieldProps('plannedRounds')}
                 inputRef={plannedRoundsRef}
@@ -437,26 +433,12 @@ const styles = StyleSheet.create({
     gap: spacing.field,
     padding: spacing.inset,
   },
-  group: {
-    gap: spacing.label,
-  },
-  groupLabel: {
-    ...typography.label,
-    color: colors.text,
-  },
-  errorRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: spacing.fine,
-  },
-  groupError: {
-    ...typography.caption,
-    color: colors.error,
-    flexShrink: 1,
-  },
   row: {
     flexDirection: 'row',
     gap: spacing.small,
+  },
+  stacked: {
+    gap: spacing.field,
   },
   column: {
     flex: 1,
@@ -472,6 +454,7 @@ const styles = StyleSheet.create({
   },
   footer: {
     ...typography.caption,
-    color: colors.secondary,
+    color: colors.muted,
+    textAlign: 'center',
   },
 });

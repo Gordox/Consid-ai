@@ -3,7 +3,9 @@ import {
   formatPoints,
   formatProgressLine,
   formatRoundResult,
+  formatShortScore,
   summarizeRounds,
+  summarizeSessionCard,
 } from '../../../src/features/sessions/sessionProgressText';
 
 // No verified target exists yet; this stands in for one so the separation can be tested.
@@ -101,5 +103,54 @@ describe('formatRoundResult', () => {
     expect(formatRoundResult(round({ confirmedComplete: false, confirmedUnresolved: 2 }))).toBe(
       'Subtotal 40 points, 2 unresolved shots not counted (demo)',
     );
+  });
+});
+
+describe('summarizeSessionCard', () => {
+  it('describes an in-progress session with a draft and no confirmed rounds', () => {
+    const summary = summarizeSessionCard(null, [round({ sequence: 1, ...DRAFT })], isVerified);
+    expect(summary).toMatchObject({
+      status: 'inProgress',
+      statusLabel: 'In progress',
+      roundsLine: 'No confirmed rounds',
+      draftLine: 'Round 1 in progress',
+      demo: null,
+      verified: null,
+    });
+    expect(summary.spoken).toBe('In progress. No confirmed rounds. Round 1 in progress');
+  });
+
+  it('keeps verified and demo scores apart and says which is which', () => {
+    const summary = summarizeSessionCard(
+      '2026-10-28T10:00:00.000Z',
+      [
+        round({ sequence: 1 }),
+        round({ sequence: 2, targetId: 'verified-v1', confirmedSubtotal: 30 }),
+      ],
+      isVerified,
+    );
+    expect(summary.roundsLine).toBe('2 confirmed rounds · 10 shots');
+    expect(summary.verified).toEqual({ short: '30 pts', spoken: '30 points' });
+    expect(summary.demo).toEqual({ short: '40 demo pts', spoken: 'Demo score: 40 points' });
+  });
+
+  it('shows an incomplete result as a subtotal with its unresolved shots', () => {
+    const summary = summarizeSessionCard(
+      null,
+      [round({ confirmedComplete: false, confirmedUnresolved: 1, confirmedSubtotal: 28 })],
+      isVerified,
+    );
+    expect(summary.demo).toEqual({
+      short: 'Subtotal 28 demo pts',
+      spoken: 'Demo score: Subtotal 28 points, 1 unresolved shot not counted',
+    });
+  });
+});
+
+describe('formatShortScore', () => {
+  it('never drops the demo label or calls a subtotal a total', () => {
+    expect(formatShortScore(1, true, false)).toBe('1 pts');
+    expect(formatShortScore(87, true, true)).toBe('87 demo pts');
+    expect(formatShortScore(28, false, true)).toBe('Subtotal 28 demo pts');
   });
 });

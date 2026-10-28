@@ -1,5 +1,5 @@
-import Activity from 'lucide-react-native/icons/activity';
 import Plus from 'lucide-react-native/icons/plus';
+import Target from 'lucide-react-native/icons/target';
 import { useFocusEffect, useRouter } from 'expo-router';
 import {
   type RefObject,
@@ -23,60 +23,39 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Banner } from '../../components/Banner';
 import { Button } from '../../components/Button';
 import { Icon } from '../../components/Icon';
+import { SegmentedControl } from '../../components/SegmentedControl';
 import { colors, radius, spacing, typography } from '../../components/tokens';
-import { listSessionOverviews, type SessionOverview } from '../../persistence/roundRepository';
-import { listSessions, type SessionListing } from '../../persistence/sessionRepository';
+import { listSessionOverviews } from '../../persistence/roundRepository';
+import { listSessions } from '../../persistence/sessionRepository';
 import { useSessionStore } from '../startup/sessionStoreContext';
-import { presentSession, type SessionCardText } from './formatSession';
 import { InvalidSessionCard } from './InvalidSessionCard';
-import { type InvalidRowText, presentInvalidRows } from './invalidRowPresentation';
 import { SessionCard } from './SessionCard';
 import { createSessionListController, type SessionListView } from './sessionListController';
-import { formatProgressLine } from './sessionProgressText';
-
-// Sessions plus their status and round summaries, read together for the list.
-type ListingWithProgress = SessionListing & {
-  readonly overviews: ReadonlyMap<string, SessionOverview>;
-};
+import {
+  filterItems,
+  type InvalidItem,
+  type ListingWithProgress,
+  SESSION_FILTERS,
+  type SessionFilter,
+  type SessionItem,
+  toListItems,
+} from './sessionListItems';
 
 async function loadListing(db: Parameters<typeof listSessions>[0]): Promise<ListingWithProgress> {
   const listing = await listSessions(db);
   return { ...listing, overviews: await listSessionOverviews(db) };
 }
 
-type ListItem =
-  | {
-      readonly kind: 'session';
-      readonly key: string;
-      readonly text: SessionCardText;
-      readonly progress: string;
-    }
-  | { readonly kind: 'invalid'; readonly key: string; readonly text: InvalidRowText };
+type Row = SessionItem | InvalidItem | { readonly kind: 'invalidHeading'; readonly key: string };
 
-// Valid sessions keep the order listSessions returns; unreadable rows follow them (Ö1).
-// Valid sessions are keyed by their full id (U5).
-function toListItems(listing: ListingWithProgress): ListItem[] {
-  return [
-    ...listing.sessions.map((session): ListItem => {
-      const overview = listing.overviews.get(session.id);
-      return {
-        kind: 'session',
-        key: session.id,
-        text: presentSession(session),
-        progress: formatProgressLine(overview?.finishedAtUtc ?? null, overview?.rounds ?? []),
-      };
-    }),
-    ...presentInvalidRows(listing.invalidRows).map((text): ListItem => ({
-      kind: 'invalid',
-      key: text.key,
-      text,
-    })),
-  ];
-}
-
+// Hidden from screen readers: the list announces "Loading saved sessions…" once instead.
 function LoadingCards() {
   return (
-    <View accessible accessibilityLabel="Loading saved sessions…" style={styles.skeletonGroup}>
+    <View
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
+      style={styles.skeletonGroup}
+    >
       {[0, 1, 2].map((index) => (
         <View key={index} style={styles.skeletonCard}>
           <View style={[styles.skeletonLine, styles.skeletonTitle]} />
@@ -88,10 +67,11 @@ function LoadingCards() {
   );
 }
 
+// Shown only after a successful read that returned no rows at all.
 function EmptyState({ onNewSession }: { onNewSession: () => void }) {
   return (
     <View style={styles.empty}>
-      <Icon icon={Activity} size="feature" color={colors.accent} />
+      <Icon icon={Target} size="feature" color={colors.accent} />
       <Text accessibilityRole="header" style={styles.emptyTitle}>
         Start your practice log
       </Text>
@@ -104,19 +84,33 @@ function EmptyState({ onNewSession }: { onNewSession: () => void }) {
 
 type HeaderProps = {
   view: SessionListView<ListingWithProgress>;
+  isEmpty: boolean;
+  hasRows: boolean;
+  noMatches: boolean;
+  filter: SessionFilter;
+  onFilter: (filter: SessionFilter) => void;
   titleRef: RefObject<TextInstance | null>;
   onNewSession: () => void;
   onRetry: () => void;
 };
 
-function ListHeader({ view, titleRef, onNewSession, onRetry }: HeaderProps) {
-  const isEmpty =
-    view.status === 'loaded' &&
-    view.listing.sessions.length === 0 &&
-    view.listing.invalidRows.length === 0;
-
+function ListHeader({
+  view,
+  isEmpty,
+  hasRows,
+  noMatches,
+  filter,
+  onFilter,
+  titleRef,
+  onNewSession,
+  onRetry,
+}: HeaderProps) {
   return (
     <View style={styles.header}>
+      <View style={styles.brand}>
+        <Icon icon={Target} size="feature" color={colors.accent} />
+        <Text style={styles.eyebrow}>Target Practice</Text>
+      </View>
       <View style={styles.titleGroup}>
         <Text ref={titleRef} accessibilityRole="header" style={styles.pageTitle}>
           Sessions
@@ -127,7 +121,7 @@ function ListHeader({ view, titleRef, onNewSession, onRetry }: HeaderProps) {
       {view.status === 'initialFailed' ? (
         <>
           <Banner
-            body="Your saved records haven't been removed. Try reading them again."
+            body="Try reading your saved sessions again."
             title="Sessions couldn't be loaded"
             tone="error"
           />
@@ -150,6 +144,20 @@ function ListHeader({ view, titleRef, onNewSession, onRetry }: HeaderProps) {
         </>
       ) : null}
 
+      {hasRows ? (
+        <SegmentedControl
+          label="Show sessions"
+          onChange={onFilter}
+          segments={SESSION_FILTERS}
+          value={filter}
+        />
+      ) : null}
+      {noMatches ? (
+        <Text accessibilityLiveRegion="polite" style={styles.body}>
+          No matching sessions
+        </Text>
+      ) : null}
+
       {view.status === 'initialLoading' ? <LoadingCards /> : null}
       {isEmpty ? <EmptyState onNewSession={onNewSession} /> : null}
     </View>
@@ -160,6 +168,7 @@ export function SessionList() {
   const { db, coordinator } = useSessionStore();
   const router = useRouter();
   const titleRef = useRef<TextInstance>(null);
+  const [filter, setFilter] = useState<SessionFilter>('all');
   const [controller] = useState(() =>
     createSessionListController({ coordinator, loadSessions: () => loadListing(db) }),
   );
@@ -189,7 +198,17 @@ export function SessionList() {
   }, [view.status]);
 
   const items = useMemo(() => (view.status === 'loaded' ? toListItems(view.listing) : []), [view]);
-  const showFooter = view.status === 'loaded' && items.length > 0;
+  const filtered = useMemo(() => filterItems(items, filter), [items, filter]);
+  const isEmpty = view.status === 'loaded' && items.length === 0;
+  const noMatches = items.length > 0 && filtered.sessions.length === 0;
+  const rows: Row[] = [
+    ...filtered.sessions,
+    // In a filtered view, unreadable rows are records outside the filtered results.
+    ...(filtered.invalid.length > 0 && filter !== 'all'
+      ? [{ kind: 'invalidHeading', key: 'invalid-heading' } as const]
+      : []),
+    ...filtered.invalid,
+  ];
 
   const openForm = () => router.push('/sessions/new');
 
@@ -197,30 +216,48 @@ export function SessionList() {
     <SafeAreaView style={styles.safeArea}>
       <FlatList
         contentContainerStyle={styles.content}
-        data={items}
-        keyExtractor={(item) => item.key}
+        data={rows}
+        keyExtractor={(row) => row.key}
         ListFooterComponent={
-          showFooter ? <Text style={styles.footer}>Saved locally on this device.</Text> : undefined
+          items.length > 0 ? (
+            <Text style={styles.footer}>Saved locally on this device.</Text>
+          ) : undefined
         }
         ListHeaderComponent={
           <ListHeader
+            filter={filter}
+            hasRows={items.length > 0}
+            isEmpty={isEmpty}
+            noMatches={noMatches}
+            onFilter={setFilter}
             onNewSession={openForm}
             onRetry={controller.retry}
             titleRef={titleRef}
             view={view}
           />
         }
-        renderItem={({ item }) =>
-          item.kind === 'session' ? (
-            <SessionCard
-              onPress={() => router.push(`/sessions/${item.key}`)}
-              progress={item.progress}
-              text={item.text}
-            />
-          ) : (
-            <InvalidSessionCard onRetry={controller.retry} text={item.text} />
-          )
-        }
+        renderItem={({ item }) => {
+          switch (item.kind) {
+            case 'session':
+              return (
+                <SessionCard
+                  onPress={() => router.push(`/sessions/${item.key}`)}
+                  summary={item.summary}
+                  text={item.text}
+                />
+              );
+            case 'invalidHeading':
+              return (
+                <Text style={styles.body}>
+                  {
+                    "Records that couldn't be read are shown in every filter, because their status is unknown."
+                  }
+                </Text>
+              );
+            case 'invalid':
+              return <InvalidSessionCard onRetry={controller.retry} text={item.text} />;
+          }
+        }}
         style={styles.fill}
       />
     </SafeAreaView>
@@ -241,13 +278,22 @@ const styles = StyleSheet.create({
     padding: spacing.inset,
   },
   header: {
-    gap: spacing.field,
+    gap: spacing.group,
+  },
+  brand: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.small,
+  },
+  eyebrow: {
+    ...typography.eyebrow,
+    color: colors.secondary,
   },
   titleGroup: {
     gap: spacing.fine,
   },
   pageTitle: {
-    ...typography.title,
+    ...typography.display,
     color: colors.text,
   },
   body: {
@@ -256,11 +302,12 @@ const styles = StyleSheet.create({
   },
   footer: {
     ...typography.caption,
-    color: colors.secondary,
+    color: colors.muted,
+    textAlign: 'center',
   },
   empty: {
     gap: spacing.small,
-    paddingTop: spacing.group,
+    paddingTop: spacing.label,
   },
   emptyTitle: {
     ...typography.section,
