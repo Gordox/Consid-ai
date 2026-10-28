@@ -1,5 +1,5 @@
-# Runs the same checks as README "Checks". No builds, deployment or device tests:
-# a green run does not mean the Galaxy S20 or iOS checks have passed.
+# Runs the same checks as README "Checks" for the app and the analysis service. No builds,
+# deployment or device tests: a green run does not mean the Galaxy S20 or iOS checks have passed.
 # expo install --check and expo-doctor stay manual (implementation/step-8-ci.md, Ö1).
 name: CI
 
@@ -57,3 +57,38 @@ jobs:
 
       - name: Test
         run: npm test -- --runInBand
+
+  analysis:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: services/analysis
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: services/analysis/requirements-lock.txt
+
+      - name: Install from lock file
+        run: python -m pip install -c requirements-lock.txt -e '.[dev]'
+
+      - name: Check formatting
+        run: ruff format --check app tests
+
+      - name: Lint
+        run: ruff check app tests
+
+      - name: Type check
+        run: mypy
+
+      # Synthetic images only; no live service and no real photos.
+      - name: Test
+        run: python -m pytest -q
