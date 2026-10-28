@@ -79,10 +79,20 @@ Varje branch kör formatkontroll, lint, typkontroll och tester innan den slås i
 - **Maxpoäng** som "/ 200" visas inte, eftersom tavlans maxpoäng inte är verifierad.
 - **Diametern** gäller hela rundan i domänen. Inspectorn visar därför rundans diameter, och den ändras i rundans inställningssteg, inte per träff.
 - **Rundkorten** visar ingen klocktid, eftersom rundsammanfattningen inte läser tiden. Det skulle kräva en ändring i persistensen.
-- **Analysen kan inte avbrytas** med en knapp. Klienten stoppar efter 60 sekunder. Att lämna skärmen raderar inte rundan, och sena svar avvisas som förut.
 - **Vikt 650** finns inte i React Native, så 600 används (tillåtet enligt §4).
 - **Fotokällan** väljs med två knappar direkt på fotokortet i stället för ett separat blad. Kamera och bibliotek är plattformens egna skärmar.
 - **Ikonerna** `trash-2` och `history` finns som typer men inte som moduler i Lucide 1.56.0, så `trash` och `chevron-left` används.
+
+### Efter granskningen (2026-10-28)
+
+- **Designpaketet** är committat separat (`4e35370`). Inga PNG-filer har metadata, inga SVG-filer har skript, och katalogens enda skript byter förhandsvisning lokalt.
+- **Jest-varningen** fanns redan i `282177b`. Den kom från tre formulärtester som startade en sparning som aldrig avgjordes, så koordinatorns timer på 10 sekunder levde kvar. En `afterEach` avgör nu sparningarna. Appens kod är oförändrad och `--forceExit` används inte (`13566bd`).
+- **Analysen kan avbrytas** med `Cancel analysis` (`7eba53c`). Klienten avbryter anropet via samma `AbortController` som tidsgränsen. Ett svar som kommer efter avbrottet ignoreras, och försöket sparas som `cancelled`. Texten säger att servern kan ha hunnit ta emot bilderna och fortsätta arbeta.
+- **Round confirmed och Start next round** (`fbcc2f6`):
+  - Ett synkront skydd stoppar dubbeltryck.
+  - En upprepad begäran öppnar det befintliga utkastet i stället för att skapa ett nytt.
+  - En avslutad session får ingen ny runda.
+  - Alla vägar tillbaka leder till sessionen, och spärren stängs av så snart en utgång har börjat.
 
 ### Inte verifierat
 

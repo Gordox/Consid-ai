@@ -181,7 +181,9 @@ EXPO_PUBLIC_ANALYSIS_URL=http://192.168.1.23:8000
 ```
 
 HTTPS is required in release builds. Development builds also accept plain HTTP to `localhost`,
-`127.0.0.1` and private network addresses (10.x, 172.16–31.x, 192.168.x). Restart
+`127.0.0.1` and private network addresses (10.x, 172.16–31.x, 192.168.x). While it runs you can
+**Cancel analysis**: the app stops waiting and ignores any late answer, but the service may
+still finish its work on the photos it received. Restart
 `npx expo start` after changing the file. Without an address, analysis is off and you mark hits
 yourself.
 
