@@ -1,0 +1,59 @@
+# Runs the same checks as README "Checks". No builds, deployment or device tests:
+# a green run does not mean the Galaxy S20 or iOS checks have passed.
+# expo install --check and expo-doctor stay manual (implementation/step-8-ci.md, Ö1).
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+# One group per pull request, or per branch for pushes. Superseded pull request runs are
+# cancelled; runs on main always finish.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: apps/mobile
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node from .nvmrc
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: apps/mobile/.nvmrc
+          cache: npm
+          cache-dependency-path: apps/mobile/package-lock.json
+
+      - name: Show Node and npm versions
+        run: |
+          node --version
+          npm --version
+
+      - name: Install from lockfile
+        run: npm ci
+
+      - name: Check formatting
+        run: npm run format:check
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test -- --runInBand

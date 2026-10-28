@@ -18,7 +18,7 @@ Kamera, bildanalys, poängberäkning, mål, backend, autentisering, synk, redige
 | 5 | Skapa session | Implementerat och enhetstestat. Lyckat flöde kontrollerat på S20, och persistens efter omstart verifierad via listan (steg 6, M5). Tangentbordsbuggen är åtgärdad för det testade flödet (`840e8c7`). Felflöden återstår (steg 7). iOS overifierat. |
 | 6 | Lista sessioner | Implementerat och enhetstestat. M1–M5 och M7–M10 godkända på S20, och M6 delvis kontrollerad men inte verifierad. Felinjektion återstår (steg 7). iOS overifierat. |
 | 7 | Dokumentation och integrationstester på enhet | **Pausat** (2026-10-27). 7a (checklistan) och 7b (testgrunden) är klara. T1–T6 och N4 är godkända på S20. Tangentbordsfelet i testläge är åtgärdat efter E2. 7c–7f och den kvarstående verifieringen återstår (`implementation/step-7-verification.md` §11). |
-| 8 | CI | Ej påbörjat |
+| 8 | CI | Implementerat och lokalt kontrollerat i en ren klon. **Inte verifierat i GitHub Actions** (8c). |
 
 ## Verifierade versioner (npm-registret och Expo-dokumentationen för SDK 58, 2026-10-27)
 
@@ -428,6 +428,23 @@ Detaljplanen, med beslut, tillstånd, nycklar och checklistan M1–M10 med resul
 
 ## Steg 8 – CI
 
+Detaljplanen, med förutsättningar, beslut, delsteg och resultat, finns i `implementation/step-8-ci.md`. Den har företräde framför punkterna nedan där de skiljer sig.
+
+**Faktiskt läge (2026-10-28):**
+- **`.github/workflows/ci.yml`:**
+  - ett jobb på `ubuntu-latest`
+  - utlösare: `pull_request` och `push` mot `main`
+  - `contents: read`, 15 minuters tidsgräns och `concurrency` per PR eller branch
+  - Node från `.nvmrc`
+  - steg: `npm ci`, `format:check`, `lint`, `typecheck` och `npm test -- --runInBand`.
+- Actions är pinnade med verifierade commit-SHA.
+- **Avvikelse från punkt 2 nedan (ägarbeslut Ö1):** `npx expo install --check` och `npx expo-doctor` ingår **inte** i CI. De körs manuellt vid ändringar av beroenden, eftersom de beror på Expos tjänster.
+- **Verifiering:**
+  - **Lokalt kontrollerat i en ren klon.**
+  - **Ännu inte verifierat i GitHub Actions** (8c). Steg 8 räknas inte som verifierat förrän den första körningen har lyckats.
+  - Ett grönt CI betyder inte att kontrollerna på S20 har gått igenom.
+- `npm audit` rapporterar tre high-fynd. Det är en separat fråga och påverkar inte CI (`implementation/step-8-ci.md` §9).
+
 1. **Filer:** `.github/workflows/ci.yml`.
 2. **Beteende:**
    - Node från `apps/mobile/.nvmrc`.
@@ -438,6 +455,21 @@ Detaljplanen, med beslut, tillstånd, nycklar och checklistan M1–M10 med resul
 5. **Klart när:** CI kontrollerar samma saker som README beskriver. Ett grönt CI-resultat betyder inte att enhetstesterna på S20 har gått igenom.
 
 ---
+
+## Efter steg 8: sparade vapenprofiler (ägarbeslut 2026-10-27)
+
+- Vapentyp är en fast lista (B2).
+- Namn och kaliber är fritext per session och sparas som en historisk kopia i sessionsraden.
+- Sparade vapenprofiler, som beskrivs i `CLAUDE.md`, blir ett eget steg efter steg 0–8. Beslutet dokumenterades först i `implementation/step-2-domain-validation.md`.
+- **Historiska sessioner behåller sina egna inställningar.** Att skapa, ändra eller ta bort en profil får aldrig ändra en redan sparad session.
+- Ordning: först CI (steg 8), sedan design och detaljplan för vapenprofiler.
+- Poängdiametern i profilen väntar på beslut om källan till nominella diametrar (öppen fråga 3 i `CLAUDE.md`).
+
+## Kända undantag
+
+- **`git diff --check` och Markdown (ägarbeslut 2026-10-27):**
+  - `Assigments/Assigment 3/upg.md`, rad 3, 12, 17 och 20, slutar med exakt två mellanslag, som är avsiktliga radbrytningar i Markdown. De fyra anmärkningarna är accepterade, och filen är oförändrad.
+  - Alla andra anmärkningar är fortfarande fel. Hela kontrollen beskrivs inte som godkänd när undantaget förekommer.
 
 ## Antaganden som kvarstår
 

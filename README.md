@@ -91,6 +91,15 @@ npm run typecheck
 npm test -- --runInBand
 ```
 
+**CI:** [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs `npm ci` and the same four checks on every pull request to `main` and every push to `main`, using the Node version in `apps/mobile/.nvmrc`. It has no builds, deployment or device tests, so a green run does not mean the app has been checked on a phone. The workflow has been checked locally in a clean clone but **not yet in GitHub Actions**.
+
+**Run manually when dependencies change** (not part of CI, because they depend on Expo's online services and can fail when Expo publishes a new patch):
+
+```bash
+npx expo install --check
+npx expo-doctor
+```
+
 ## Data and privacy
 
 Sessions are stored locally on the device in SQLite (`target-practice.db`). Nothing is sent to a
