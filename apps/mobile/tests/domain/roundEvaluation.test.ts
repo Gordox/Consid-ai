@@ -38,6 +38,7 @@ function draft(overrides: Partial<DraftRound> = {}): DraftRound {
     unresolvedShots: 0,
     targetId: DEMO_TARGET.id,
     hitDiameterMm: 9,
+    hitDiameterSource: 'userSet',
     calibration: CALIBRATION,
     photos: { before: null, after: null },
     marks: [mark('a', 0, 0), mark('b', 44.5, 0), mark('c', 0, 120)],

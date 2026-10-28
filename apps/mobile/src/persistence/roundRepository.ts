@@ -7,7 +7,13 @@ import type {
   RoundPhoto,
   RoundPhotos,
 } from '../domain/round/round';
-import { isActualShots, isHitDiameterMm } from '../domain/round/roundRules';
+import {
+  diameterForNewRound,
+  type HitDiameterSource,
+  isActualShots,
+  isHitDiameterMm,
+  isHitDiameterSource,
+} from '../domain/round/roundRules';
 import type { SessionDatabase } from './database';
 import {
   InvalidRoundDataError,
@@ -64,7 +70,7 @@ const isCount = (value: number): boolean => isActualShots(value);
 const isPositiveInteger = (value: number): boolean => Number.isInteger(value) && value > 0;
 
 const ROUND_COLUMNS = `id, session_id, sequence, state, created_at_utc, actual_shots, declared_misses,
-  unresolved_shots, target_id, hit_diameter_mm, calibration_json, confirmed_at_utc, confirmed_json`;
+  unresolved_shots, target_id, hit_diameter_mm, hit_diameter_source, calibration_json, confirmed_at_utc, confirmed_json`;
 
 async function sessionFinishedAt(db: SessionDatabase, sessionId: string): Promise<string | null> {
   const row = await db.getFirstAsync('SELECT finished_at_utc FROM sessions WHERE id = ?', [
@@ -99,13 +105,13 @@ export type StartRoundInput = {
   readonly sessionId: string;
   readonly createdAtUtc: string;
   readonly actualShots: number;
-  readonly hitDiameterMm: number;
   readonly targetId: string;
 };
 
-// One draft per session at a time; the sequence is the next free number in the session.
+// One draft per session at a time; the sequence is the next free number in the session. The
+// hole diameter carries over from the previous round when the user set it there.
 export async function startRound(db: SessionDatabase, input: StartRoundInput): Promise<number> {
-  if (!isActualShots(input.actualShots) || !isHitDiameterMm(input.hitDiameterMm)) {
+  if (!isActualShots(input.actualShots)) {
     throw new RangeError('Round settings are out of range');
   }
   let sequence = 0;
@@ -122,10 +128,23 @@ export async function startRound(db: SessionDatabase, input: StartRoundInput): P
       [input.sessionId],
     );
     sequence = readNumber(row, 'next', isPositiveInteger);
+    const previous = await txn.getFirstAsync(
+      `SELECT hit_diameter_mm, hit_diameter_source FROM rounds WHERE session_id = ?
+       ORDER BY sequence DESC LIMIT 1`,
+      [input.sessionId],
+    );
+    const diameter = diameterForNewRound(
+      previous === null || previous === undefined
+        ? null
+        : {
+            mm: readNumber(previous, 'hit_diameter_mm', isHitDiameterMm),
+            source: readDiameterSource(previous),
+          },
+    );
     await txn.runAsync(
       `INSERT INTO rounds (id, session_id, sequence, state, created_at_utc, actual_shots,
-        declared_misses, unresolved_shots, target_id, hit_diameter_mm)
-       VALUES (?, ?, ?, 'draft', ?, ?, 0, 0, ?, ?)`,
+        declared_misses, unresolved_shots, target_id, hit_diameter_mm, hit_diameter_source)
+       VALUES (?, ?, ?, 'draft', ?, ?, 0, 0, ?, ?, ?)`,
       [
         input.roundId,
         input.sessionId,
@@ -133,11 +152,20 @@ export async function startRound(db: SessionDatabase, input: StartRoundInput): P
         input.createdAtUtc,
         input.actualShots,
         input.targetId,
-        input.hitDiameterMm,
+        diameter.mm,
+        diameter.source,
       ],
     );
   });
   return sequence;
+}
+
+function readDiameterSource(row: unknown): HitDiameterSource {
+  const source = readString(row, 'hit_diameter_source');
+  if (!isHitDiameterSource(source)) {
+    throw new InvalidRoundDataError('hit_diameter_source');
+  }
+  return source;
 }
 
 async function readPhotos(db: SessionDatabase, roundId: string): Promise<RoundPhotos> {
@@ -188,6 +216,7 @@ export async function getRound(db: SessionDatabase, roundId: string): Promise<Ro
     unresolvedShots: readNumber(row, 'unresolved_shots', isCount),
     targetId: readString(row, 'target_id'),
     hitDiameterMm: readNumber(row, 'hit_diameter_mm', isHitDiameterMm),
+    hitDiameterSource: readDiameterSource(row),
     calibration: parseCalibration(readNullableString(row, 'calibration_json')),
     marks: markRows.map(parseMarkRow),
   };
@@ -206,6 +235,7 @@ export type DraftCounts = {
   readonly declaredMisses: number;
   readonly unresolvedShots: number;
   readonly hitDiameterMm: number;
+  readonly hitDiameterSource: HitDiameterSource;
 };
 
 export async function updateDraftCounts(
@@ -217,18 +247,21 @@ export async function updateDraftCounts(
     !isCount(counts.actualShots) ||
     !isCount(counts.declaredMisses) ||
     !isCount(counts.unresolvedShots) ||
-    !isHitDiameterMm(counts.hitDiameterMm)
+    !isHitDiameterMm(counts.hitDiameterMm) ||
+    !isHitDiameterSource(counts.hitDiameterSource)
   ) {
     throw new RangeError('Round counts are out of range');
   }
   const { changes } = await db.runAsync(
-    `UPDATE rounds SET actual_shots = ?, declared_misses = ?, unresolved_shots = ?, hit_diameter_mm = ?
+    `UPDATE rounds SET actual_shots = ?, declared_misses = ?, unresolved_shots = ?,
+       hit_diameter_mm = ?, hit_diameter_source = ?
      WHERE id = ? AND state = 'draft'`,
     [
       counts.actualShots,
       counts.declaredMisses,
       counts.unresolvedShots,
       counts.hitDiameterMm,
+      counts.hitDiameterSource,
       roundId,
     ],
   );
@@ -413,8 +446,11 @@ export type RoundSummary = {
   readonly sequence: number;
   readonly state: 'draft' | 'confirmed';
   readonly actualShots: number;
+  readonly targetId: string;
   readonly confirmedSubtotal: number | null;
   readonly confirmedComplete: boolean | null;
+  // Unknown-valued shots of a confirmed round, read from its fixed result.
+  readonly confirmedUnresolved: number | null;
 };
 
 export type SessionProgress = {
@@ -433,6 +469,7 @@ function parseSummary(row: unknown): RoundSummary {
     (value) => value === 0 || value === 1,
   );
   const subtotal = readNullableNumber(row, 'confirmed_subtotal', Number.isInteger);
+  const unresolved = readNullableNumber(row, 'confirmed_unresolved', isCount);
   if (state === 'confirmed' && (complete === null || subtotal === null)) {
     throw new InvalidRoundDataError('confirmed_subtotal');
   }
@@ -441,12 +478,16 @@ function parseSummary(row: unknown): RoundSummary {
     sequence: readNumber(row, 'sequence', isPositiveInteger),
     state,
     actualShots: readNumber(row, 'actual_shots', isCount),
+    targetId: readString(row, 'target_id'),
     confirmedSubtotal: subtotal,
     confirmedComplete: complete === null ? null : complete === 1,
+    confirmedUnresolved: state === 'confirmed' ? unresolved : null,
   };
 }
 
-const SUMMARY_SQL = `SELECT id, session_id, sequence, state, actual_shots, confirmed_subtotal, confirmed_complete
+const SUMMARY_SQL = `SELECT id, session_id, sequence, state, actual_shots, target_id,
+  confirmed_subtotal, confirmed_complete,
+  json_extract(confirmed_json, '$.unresolvedShots') AS confirmed_unresolved
   FROM rounds`;
 
 export async function getSessionProgress(

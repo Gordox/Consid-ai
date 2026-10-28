@@ -11,7 +11,6 @@ import { Icon } from '../../components/Icon';
 import { Screen } from '../../components/Screen';
 import { ScreenHeader } from '../../components/ScreenHeader';
 import { colors, radius, sizes, spacing, typography } from '../../components/tokens';
-import { DEFAULT_HIT_DIAMETER_MM } from '../../domain/round/roundRules';
 import { DEMO_TARGET, DEMO_TARGET_NOTICE } from '../../domain/target/targetDefinition';
 import {
   DraftRoundExistsError,
@@ -27,7 +26,12 @@ import { useSessionStore } from '../startup/sessionStoreContext';
 import { useFocusLoad } from '../useFocusLoad';
 import { formatCreatedAt, formatPlannedRounds } from './formatSession';
 import { FIREARM_TYPE_LABELS } from './firearmTypeLabels';
-import { formatPoints, formatRoundResult, summarizeRounds } from './sessionProgressText';
+import {
+  formatPoints,
+  formatRoundResult,
+  type ResultGroup,
+  summarizeRounds,
+} from './sessionProgressText';
 
 type ActionError = 'startFailed' | 'finishFailed' | 'finishBlocked' | null;
 
@@ -54,6 +58,20 @@ function RoundRow({ round, onPress }: { round: RoundSummary; onPress: () => void
       </View>
       <Icon icon={ChevronRight} size="action" color={colors.secondary} />
     </Pressable>
+  );
+}
+
+function ResultBlock({ result }: { result: ResultGroup }) {
+  return (
+    <>
+      <Text style={styles.total}>
+        {formatPoints(result.subtotal, result.complete, result.unresolvedShots)}
+      </Text>
+      <Text style={styles.secondary}>
+        {result.rounds === 1 ? '1 confirmed round' : `${result.rounds} confirmed rounds`} ·{' '}
+        {result.shots === 1 ? '1 shot fired' : `${result.shots} shots fired`}
+      </Text>
+    </>
   );
 }
 
@@ -123,7 +141,6 @@ export function SessionDetail({ sessionId }: { sessionId: string }) {
         sessionId,
         createdAtUtc: nowUtcIso(),
         actualShots: settings.plannedShotsPerRound,
-        hitDiameterMm: DEFAULT_HIT_DIAMETER_MM,
         targetId: DEMO_TARGET.id,
       });
       openRound(roundId);
@@ -180,19 +197,12 @@ export function SessionDetail({ sessionId }: { sessionId: string }) {
           </Text>
           {summary.confirmedRounds === 0 ? (
             <Text style={styles.body}>No confirmed rounds yet.</Text>
-          ) : (
+          ) : null}
+          {summary.verified === null ? null : <ResultBlock result={summary.verified} />}
+          {summary.demo === null ? null : (
             <>
-              <Text style={styles.total}>{formatPoints(summary.subtotal, summary.complete)}</Text>
-              <Text style={styles.secondary}>
-                {summary.confirmedRounds === 1
-                  ? '1 confirmed round'
-                  : `${summary.confirmedRounds} confirmed rounds`}{' '}
-                ·{' '}
-                {summary.confirmedShots === 1
-                  ? '1 shot fired'
-                  : `${summary.confirmedShots} shots fired`}
-              </Text>
-              <Text style={styles.notice}>{DEMO_TARGET_NOTICE}</Text>
+              <Text style={styles.notice}>Demo target: {DEMO_TARGET_NOTICE}</Text>
+              <ResultBlock result={summary.demo} />
             </>
           )}
         </View>

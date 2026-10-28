@@ -22,6 +22,7 @@ import {
   setDraftPhoto,
   updateDraftCounts,
 } from '../../persistence/roundRepository';
+import { getSession } from '../../persistence/sessionRepository';
 import { newId, nowUtcIso } from '../../services/deviceContext';
 import type { PickOutcome } from '../../services/pickedPhoto';
 import { choosePhoto, takePhoto } from '../../services/photoPicker';
@@ -43,6 +44,8 @@ function reportDevError(error: unknown): void {
 
 type LoadedRound = {
   readonly round: DraftRound | ConfirmedRound;
+  // The session's calibre label, shown next to the diameter assumption. Never parsed.
+  readonly calibreLabel: string;
   readonly missing: { readonly before: boolean; readonly after: boolean };
 };
 
@@ -51,14 +54,22 @@ const PHOTO_TIPS =
   'After the round, take the after photo from the same spot. Fill the frame with the whole ' +
   'target, hold the phone straight in front of it, and avoid glare and shadows.';
 
+const DIAMETER_SOURCE_TEXT = {
+  assumed: 'assumed',
+  userSet: 'set by you',
+  unrecorded: 'source not recorded',
+} as const;
+
 type PendingPick = { readonly role: PhotoRole; readonly source: 'camera' | 'library' };
 
 function DraftRoundView({
   draft,
+  calibreHint,
   missing,
   onChanged,
 }: {
   draft: DraftRound;
+  calibreHint: string;
   missing: LoadedRound['missing'];
   onChanged: () => void;
 }) {
@@ -73,6 +84,7 @@ function DraftRoundView({
     declaredMisses: draft.declaredMisses,
     unresolvedShots: draft.unresolvedShots,
     hitDiameterMm: draft.hitDiameterMm,
+    hitDiameterSource: draft.hitDiameterSource,
   }));
   const writes = useRef<Promise<void>>(Promise.resolve());
   const [message, setMessage] = useState<string | null>(null);
@@ -215,7 +227,11 @@ function DraftRoundView({
   const resultText =
     evaluation.score === null
       ? null
-      : formatPoints(evaluation.score.subtotal, evaluation.status === 'complete');
+      : formatPoints(
+          evaluation.score.subtotal,
+          evaluation.status === 'complete',
+          evaluation.status === 'incomplete' ? counts.unresolvedShots : undefined,
+        );
 
   return (
     <>
@@ -274,14 +290,32 @@ function DraftRoundView({
           label="Hole diameter"
           max={HIT_DIAMETER_MM_RANGE.max}
           min={HIT_DIAMETER_MM_RANGE.min}
-          onChange={(value) => changeCounts({ ...counts, hitDiameterMm: value })}
+          onChange={(value) =>
+            changeCounts({ ...counts, hitDiameterMm: value, hitDiameterSource: 'userSet' })
+          }
           step={0.5}
           value={counts.hitDiameterMm}
           valueText={`${counts.hitDiameterMm.toFixed(1)} mm`}
         />
+        {counts.hitDiameterSource === 'assumed' ? (
+          <>
+            <Text style={styles.notice}>
+              {`Assumed, not set: ${counts.hitDiameterMm.toFixed(1)} mm is a default and is not taken from your calibre${calibreHint === '' ? '' : ` (${calibreHint})`}. Set the diameter your bullets make, or confirm this value.`}
+            </Text>
+            <Button
+              label={`Use ${counts.hitDiameterMm.toFixed(1)} mm`}
+              onPress={() => changeCounts({ ...counts, hitDiameterSource: 'userSet' })}
+              variant="secondary"
+            />
+          </>
+        ) : (
+          <Text style={styles.supporting}>
+            Set by you. New rounds in this session start with this diameter.
+          </Text>
+        )}
         <Text style={styles.supporting}>
-          Assumed size of a bullet hole. Change it if your holes are clearly larger or smaller; a
-          hole touching a ring line gets the higher score.
+          The scoring size of a hole: a hole touching a ring line gets the higher score, so this
+          matters for hits near lines.
         </Text>
       </View>
 
@@ -372,11 +406,17 @@ function DraftRoundView({
       </View>
 
       <ConfirmDialog
-        body={
+        body={[
           evaluation.status === 'incomplete'
-            ? 'Unresolved shots stay unknown and the round shows a subtotal. Confirmed rounds cannot be changed.'
-            : 'Confirmed rounds cannot be changed.'
-        }
+            ? 'Unresolved shots stay unknown and the round shows a subtotal.'
+            : null,
+          counts.hitDiameterSource === 'assumed'
+            ? `The hole diameter ${counts.hitDiameterMm.toFixed(1)} mm is an unconfirmed assumption and is saved as such.`
+            : null,
+          'Confirmed rounds cannot be changed.',
+        ]
+          .filter((line) => line !== null)
+          .join(' ')}
         cancelLabel="Keep editing"
         confirmLabel="Confirm round"
         onCancel={() => setDialog(null)}
@@ -430,7 +470,7 @@ function ConfirmedRoundView({
     <>
       <View style={styles.card}>
         <Text style={styles.total}>
-          {formatPoints(result.subtotal, result.status === 'complete')}
+          {formatPoints(result.subtotal, result.status === 'complete', result.unresolvedShots)}
         </Text>
         <Text style={styles.body}>
           {result.actualShots === 1 ? '1 shot fired' : `${result.actualShots} shots fired`} ·{' '}
@@ -443,8 +483,9 @@ function ConfirmedRoundView({
           </Text>
         )}
         <Text style={styles.supporting}>
-          Hole diameter {result.hitDiameterMm.toFixed(1)} mm · {target?.label ?? result.targetId} ·
-          rule {result.scoringRule}
+          Hole diameter {result.hitDiameterMm.toFixed(1)} mm (
+          {DIAMETER_SOURCE_TEXT[result.hitDiameterSource ?? 'unrecorded']}) ·{' '}
+          {target?.label ?? result.targetId} · rule {result.scoringRule}
         </Text>
         {target?.isDemo !== false ? <Text style={styles.notice}>{DEMO_TARGET_NOTICE}</Text> : null}
         <Text style={styles.supporting}>{"Confirmed results can't be changed."}</Text>
@@ -481,8 +522,10 @@ export function RoundScreen({ sessionId, roundId }: { sessionId: string; roundId
     }
     const isMissing = (fileName: string | undefined) =>
       fileName !== undefined && !photos.exists(fileName);
+    const found = await getSession(db, sessionId);
     return {
       round,
+      calibreLabel: found !== null && 'session' in found ? found.session.settings.calibreLabel : '',
       missing: {
         before: isMissing(round.photos.before?.fileName),
         after: isMissing(round.photos.after?.fileName),
@@ -516,6 +559,7 @@ export function RoundScreen({ sessionId, roundId }: { sessionId: string; roundId
         ) : null}
         {loaded?.round.state === 'draft' ? (
           <DraftRoundView
+            calibreHint={loaded.calibreLabel}
             draft={loaded.round}
             key={loaded.round.id}
             missing={loaded.missing}

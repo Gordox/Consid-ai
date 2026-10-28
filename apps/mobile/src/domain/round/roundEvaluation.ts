@@ -128,6 +128,7 @@ export function buildConfirmedResult(
     targetId: target.id,
     scoringRule: SCORING_RULE_VERSION,
     hitDiameterMm: draft.hitDiameterMm,
+    hitDiameterSource: draft.hitDiameterSource,
     actualShots: draft.actualShots,
     declaredMisses: draft.declaredMisses,
     unresolvedShots: draft.unresolvedShots,

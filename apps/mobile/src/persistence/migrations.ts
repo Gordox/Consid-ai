@@ -93,12 +93,17 @@ UPDATE round_marks SET accepted = 0 WHERE source = 'suggested';
 ALTER TABLE analysis_attempts ADD COLUMN after_file_name TEXT;
 ALTER TABLE analysis_attempts ADD COLUMN before_file_name TEXT;`;
 
+// Whether a round's hole diameter is the unconfirmed default or the user's choice. Existing rounds
+// become 'assumed': nothing recorded that the user chose their diameter. Only adds.
+const MIGRATION_5_DIAMETER_SOURCE = `ALTER TABLE rounds ADD COLUMN hit_diameter_source TEXT NOT NULL DEFAULT 'assumed' CHECK (hit_diameter_source IN ('assumed','userSet'));`;
+
 // Append only: index + 1 is the schema version. Never edit or reorder a shipped entry.
 export const MIGRATIONS: readonly string[] = [
   MIGRATION_1_CREATE_SESSIONS,
   MIGRATION_2_ADD_ROUNDS,
   MIGRATION_3_PHOTO_RELIABILITY,
   MIGRATION_4_SUGGESTION_REVIEW,
+  MIGRATION_5_DIAMETER_SOURCE,
 ];
 
 export const LATEST_SCHEMA_VERSION = MIGRATIONS.length;

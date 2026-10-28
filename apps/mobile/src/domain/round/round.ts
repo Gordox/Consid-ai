@@ -1,4 +1,5 @@
 import type { Point, Quad } from '../target/homography';
+import type { HitDiameterSource } from './roundRules';
 import type { AccountingStatus } from './shotAccounting';
 
 export type PhotoRole = 'before' | 'after';
@@ -52,6 +53,7 @@ export type DraftRound = {
   readonly unresolvedShots: number;
   readonly targetId: string;
   readonly hitDiameterMm: number;
+  readonly hitDiameterSource: HitDiameterSource;
   readonly calibration: Calibration | null;
   readonly photos: RoundPhotos;
   readonly marks: readonly HitMark[];
@@ -71,6 +73,8 @@ export type ConfirmedResult = {
   readonly targetId: string;
   readonly scoringRule: string;
   readonly hitDiameterMm: number;
+  // Absent in results confirmed before the source was recorded (schema 4 and earlier).
+  readonly hitDiameterSource?: HitDiameterSource;
   readonly actualShots: number;
   readonly declaredMisses: number;
   readonly unresolvedShots: number;

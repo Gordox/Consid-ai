@@ -7,7 +7,12 @@ import type {
   PhotoRole,
   RoundPhoto,
 } from '../domain/round/round';
-import { isActualShots, isHitDiameterMm, isShotsPerHole } from '../domain/round/roundRules';
+import {
+  isActualShots,
+  isHitDiameterMm,
+  isHitDiameterSource,
+  isShotsPerHole,
+} from '../domain/round/roundRules';
 import type { Point } from '../domain/target/homography';
 
 // Thrown when a stored round value is not what this app writes. Names the column only.
@@ -213,6 +218,7 @@ export function parseConfirmedResult(text: string): ConfirmedResult {
   };
   const targetId = get('targetId');
   const scoringRule = get('scoringRule');
+  const diameterSource = get('hitDiameterSource');
   if (
     typeof targetId !== 'string' ||
     typeof scoringRule !== 'string' ||
@@ -228,7 +234,9 @@ export function parseConfirmedResult(text: string): ConfirmedResult {
     typeof numbers.subtotal !== 'number' ||
     !Number.isInteger(numbers.subtotal) ||
     !(total === null || (typeof total === 'number' && Number.isInteger(total))) ||
-    !Array.isArray(shots)
+    !Array.isArray(shots) ||
+    (diameterSource !== undefined &&
+      (typeof diameterSource !== 'string' || !isHitDiameterSource(diameterSource)))
   ) {
     throw new InvalidRoundDataError(column);
   }
@@ -237,6 +245,7 @@ export function parseConfirmedResult(text: string): ConfirmedResult {
     scoringRule,
     status,
     hitDiameterMm: numbers.hitDiameterMm,
+    ...(diameterSource === undefined ? {} : { hitDiameterSource: diameterSource }),
     actualShots: numbers.actualShots,
     declaredMisses: numbers.declaredMisses,
     unresolvedShots: numbers.unresolvedShots,

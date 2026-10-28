@@ -86,7 +86,6 @@ const START = {
   sessionId: SESSION_ID,
   createdAtUtc: '2026-10-28T10:00:00.000Z',
   actualShots: 5,
-  hitDiameterMm: 9,
   targetId: 'demo-synthetic-v1',
 };
 
@@ -101,6 +100,7 @@ const DRAFT_ROW = {
   unresolved_shots: 0,
   target_id: 'demo-synthetic-v1',
   hit_diameter_mm: 9,
+  hit_diameter_source: 'assumed',
   calibration_json: JSON.stringify({
     points: [
       { x: 500, y: 100 },
@@ -147,6 +147,7 @@ describe('startRound', () => {
       5,
       'demo-synthetic-v1',
       9,
+      'assumed',
     ]);
   });
 
@@ -166,7 +167,6 @@ describe('startRound', () => {
   it('rejects out-of-range settings before touching the database', async () => {
     const db = fake({});
     await expect(startRound(db, { ...START, actualShots: 101 })).rejects.toBeInstanceOf(RangeError);
-    await expect(startRound(db, { ...START, hitDiameterMm: 0 })).rejects.toBeInstanceOf(RangeError);
     expect(db.calls).toEqual([]);
   });
 });
@@ -260,6 +260,7 @@ describe('draft writes', () => {
         declaredMisses: 0,
         unresolvedShots: 0,
         hitDiameterMm: 9,
+        hitDiameterSource: 'userSet',
       }),
     ).rejects.toBeInstanceOf(RoundNotEditableError);
 
@@ -405,8 +406,10 @@ describe('listSessionOverviews', () => {
           sequence: 1,
           state: 'confirmed',
           actual_shots: 5,
+          target_id: 'demo-synthetic-v1',
           confirmed_subtotal: 40,
           confirmed_complete: 0,
+          confirmed_unresolved: 1,
         },
       ];
     });
@@ -420,8 +423,10 @@ describe('listSessionOverviews', () => {
         sequence: 1,
         state: 'confirmed',
         actualShots: 5,
+        targetId: 'demo-synthetic-v1',
         confirmedSubtotal: 40,
         confirmedComplete: false,
+        confirmedUnresolved: 1,
       },
     ]);
   });
@@ -438,8 +443,10 @@ describe('listSessionOverviews', () => {
           sequence: 1,
           state: 'confirmed',
           actual_shots: 5,
+          target_id: 'demo-synthetic-v1',
           confirmed_subtotal: null,
           confirmed_complete: null,
+          confirmed_unresolved: null,
         },
       ];
     });
