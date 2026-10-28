@@ -20,6 +20,15 @@
       },
       "predictiveBackGestureEnabled": false
     },
-    "plugins": ["expo-router"]
+    "plugins": [
+      "expo-router",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Target Practice lets you choose photos of your target to mark and score hits.",
+          "cameraPermission": "Target Practice uses the camera to photograph your target before and after a round."
+        }
+      ]
+    ]
   }
 }

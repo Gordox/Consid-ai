@@ -1,28 +1,56 @@
-import { StyleSheet, Text, View } from 'react-native';
+import ChevronRight from 'lucide-react-native/icons/chevron-right';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { Icon } from '../../components/Icon';
 import { colors, radius, spacing, typography } from '../../components/tokens';
 import type { SessionCardText } from './formatSession';
 
-// Not pressable and no chevron (F5). Read as one group by screen readers, so the individual
-// lines are not announced again.
-export function SessionCard({ text }: { text: SessionCardText }) {
+type SessionCardProps = {
+  text: SessionCardText;
+  // Status, confirmed rounds and points, e.g. "In progress · 2 rounds · 47 points".
+  progress: string;
+  onPress: () => void;
+};
+
+// Opens the session. Read as one button by screen readers, so the lines are not announced
+// again one by one.
+export function SessionCard({ text, progress, onPress }: SessionCardProps) {
   return (
-    <View accessible accessibilityLabel={text.accessibilityLabel} style={styles.card}>
-      <Text style={styles.title}>{text.title}</Text>
-      <Text style={styles.secondary}>{text.createdAt}</Text>
-      <Text style={styles.detail}>{text.typeAndCalibre}</Text>
-      <Text style={styles.detail}>{text.distanceAndShots}</Text>
-      <Text style={styles.detail}>{text.plannedRounds}</Text>
-    </View>
+    <Pressable
+      accessibilityHint="Opens the session"
+      accessibilityLabel={`${text.accessibilityLabel}. ${progress}`}
+      accessibilityRole="button"
+      onPress={onPress}
+      style={({ pressed }) => [styles.card, pressed && styles.pressed]}
+    >
+      <View style={styles.text}>
+        <Text style={styles.title}>{text.title}</Text>
+        <Text style={styles.secondary}>{text.createdAt}</Text>
+        <Text style={styles.detail}>{text.typeAndCalibre}</Text>
+        <Text style={styles.detail}>{text.distanceAndShots}</Text>
+        <Text style={styles.detail}>{text.plannedRounds}</Text>
+        <Text style={styles.progress}>{progress}</Text>
+      </View>
+      <Icon icon={ChevronRight} size="action" color={colors.secondary} />
+    </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
   card: {
-    gap: spacing.fine,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.small,
     padding: spacing.field,
     borderRadius: radius.card,
     backgroundColor: colors.surface,
+  },
+  pressed: {
+    backgroundColor: colors.elevated,
+  },
+  text: {
+    flex: 1,
+    gap: spacing.fine,
   },
   title: {
     ...typography.section,
@@ -36,5 +64,10 @@ const styles = StyleSheet.create({
   detail: {
     ...typography.body,
     color: colors.text,
+  },
+  progress: {
+    ...typography.label,
+    color: colors.accent,
+    marginTop: spacing.fine,
   },
 });

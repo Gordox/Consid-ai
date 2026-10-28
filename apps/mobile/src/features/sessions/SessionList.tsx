@@ -24,6 +24,7 @@ import { Banner } from '../../components/Banner';
 import { Button } from '../../components/Button';
 import { Icon } from '../../components/Icon';
 import { colors, radius, spacing, typography } from '../../components/tokens';
+import { listSessionOverviews, type SessionOverview } from '../../persistence/roundRepository';
 import { listSessions, type SessionListing } from '../../persistence/sessionRepository';
 import { useSessionStore } from '../startup/sessionStoreContext';
 import { presentSession, type SessionCardText } from './formatSession';
@@ -31,20 +32,40 @@ import { InvalidSessionCard } from './InvalidSessionCard';
 import { type InvalidRowText, presentInvalidRows } from './invalidRowPresentation';
 import { SessionCard } from './SessionCard';
 import { createSessionListController, type SessionListView } from './sessionListController';
+import { formatProgressLine } from './sessionProgressText';
+
+// Sessions plus their status and round summaries, read together for the list.
+type ListingWithProgress = SessionListing & {
+  readonly overviews: ReadonlyMap<string, SessionOverview>;
+};
+
+async function loadListing(db: Parameters<typeof listSessions>[0]): Promise<ListingWithProgress> {
+  const listing = await listSessions(db);
+  return { ...listing, overviews: await listSessionOverviews(db) };
+}
 
 type ListItem =
-  | { readonly kind: 'session'; readonly key: string; readonly text: SessionCardText }
+  | {
+      readonly kind: 'session';
+      readonly key: string;
+      readonly text: SessionCardText;
+      readonly progress: string;
+    }
   | { readonly kind: 'invalid'; readonly key: string; readonly text: InvalidRowText };
 
 // Valid sessions keep the order listSessions returns; unreadable rows follow them (Ö1).
 // Valid sessions are keyed by their full id (U5).
-function toListItems(listing: SessionListing): ListItem[] {
+function toListItems(listing: ListingWithProgress): ListItem[] {
   return [
-    ...listing.sessions.map((session): ListItem => ({
-      kind: 'session',
-      key: session.id,
-      text: presentSession(session),
-    })),
+    ...listing.sessions.map((session): ListItem => {
+      const overview = listing.overviews.get(session.id);
+      return {
+        kind: 'session',
+        key: session.id,
+        text: presentSession(session),
+        progress: formatProgressLine(overview?.finishedAtUtc ?? null, overview?.rounds ?? []),
+      };
+    }),
     ...presentInvalidRows(listing.invalidRows).map((text): ListItem => ({
       kind: 'invalid',
       key: text.key,
@@ -82,7 +103,7 @@ function EmptyState({ onNewSession }: { onNewSession: () => void }) {
 }
 
 type HeaderProps = {
-  view: SessionListView;
+  view: SessionListView<ListingWithProgress>;
   titleRef: RefObject<TextInstance | null>;
   onNewSession: () => void;
   onRetry: () => void;
@@ -140,7 +161,7 @@ export function SessionList() {
   const router = useRouter();
   const titleRef = useRef<TextInstance>(null);
   const [controller] = useState(() =>
-    createSessionListController({ coordinator, loadSessions: () => listSessions(db) }),
+    createSessionListController({ coordinator, loadSessions: () => loadListing(db) }),
   );
   const view = useSyncExternalStore(controller.subscribe, controller.getView);
 
@@ -202,7 +223,11 @@ export function SessionList() {
         }
         renderItem={({ item }) =>
           item.kind === 'session' ? (
-            <SessionCard text={item.text} />
+            <SessionCard
+              onPress={() => router.push(`/sessions/${item.key}`)}
+              progress={item.progress}
+              text={item.text}
+            />
           ) : (
             <InvalidSessionCard onRetry={controller.retry} text={item.text} />
           )
