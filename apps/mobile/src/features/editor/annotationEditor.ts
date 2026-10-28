@@ -26,7 +26,6 @@ export type EditorAction =
   | { readonly type: 'setShots'; readonly id: string; readonly shots: number }
   | { readonly type: 'deleteMark'; readonly id: string }
   | { readonly type: 'acceptMark'; readonly id: string }
-  | { readonly type: 'acceptCertainSuggestions' }
   | { readonly type: 'replaceSuggestions'; readonly marks: readonly HitMark[] }
   | { readonly type: 'undo' };
 
@@ -138,20 +137,6 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
         action.id,
       );
     }
-    case 'acceptCertainSuggestions': {
-      // Uncertain suggestions always need a look of their own.
-      if (!state.marks.some((mark) => isPending(mark) && !mark.uncertain)) return state;
-      return edit(
-        state,
-        {
-          ...state,
-          marks: state.marks.map((mark) =>
-            isPending(mark) && !mark.uncertain ? { ...mark, accepted: true } : mark,
-          ),
-        },
-        state.selectedId,
-      );
-    }
     case 'replaceSuggestions': {
       // Pending suggestions are replaced; manual, edited and accepted marks always stay.
       const kept = state.marks.filter((mark) => !isPending(mark));
@@ -166,18 +151,4 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       return { ...previous, selectedId, history: state.history.slice(0, -1) };
     }
   }
-}
-
-// The nearest mark within reach of a tap, so tapping a hole selects it instead of adding one.
-export function markNear(marks: readonly HitMark[], point: Point, reach: number): HitMark | null {
-  let best: HitMark | null = null;
-  let bestDistance = reach;
-  for (const mark of marks) {
-    const distance = Math.hypot(mark.position.x - point.x, mark.position.y - point.y);
-    if (distance <= bestDistance) {
-      best = mark;
-      bestDistance = distance;
-    }
-  }
-  return best;
 }

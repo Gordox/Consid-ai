@@ -1,7 +1,7 @@
 import ChevronRight from 'lucide-react-native/icons/chevron-right';
-import History from 'lucide-react-native/icons/history';
+import ChevronLeft from 'lucide-react-native/icons/chevron-left';
 import Plus from 'lucide-react-native/icons/plus';
-import Trash2 from 'lucide-react-native/icons/trash-2';
+import Trash2 from 'lucide-react-native/icons/trash';
 import { useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
@@ -375,7 +375,7 @@ export function SessionDetail({ sessionId }: { sessionId: string }) {
         ) : null}
 
         {finished ? (
-          <Button icon={History} label="Back to sessions" onPress={() => router.dismissTo('/')} />
+          <Button icon={ChevronLeft} label="Back to sessions" onPress={() => router.dismissTo('/')} />
         ) : (
           <View style={styles.section}>
             {draft === null ? null : (

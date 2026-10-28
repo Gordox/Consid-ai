@@ -6,7 +6,8 @@ import {
 
 import type { HitMark } from '../../domain/round/round';
 import type { Point } from '../../domain/target/homography';
-import { type EditorAction, markNear } from './annotationEditor';
+import type { EditorAction } from './annotationEditor';
+import { type EditorTool, releaseAction } from './editorInteraction';
 import {
   imageToScreen,
   panBy,
@@ -17,28 +18,34 @@ import {
   zoomAround,
 } from './viewTransform';
 
-// Touch handling for the photo canvas, outside React so the responder is created once:
-// a tap adds a calibration point or a mark (or selects a nearby mark), a drag starting on the
-// selected mark moves it, any other drag pans, and two fingers zoom.
-
-export type EditorMode = 'calibrate' | 'mark';
+// Touch handling for the photo canvas, outside React so the responder is created once.
+// - calibrate and add: one finger places a point; dragging before lifting fine-positions it
+//   under the magnifier. The photo does not pan, so placing never moves the view by accident.
+// - pan: one finger pans; a tap selects (and steps through overlapping marks).
+// - In add and pan, a drag that starts on the selected mark moves it.
+// - Two fingers always zoom and cancel whatever one finger started.
 
 export type GestureSnapshot = {
   readonly view: ViewTransform | null;
   readonly canvas: Size | null;
   readonly image: Size;
-  readonly mode: EditorMode;
+  readonly tool: EditorTool;
   readonly marks: readonly HitMark[];
   readonly selectedId: string | null;
 };
+
+// What the magnifier shows: the finger on the canvas and the image point being edited.
+export type MagnifierFocus = { readonly finger: Point; readonly image: Point };
 
 export type GestureCallbacks = {
   readonly dispatch: (action: EditorAction) => void;
   readonly setView: (view: ViewTransform) => void;
   readonly setDragPreview: (preview: { id: string; point: Point } | null) => void;
+  readonly setMagnifier: (focus: MagnifierFocus | null) => void;
 };
 
-// Screen distance within which a tap selects a mark, and the movement that turns a tap into a drag.
+// Screen radius within which a touch reaches a mark (a 56-point circle, above the 48-point
+// minimum), independent of the drawn hole size. Movement beyond the slop turns a tap into a drag.
 export const TOUCH_REACH = 28;
 const TAP_SLOP = 8;
 
@@ -48,6 +55,7 @@ type Gesture =
       readonly kind: 'single';
       readonly start: Point;
       readonly startView: ViewTransform;
+      // Set when the drag started on the selected mark.
       readonly dragId: string | null;
       readonly moved: boolean;
     }
@@ -66,37 +74,27 @@ export function createGestureController(newMarkId: () => string) {
     }));
   }
 
-  function tap(point: Point): void {
-    if (snapshot?.view == null || callbacks === null) return;
-    const imagePoint = screenToImage(snapshot.view, point);
-    if (snapshot.mode === 'calibrate') {
-      callbacks.dispatch({ type: 'addCalibrationPoint', point: imagePoint });
-      return;
-    }
-    const near = markNear(snapshot.marks, imagePoint, TOUCH_REACH / scaleOf(snapshot.view));
-    callbacks.dispatch(
-      near === null
-        ? { type: 'addMark', id: newMarkId(), point: imagePoint }
-        : { type: 'select', id: near.id },
-    );
-  }
+  const places = (tool: EditorTool) => tool === 'calibrate' || tool === 'add';
 
   function dragTarget(start: Point): string | null {
-    if (snapshot?.view == null || snapshot.mode !== 'mark') return null;
+    if (snapshot?.view == null || snapshot.tool === 'calibrate') return null;
     const selected = snapshot.marks.find((mark) => mark.id === snapshot?.selectedId);
     if (selected === undefined) return null;
     const screen = imageToScreen(snapshot.view, selected.position);
     return Math.hypot(screen.x - start.x, screen.y - start.y) <= TOUCH_REACH ? selected.id : null;
   }
 
-  function dragPoint(
+  function fingerAt(
     current: Extract<Gesture, { kind: 'single' }>,
     state: PanResponderGestureState,
   ): Point {
-    return screenToImage(current.startView, {
-      x: current.start.x + state.dx,
-      y: current.start.y + state.dy,
-    });
+    return { x: current.start.x + state.dx, y: current.start.y + state.dy };
+  }
+
+  function end(): void {
+    gesture = { kind: 'idle' };
+    callbacks?.setDragPreview(null);
+    callbacks?.setMagnifier(null);
   }
 
   const responder = PanResponder.create({
@@ -106,13 +104,11 @@ export function createGestureController(newMarkId: () => string) {
     onPanResponderGrant: (event) => {
       const [first] = touches(event);
       if (snapshot?.view == null || first === undefined) return;
-      gesture = {
-        kind: 'single',
-        start: first,
-        startView: snapshot.view,
-        dragId: dragTarget(first),
-        moved: false,
-      };
+      const dragId = dragTarget(first);
+      gesture = { kind: 'single', start: first, startView: snapshot.view, dragId, moved: false };
+      if (dragId === null && places(snapshot.tool)) {
+        callbacks?.setMagnifier({ finger: first, image: screenToImage(snapshot.view, first) });
+      }
     },
     onPanResponderMove: (event, state) => {
       if (snapshot?.view == null || snapshot.canvas === null || callbacks === null) return;
@@ -126,6 +122,7 @@ export function createGestureController(newMarkId: () => string) {
             startView: snapshot.view,
           };
           callbacks.setDragPreview(null);
+          callbacks.setMagnifier(null);
           return;
         }
         const focus = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
@@ -138,10 +135,15 @@ export function createGestureController(newMarkId: () => string) {
       if (gesture.kind !== 'single') return;
       const moved = gesture.moved || Math.hypot(state.dx, state.dy) > TAP_SLOP;
       gesture = { ...gesture, moved };
-      if (!moved) return;
+      const finger = fingerAt(gesture, state);
+      const image = screenToImage(gesture.startView, finger);
       if (gesture.dragId !== null) {
-        callbacks.setDragPreview({ id: gesture.dragId, point: dragPoint(gesture, state) });
-      } else {
+        if (!moved) return;
+        callbacks.setDragPreview({ id: gesture.dragId, point: image });
+        callbacks.setMagnifier({ finger, image });
+      } else if (places(snapshot.tool)) {
+        callbacks.setMagnifier({ finger, image });
+      } else if (moved) {
         callbacks.setView(
           panBy(gesture.startView, { x: state.dx, y: state.dy }, snapshot.image, snapshot.canvas),
         );
@@ -149,24 +151,30 @@ export function createGestureController(newMarkId: () => string) {
     },
     onPanResponderRelease: (_event, state) => {
       const finished = gesture;
-      gesture = { kind: 'idle' };
-      if (finished.kind !== 'single' || callbacks === null) return;
-      if (!finished.moved) {
-        tap(finished.start);
-      } else if (finished.dragId !== null) {
-        // One history entry per drag, written when the finger lifts.
-        callbacks.dispatch({
-          type: 'moveMark',
-          id: finished.dragId,
-          point: dragPoint(finished, state),
-        });
+      if (finished.kind !== 'single' || callbacks === null || snapshot === null) {
+        end();
+        return;
       }
-      callbacks.setDragPreview(null);
+      const endPoint = screenToImage(finished.startView, fingerAt(finished, state));
+      if (finished.dragId !== null && finished.moved) {
+        // One history entry per drag, written when the finger lifts.
+        callbacks.dispatch({ type: 'moveMark', id: finished.dragId, point: endPoint });
+      } else {
+        const action = releaseAction({
+          tool: snapshot.tool,
+          moved: finished.moved,
+          start: screenToImage(finished.startView, finished.start),
+          end: endPoint,
+          marks: snapshot.marks,
+          selectedId: snapshot.selectedId,
+          reach: TOUCH_REACH / scaleOf(finished.startView),
+          newId: newMarkId,
+        });
+        if (action !== null) callbacks.dispatch(action);
+      }
+      end();
     },
-    onPanResponderTerminate: () => {
-      gesture = { kind: 'idle' };
-      callbacks?.setDragPreview(null);
-    },
+    onPanResponderTerminate: end,
   });
 
   return {

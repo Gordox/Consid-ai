@@ -4,7 +4,6 @@ import {
   editorReducer,
   type EditorState,
   initialEditorState,
-  markNear,
 } from '../../../src/features/editor/annotationEditor';
 
 const suggestion: HitMark = {
@@ -133,17 +132,6 @@ describe('editorReducer', () => {
     expect(apply(state, { type: 'undo' }).marks[0]).toMatchObject({ accepted: false });
   });
 
-  it('accepts all certain suggestions at once but leaves uncertain ones for review', () => {
-    const certain: HitMark = { ...suggestion, id: 'c', uncertain: false };
-    const state = apply(initialEditorState(null, [suggestion, certain]), {
-      type: 'acceptCertainSuggestions',
-    });
-    expect(state.marks.map((mark) => [mark.id, mark.accepted])).toEqual([
-      [suggestion.id, false],
-      ['c', true],
-    ]);
-  });
-
   it('counts a moved suggestion as accepted and edited', () => {
     const state = apply(initialEditorState(null, [suggestion]), {
       type: 'moveMark',
@@ -151,13 +139,5 @@ describe('editorReducer', () => {
       point: { x: 1, y: 1 },
     });
     expect(state.marks[0]).toMatchObject({ source: 'suggestedEdited', accepted: true });
-  });
-});
-
-describe('markNear', () => {
-  it('finds the nearest mark within reach only', () => {
-    const marks = [suggestion, { ...suggestion, id: 's2', position: { x: 14, y: 10 } }];
-    expect(markNear(marks, { x: 13, y: 10 }, 5)?.id).toBe('s2');
-    expect(markNear(marks, { x: 40, y: 40 }, 5)).toBeNull();
   });
 });
