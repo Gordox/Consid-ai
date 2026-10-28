@@ -303,6 +303,27 @@ function DraftRoundView({
 
       <View style={styles.card}>
         <Text accessibilityRole="header" style={styles.sectionTitle}>
+          Hits
+        </Text>
+        <Text style={styles.body}>
+          {draft.calibration === null ? 'Not calibrated' : 'Calibrated'} ·{' '}
+          {evaluation.hitShots === 1
+            ? '1 hit shot marked'
+            : `${evaluation.hitShots} hit shots marked`}
+          {draft.marks.some((mark) => mark.uncertain) ? ' · uncertain suggestions to check' : ''}
+        </Text>
+        <Button
+          disabled={draft.photos.after === null || missing.after}
+          label={draft.calibration === null ? 'Calibrate and mark hits' : 'Edit hits'}
+          onPress={() => router.push(`/sessions/${draft.sessionId}/rounds/${draft.id}/editor`)}
+        />
+        {draft.photos.after === null ? (
+          <Text style={styles.supporting}>Add an after photo to mark hits.</Text>
+        ) : null}
+      </View>
+
+      <View style={styles.card}>
+        <Text accessibilityRole="header" style={styles.sectionTitle}>
           Result
         </Text>
         <Text style={styles.body}>{roundStatusText(evaluation, counts.actualShots)}</Text>
