@@ -1,10 +1,12 @@
 # Återställning av foton och utkast: vad som stöds
 
-Status 2026-10-28. **Ingen återställning är verifierad på S20.** Det som är verifierat är logiken i automatiska tester (`pendingPickRecovery.test.ts`, `sqlitePhotos.test.ts` och `sqlitePhotoCleanup.test.ts`).
+Status 2026-10-28. **Ingen återställning är verifierad på S20.**
+
+> **Ändrat i förbättringsomgång 2:** Kameran är nu appens egen vy (`expo-camera`, `src/features/camera/`), inte systemkameran via `expo-image-picker`. Den öppnar ingen annan aktivitet, så återställningen nedan gäller **bara bildbiblioteket**. Om appen avslutas medan kameravyn är öppen finns ingen bild att rädda; utkastet och andra bilder finns kvar. Om appen avslutas efter att bilden tagits men innan den sparats, gäller raden om avbrott mitt i sparandet. De automatiska testerna nedan täcker inte den nya kameran, och ingen del av kameran är provad på telefon. Det som är verifierat är logiken i automatiska tester (`pendingPickRecovery.test.ts`, `sqlitePhotos.test.ts` och `sqlitePhotoCleanup.test.ts`).
 
 ## Vad appen gör
 
-1. **Innan kameran eller bildväljaren öppnas** sparas en post i databasen (`pending_photo_picks`) med vilken runda och roll bilden gäller. När väljaren svarar medan appen lever tas posten bort, oavsett utfall.
+1. **Innan bildväljaren öppnas** sparas en post i databasen (`pending_photo_picks`) med vilken runda och roll bilden gäller. När väljaren svarar medan appen lever tas posten bort, oavsett utfall.
 2. **Varje gång appens skärmar startar** läser `PhotoRecovery` posten. Det sker vid kallstart, och när databasen öppnas igen efter ett byte av läge.
    - **Ingen post:** ingenting händer.
    - **En post finns:** appen frågar `expo-image-picker` efter ett kvarhållet resultat (`getPendingResultAsync`).
@@ -39,4 +41,5 @@ Antal skott, missar, diameter, kalibrering och markeringar skrivs till SQLite vi
 Vänta med dessa tills grundflödet är provat. Ordningen nedan går från vanligast till ovanligast.
 1. Utvecklaralternativ → **Don't keep activities** → ta en bild (fall 2).
 2. Utvecklaralternativ → **Gräns för bakgrundsprocesser: inga** → ta en bild (ungefär fall 3).
-3. Svep bort appen medan kameran är öppen (fall 4).
+3. Svep bort appen medan bildväljaren är öppen (fall 4).
+4. Svep bort appen medan appens kameravy är öppen: utkastet ska finnas kvar, och ingen bild ska ha lagts till.

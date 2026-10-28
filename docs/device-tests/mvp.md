@@ -18,6 +18,23 @@ Checklista för hela flödet efter omdesignen UI/UX v2.1 (`implementation/ui-ux-
 2. **Starta servern** (behövs för G4). Se startguiden i `services/analysis/README.md`.
 3. **Ha en riktig tavla** med klistermärken till hands.
 
+## Förbättringsomgång 2 (N1–N10)
+
+Kör dessa efter G1–G5. N2–N10 skapar eller ändrar riktiga lokala sessioner, profiler och mallar i din vanliga databas.
+
+| # | Handling | Förväntat | Resultat |
+| --- | --- | --- | --- |
+| N1 | `Profiles and templates`: skapa profilen "Test UI" och en mall med 25 m, 5 skott och tomma planerade rundor. Arkivera mallen och återställ den. | Mallen visar `Not planned`. Den arkiverade ligger under `Archived` och kan återställas. | Ej genomförd |
+| N2 | `New session`: välj profil och mall, ändra kalibern för just den sessionen, skapa sessionen. Öppna sedan `New session` igen. | Fälten fylls. `Changed from … for this session only` visas. Profilen är oförändrad. Nästa formulär börjar från samma profil och mall, utan fråga om att kasta ändringar när du går tillbaka direkt. | Ej genomförd |
+| N3 | Kaliber: sök `9x19`, välj `9mm Luger`. Byt till `Custom` och skriv en egen text. Öppna en gammal session med fritext. | Sökningen hittar via alias. Custom sparas som skriven. Gammal fritext visas oförändrad. Diametern ändras inte. | Ej genomförd |
+| N4 | Fältparet vid normal och största systemtext. | Fälten `Shots per round` och `Planned rounds` ligger på samma höjd; vid stor text staplas de. Inget klipps. | Ej genomförd |
+| N5 | `Camera` på efterbilden: neka behörighet först, tillåt sedan. Ta en bild med cirkeln runt tavlan. Gå till bakgrunden och tillbaka. | Nekad behörighet ger `Open settings` eller `Allow camera` och `Use library instead`. Överlägget syns inte i den sparade bilden. Bilden är rättvänd och hör till rätt runda. Kameran startar igen efter återkomst. | Ej genomförd |
+| N6 | `Improve detection`: lägg till och ta bort en förebild. | Efterbilden är huvudhandlingen. Förebilden syns alltid när den finns och kan tas bort. | Ej genomförd |
+| N7 | `Align target`: placera fyra punkter, dra punkt 2, zooma och panorera, dra igen. Byt plats på två punkter. | Punkten följer fingret under förstoraren och ringarna följer direkt. Sidan skrollar inte medan fingret är på bilden. Vid fel ordning visas förklaringen och `Use alignment` är spärrad. Undo tar tillbaka en dragning. | Ej genomförd |
+| N8 | Markera två träffar, gå tillbaka till `Align target` och flytta en punkt. | Träffarna ligger kvar på samma ställe i bilden; poängen ändras. | Ej genomförd |
+| N9 | `Inspect hits` på ett utkast och på en bekräftad runda. Zooma, panorera, slå av och på `Show hits`, välj en träff. Stäng med knappen och med Androids bakåtknapp. | Markeringarna följer bilden. Vald träff visar sin poäng. Ingen handling ändrar något; utkastet erbjuder `Edit hits`. | Ej genomförd |
+| N10 | Ta förebilden från en helt annan vinkel så att bilderna inte kan registreras, tryck `Analyse photos` och sedan `Analyse after photo only`. | `Photos couldn't be aligned` visas med valet att analysera bara efterbilden och en förklaring av begränsningarna. | Ej genomförd |
+
 ## Först: grundflödet (G1–G5)
 
 | # | Handling | Förväntat | Resultat |

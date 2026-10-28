@@ -421,3 +421,19 @@ Canonical files after copying the package:
 The old five boards are superseded: foundations → components 01–02; components → component catalogue; current MVP → screen catalogue; future features → excluded scope, not a backlog mandate; prototype flows → sections 7, 14 and 15. Update active links to those boards. Preserve unrelated documents and historical evidence.
 
 The source package’s HTML is a reference only. Do not port its CSS or synthetic image data into React Native wholesale. Do not infer real scoring geometry from any image in this directory.
+
+## 19. Improvement round 2 decisions (2026-10-28)
+
+Owner-approved changes to this specification. Where they differ from sections 1–18 or the PNGs, these apply.
+
+| Area | Decision |
+|---|---|
+| Alignment | Placed points can be selected and dragged again; the point follows the finger under the magnifier and the ring overlay is redrawn live. Undo and Reset stay. Points out of order (not top, right, bottom, left round the target) or on top of each other are explained and cannot be used; no rings are drawn for them. Each drag is one undo step and one save when the finger lifts. |
+| Recalibration | Hits keep their photo positions; their target coordinates and demo scores are recalculated by the domain. An analysis answer for an earlier calibration is discarded as stale; marks already on the round are kept. |
+| Editor layout | The page scrolls; the photo is a separate gesture area (no page scroll while a finger is on it). Instruction and current point above the photo, tools directly below it, Undo/Reset and the primary action in a footer outside the scroll area, above the real bottom inset. Alignment's primary action is "Use alignment". Alignment points are numbered 1–4. |
+| Inspection | The round's photo is tappable and "Inspect hits" opens a full-screen, read-only view: pinch, pan, zoom buttons, Fit, Show hits (on when opened through Inspect hits), numbered markers, a list and the selected hit's details. A confirmed round shows its stored values; a draft offers a separate "Edit hits". |
+| Field pairs | Labels, inputs and messages are separate rows so inputs align when a label wraps; pairs stack below 340 pt width or above 1.3 text scale. Optional fields show "· Optional" after the label. |
+| Photos | The after photo is the main photo action. The before photo is optional under "Improve detection" and shown open whenever one exists. After a registration failure the user can choose "Analyse after photo only". |
+| Profiles and templates | Firearm profiles (name, type, calibre) and training templates (name, distance, shots per round, optional rounds) are created, listed, edited, archived and restored under "Profiles and templates". They only fill the session form; the session keeps its own snapshot. The form starts from the last used active profile and template without counting as an edit, notes values changed for this session, and can save current values as a new profile or template. No deletion in this round. |
+| Calibre | A searchable sheet of named calibres checked against SAAMI's equivalent-names list, plus Custom. Values stay text; existing free text is shown as Custom and never converted. The calibre never sets the hole diameter. |
+| Camera | An in-app camera (expo-camera) with a guide: circle, centre mark and frame corners. The guide is not in the photo, is not detection, alignment or a quality check, and says so. Controls: cancel, shutter, light, library. |

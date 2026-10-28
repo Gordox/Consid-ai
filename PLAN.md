@@ -20,6 +20,7 @@ Kamera, bildanalys, poängberäkning, mål, backend, autentisering, synk, redige
 | 7 | Dokumentation och integrationstester på enhet | **Pausat** (2026-10-27), inte klart. 7a (checklistan) och 7b (testgrunden) är klara. T1–T6 och N4 är godkända på S20. Developer checks och testläget är **borttagna 2026-10-28** på ägarens beslut, så 7c–7f kan inte återupptas i den formen; kvarstående verifiering måste planeras om (`implementation/step-7-verification.md`). |
 | 8 | CI | **Verifierat i GitHub Actions**: PR #2 (`679c863`) och push till `main` (`d802586`), med alla steg gröna. |
 | UI v2.1 | Omdesign av hela MVP:n och borttagning av Developer checks | **Implementerat och enhetstestat 2026-10-28** (`implementation/ui-ux-v2.md`). Android-exporten fungerar. Ingen skärm är körd på S20 eller iOS; telefonchecklistan finns i `docs/device-tests/mvp.md`. |
+| Förbättring 2 | Redigerbar kalibrering, inspektion, profiler och mallar, kaliberväljare, kameravy | **Implementerat och enhetstestat 2026-10-28** (`implementation/improvements-2.md`). Android- och iOS-export fungerar. Inget är provat på telefon. |
 | MVP | Rundor, foton, editor, poäng, lokal analys | **Delvis klar MVP** med fungerande manuellt flöde och lokal, heuristisk analysserver (`implementation/mvp-plan.md` §9–10). Demotavla. Analysen är bara testad på syntetiska bilder. Grundflödet från före fas 2 fungerar på S20. Fas 2 är **inte testad på S20** (`docs/device-tests/mvp.md`). |
 
 ## Verifierade versioner (npm-registret och Expo-dokumentationen för SDK 58, 2026-10-27)

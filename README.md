@@ -120,23 +120,31 @@ The interface follows [docs/design/ui-ux.md](docs/design/ui-ux.md) (v2.1). The a
 your normal database; there is no developer or test mode in the app.
 
 1. **Sessions** lists your sessions with **All / In progress / Finished** filters. Tap
-   **New session**: firearm name, firearm type (chosen in a sheet, nothing preselected), calibre,
-   distance and planned shots/rounds.
+   **New session**: firearm name, firearm type (chosen in a sheet, nothing preselected), calibre
+   (searchable list or Custom), distance and planned shots/rounds. **Profiles and templates**
+   saves firearm profiles (name, type, calibre) and training templates (distance, shots per
+   round, optional rounds); the form starts from the last used ones, every value can be changed
+   for one session, and saved sessions never change when a profile or template does.
 2. Open a session and tap **Start round**. The round starts with **Actual shots** set to the
    planned number; change it if the round was interrupted.
 3. **Hole diameter** starts as an *assumed* 9.0 mm, labelled **Assumed** next to your calibre.
    Change it, or tap **Use this diameter** to confirm it. Your choice carries over to the next
    round. A hole touching a ring line gets the higher score, so the diameter matters near lines.
-4. **Add photos:** the **Before** photo is optional and recommended for reused targets (after
-   covering old holes); the **After** photo is required for marking. Use **Camera** or
-   **Library**. The app keeps an unchanged copy and an upright copy without location data;
-   marks and analysis use the upright copy.
+4. **Add photos:** the **After photo** is the main one; take it with the app's **Camera**, whose
+   circle and frame are only a guide (not detection, alignment or scoring), or choose it from the
+   **Library**. A **Before photo** is optional, under **Improve detection**, and helps when you
+   reuse a target. The app keeps an unchanged copy and an upright copy without location data;
+   marks and analysis use the upright copy. Tap a photo, or **Inspect hits**, to view it full
+   screen, read-only.
 5. **Align target:** in the editor, place the four points where the outer ring crosses the line
    of numbers: top, right, bottom, left. Drag before lifting to fine-position a point under the
-   magnifier. The rings are drawn back onto the photo so you can check the fit.
+   magnifier; afterwards drag any point again and the rings follow. Points in the wrong order or
+   on top of each other are explained and cannot be used. Hits keep their place on the photo
+   when you adjust the points; their scores are recalculated.
 6. **Analyse photos** (when the service is set up, below) or **Mark hits manually**. With a
    before photo the two are compared; without one only the after photo is used, which is less
-   reliable. Suggestions are **dashed with ?** and **not counted** until you accept them.
+   reliable. If the two photos cannot be aligned, you can choose **Analyse after photo only**.
+   Suggestions are **dashed with ?** and **not counted** until you accept them.
 7. **Review hits:** the editor has explicit tools: **Add hits** (touch to add), **Select and
    pan** (nothing is added), **Align**, plus undo, zoom and fit. Accepted hits are numbered.
    Select a marker to accept or remove it, move it, or set several shots for one hole. Every
