@@ -173,3 +173,34 @@ Det verifierar **inte** UI på telefonen. S20-checklistan finns i `docs/device-t
 - Orienteringen kontrolleras genom att jämföra bildens proportioner. En avvikelse varnar men rättas inte.
 - Fotokopior som blir kvar om appen kraschar mellan kopiering och skrivning städas inte automatiskt.
 - iOS är overifierat.
+
+## 9. Fas 2: mot en användbar MVP (2026-10-28)
+
+**Ägarens underlag:** Grundflödet fungerar på S20. Det är inte ett godkännande av U1–U17. Nytt mandat: riktiga funktioner före dokumentation, samma arbetssätt med branch, granskning och lokal merge, inget pushat.
+
+### 9.1 Luckor i flödet (genomgång av koden)
+
+| # | Lucka | Följd |
+| --- | --- | --- |
+| L1 | Kopian är den råa filen från väljaren, med EXIF-orientering och plats. Koordinaterna antar att varje visare tillämpar orienteringen likadant, och en uppladdning skulle ta med platsdata. | Förskjutna markeringar, platsdata i analysen |
+| L2 | `getPendingResultAsync` hanteras inte. | Ett foto tappas om Android avslutar appen under kameran |
+| L3 | Övergivna fotokopior städas aldrig, och alla databaser delar en mapp. | Lagringen växer, och en städning skulle kunna radera testdatabasens bilder |
+| L4 | Ingen analysserver finns. | Inga riktiga förslag |
+| L5 | Ett sent svar kontrolleras mot senaste försöket men inte mot fotot. Ett byte av efter-bild under analysen kan ge förslag på fel bild. | Felplacerade förslag |
+| L6 | Förslag räknas som träffar direkt. | Ingen skillnad mellan förslag och bekräftad träff |
+| L7 | Analysstatus finns bara i minnet och försvinner när skärmen lämnas. Ett avbrutet försök syns inte. | Oklar status, inget naturligt återförsök |
+| L8 | Håldiametern är tyst 9 mm för varje ny runda. | Ett antagande som inte syns |
+| L9 | Summeringarna skiljer inte demopoäng från verklig poäng, och oklara skott syns inte i listan. | Demopoäng kan blandas med verkliga |
+| L10 | Editorn kan öppnas medan analysen pågår, och då skriver editorn över förslagen. | Förslag som tappas |
+
+### 9.2 Delar (en branch per del)
+
+| Branch | Innehåll |
+| --- | --- |
+| `feature/photo-reliability` | L1–L3. Migration 3 (originalkopia och påbörjat bildval). Rättvänd JPEG utan metadata via `expo-image-manipulator` (SDK 58, finns i Expo Go), där den normaliserade bildens pixlar är koordinatsystemet. Återställning efter att appen avslutats. En bildmapp per databas och städning av kopior som ingen rad pekar på och som är äldre än 1 h. Tester mot riktig SQLite (`node:sqlite`). |
+| `feature/analysis-server` | L4. Python, FastAPI och OpenCV i `services/analysis`. Validering av format och storlek, registrering före jämförelse, kalibreringen som valfritt underlag, kontraktet utökat med kalibrering. Tester med syntetiska bilder och riktiga HTTP-anrop. |
+| `feature/analysis-review` | L5–L7 och L10. Migration 4 (försöket knyts till sina bildfiler, förslag kräver godkännande). Senaste försöket visas med återförsök. HTTP till lokalt nätverk tillåts i utvecklingsläge. Editorn låses under analysen. |
+| `feature/target-and-diameter` | L8–L9. Undersökning av tavlan och en mätmall. Diameterns källa (antagen eller vald) sparas och förs vidare inom sessionen. Demopoäng och verklig poäng hålls isär i summeringarna, och oklara skott visas. |
+| `feature/mvp-docs-2` | README, start av servern och nätverket till S20, S20-checklistan och resultatet. |
+
+**Nytt beroende:** `expo-image-manipulator ~58.0.15`. Det behövs för att faktiskt rotera pixlarna och ta bort metadata. Paketet ingår inte i stacken i `CLAUDE.md` och tas med under ägarens mandat för självständigt MVP-arbete. Beslutet redovisas i slutrapporten.
