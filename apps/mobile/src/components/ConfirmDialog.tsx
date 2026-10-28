@@ -3,6 +3,7 @@ import { AccessibilityInfo, Modal, StyleSheet, Text, type TextInstance, View } f
 
 import { Button } from './Button';
 import { colors, radius, spacing, typography } from './tokens';
+import { useReducedMotion } from './useReducedMotion';
 
 type ConfirmDialogProps = {
   visible: boolean;
@@ -10,22 +11,27 @@ type ConfirmDialogProps = {
   body: string;
   cancelLabel: string;
   confirmLabel: string;
+  // 'destructive' for removing or discarding; 'primary' for a safe forward step.
+  confirmVariant?: 'primary' | 'destructive';
   onCancel: () => void;
   onConfirm: () => void;
 };
 
-// The non-destructive choice comes first and is what Android back selects. Focus moves to the
-// title when the dialog opens; the caller restores focus after Cancel (Stay/Keep editing).
+// components/21-dialogs.png. The safe choice comes first in reading order and is what Android
+// Back selects. Focus moves to the title when the dialog opens; the caller restores focus after
+// Cancel (Stay/Keep editing). The backdrop does not dismiss: every choice is a labelled button.
 export function ConfirmDialog({
   visible,
   title,
   body,
   cancelLabel,
   confirmLabel,
+  confirmVariant = 'destructive',
   onCancel,
   onConfirm,
 }: ConfirmDialogProps) {
   const titleRef = useRef<TextInstance>(null);
+  const reducedMotion = useReducedMotion();
 
   function focusTitle(): void {
     if (titleRef.current !== null) {
@@ -35,7 +41,7 @@ export function ConfirmDialog({
 
   return (
     <Modal
-      animationType="none"
+      animationType={reducedMotion ? 'none' : 'fade'}
       onRequestClose={onCancel}
       onShow={focusTitle}
       statusBarTranslucent
@@ -50,7 +56,7 @@ export function ConfirmDialog({
           <Text style={styles.body}>{body}</Text>
           <View style={styles.actions}>
             <Button label={cancelLabel} onPress={onCancel} variant="secondary" />
-            <Button label={confirmLabel} onPress={onConfirm} variant="destructive" />
+            <Button label={confirmLabel} onPress={onConfirm} variant={confirmVariant} />
           </View>
         </View>
       </View>
@@ -67,8 +73,8 @@ const styles = StyleSheet.create({
   },
   card: {
     gap: spacing.small,
-    padding: spacing.inset,
-    borderRadius: radius.card,
+    padding: spacing.group,
+    borderRadius: radius.sheet,
     backgroundColor: colors.elevated,
   },
   title: {

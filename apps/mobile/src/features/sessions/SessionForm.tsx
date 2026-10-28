@@ -450,7 +450,7 @@ const styles = StyleSheet.create({
     gap: spacing.fine,
   },
   groupError: {
-    ...typography.supporting,
+    ...typography.caption,
     color: colors.error,
     flexShrink: 1,
   },
@@ -467,11 +467,11 @@ const styles = StyleSheet.create({
     gap: spacing.fine,
   },
   lockedText: {
-    ...typography.supporting,
+    ...typography.caption,
     color: colors.secondary,
   },
   footer: {
-    ...typography.supporting,
+    ...typography.caption,
     color: colors.secondary,
   },
 });

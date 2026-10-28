@@ -1,20 +1,34 @@
+import Check from 'lucide-react-native/icons/check';
 import CircleAlert from 'lucide-react-native/icons/circle-alert';
+import Info from 'lucide-react-native/icons/info';
+import TriangleAlert from 'lucide-react-native/icons/triangle-alert';
 import { type ReactNode, useEffect } from 'react';
 import { AccessibilityInfo, StyleSheet, Text, View } from 'react-native';
 
 import { Icon } from './Icon';
 import { colors, radius, spacing, typography } from './tokens';
 
+export type BannerTone = 'error' | 'warning' | 'success' | 'info';
+
+const TONE = {
+  error: { color: colors.error, surface: colors.errorSurface, icon: CircleAlert },
+  warning: { color: colors.warning, surface: colors.warningSurface, icon: TriangleAlert },
+  success: { color: colors.success, surface: colors.successSurface, icon: Check },
+  info: { color: colors.info, surface: colors.infoSurface, icon: Info },
+} as const;
+
 type BannerProps = {
-  tone: 'error' | 'info';
+  tone: BannerTone;
   title?: string;
   body: string;
   children?: ReactNode;
 };
 
-// Status message at the top of a form. Announced once when it appears or its text changes.
+// Inline status with icon, title and text, never colour alone (components/11-banners.png).
+// Announced once when it appears or its text changes; rerenders do not repeat it.
 export function Banner({ tone, title, body, children }: BannerProps) {
   const announcement = title === undefined ? body : `${title}. ${body}`;
+  const { color, surface, icon } = TONE[tone];
 
   useEffect(() => {
     AccessibilityInfo.announceForAccessibility(announcement);
@@ -23,49 +37,36 @@ export function Banner({ tone, title, body, children }: BannerProps) {
   return (
     <View
       accessibilityLiveRegion="polite"
-      style={[styles.banner, tone === 'error' ? styles.error : styles.info]}
+      style={[styles.banner, { borderColor: color, backgroundColor: surface }]}
     >
-      {title === undefined ? null : (
-        <View style={styles.titleRow}>
-          {tone === 'error' ? <Icon icon={CircleAlert} size="action" color={colors.error} /> : null}
-          <Text style={[styles.title, tone === 'error' ? styles.errorTitle : null]}>{title}</Text>
-        </View>
-      )}
-      <Text style={styles.body}>{body}</Text>
-      {children}
+      <Icon icon={icon} size="feature" color={color} />
+      <View style={styles.text}>
+        {title === undefined ? null : <Text style={[styles.title, { color }]}>{title}</Text>}
+        <Text style={styles.body}>{body}</Text>
+        {children}
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   banner: {
-    gap: spacing.label,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.small,
     padding: spacing.field,
     borderRadius: radius.control,
     borderWidth: 1,
-    backgroundColor: colors.surface,
   },
-  error: {
-    borderColor: colors.error,
-  },
-  info: {
-    borderColor: colors.inputBorder,
-  },
-  titleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  text: {
+    flex: 1,
     gap: spacing.label,
   },
   title: {
     ...typography.label,
-    color: colors.text,
-    flexShrink: 1,
-  },
-  errorTitle: {
-    color: colors.error,
   },
   body: {
-    ...typography.supporting,
-    color: colors.secondary,
+    ...typography.body,
+    color: colors.text,
   },
 });

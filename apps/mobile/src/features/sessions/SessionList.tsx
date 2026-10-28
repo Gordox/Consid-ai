@@ -247,7 +247,7 @@ const styles = StyleSheet.create({
     gap: spacing.fine,
   },
   pageTitle: {
-    ...typography.pageTitle,
+    ...typography.title,
     color: colors.text,
   },
   body: {
@@ -255,7 +255,7 @@ const styles = StyleSheet.create({
     color: colors.secondary,
   },
   footer: {
-    ...typography.supporting,
+    ...typography.caption,
     color: colors.secondary,
   },
   empty: {

@@ -455,11 +455,11 @@ const styles = StyleSheet.create({
     color: colors.text,
   },
   supporting: {
-    ...typography.supporting,
+    ...typography.caption,
     color: colors.secondary,
   },
   notice: {
-    ...typography.supporting,
+    ...typography.caption,
     color: colors.warning,
   },
 });

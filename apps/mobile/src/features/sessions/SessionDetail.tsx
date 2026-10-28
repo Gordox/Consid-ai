@@ -283,7 +283,7 @@ const styles = StyleSheet.create({
     color: colors.text,
   },
   total: {
-    ...typography.pageTitle,
+    ...typography.title,
     color: colors.text,
   },
   body: {
@@ -295,7 +295,7 @@ const styles = StyleSheet.create({
     color: colors.secondary,
   },
   notice: {
-    ...typography.supporting,
+    ...typography.caption,
     color: colors.warning,
   },
   roundRow: {

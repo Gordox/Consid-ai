@@ -61,7 +61,11 @@ export function Stepper({
           onPress={() => onChange(round(value - step))}
           style={[styles.button, !canDecrease && styles.disabled]}
         >
-          <Icon icon={Minus} size="action" color={canDecrease ? colors.text : colors.disabled} />
+          <Icon
+            icon={Minus}
+            size="action"
+            color={canDecrease ? colors.text : colors.disabledText}
+          />
         </Pressable>
         <Text style={styles.value}>{text}</Text>
         <Pressable
@@ -72,7 +76,7 @@ export function Stepper({
           onPress={() => onChange(round(value + step))}
           style={[styles.button, !canIncrease && styles.disabled]}
         >
-          <Icon icon={Plus} size="action" color={canIncrease ? colors.text : colors.disabled} />
+          <Icon icon={Plus} size="action" color={canIncrease ? colors.text : colors.disabledText} />
         </Pressable>
       </View>
     </View>
