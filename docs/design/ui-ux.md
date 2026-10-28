@@ -1,329 +1,423 @@
-# UI/UX-design: sessionslistan och formuläret för ny session
-
-> **Status:** Godkänd av ägaren 2026-10-27. Hör till steg 4 i [`PLAN.md`](../../PLAN.md). Det här är dokumentation. Ingen UI är implementerad.
-> **Verifiering:** The UI specified here has not yet been implemented or verified in the running app. Android (Galaxy S20 with Hermes) and iOS remain unverified. Documentation checks and contrast calculations are recorded separately. De 322 befintliga testerna gäller steg 2–3 och täcker inte designen, Lucide och SVG eller native-beteende.
-> **Texter:** UI-texterna står på engelska (B2, `CLAUDE.md`). Alla texter kommer antingen från tavlorna eller är beslutade av ägaren (punkterna P1–P4 och U1–U10, 2026-10-27). Ett tidigare utkast påstod felaktigt att alla mina egna förslag var markerade. Det är rättat, och inga texter står kvar som förslag.
-
-## 1. Omfattning
-
-Dokumentet styr två skärmar:
-- **Sessionslistan** (startskärmen), som byggs i steg 6.
-- **Formuläret för ny session**, som byggs i steg 5.
-
-Dessutom styr det felskärmen vid start, som kopplas in i steg 5.
-
-**Utanför MVP:n (A13, framtida koncept som inte är beslutade):** konto och inloggning, aktivitetstyper och kategorier, anteckningar, inställningar och utseende, bottennavigering, rundor, foto, granskning, poäng och historik. De visas i tavla `04` och delvis i `02` och `05`, men de implementeras inte och påverkar inte datamodellen.
-
-## 2. Designunderlag
-
-| Tavla | Innehåll | Roll |
-| --- | --- | --- |
-| [`01-foundations.png`](images/01-foundations.png) | Färgtokens, typografi, avstånd, kontrastpåståenden, tillgänglighet och plattformsmått | Grund. Typsnittet Inter ersätts av systemtypsnitt (A7). Ramfärgen för fält ändras (avsnitt 9). |
-| [`02-components.png`](images/02-components.png) | Knappar, fält, val, kort, dialoger och ikoner | Komponentbibliotek. Bara de komponenter som används i avsnitt 5–7 ingår i MVP:n. |
-| [`03-current-mvp.png`](images/03-current-mvp.png) | Sessionslistan och formuläret i iOS 390 pt och Android 360 dp, plus ett valideringskontrakt | **Normerande för MVP:n**, med avvikelserna i avsnitt 4 |
-| [`04-future-features.png`](images/04-future-features.png) | Framtida skärmar | Bara framtida koncept. Inte granskad i detalj (A14). |
-| [`05-prototype-flows.png`](images/05-prototype-flows.png) | Navigering och beteende för MVP:n och framtida flöden | **Normerande för MVP:ns flöde**. De framtida flödena är bara koncept. |
-
-Ramarna i tavla `03` kallas här vid sitt namn i tavlan, till exempel *"03 · New session · Save failure"*. Tillstånd som saknas i tavlorna beskrivs i text i avsnitt 7, och de blockerar inte implementationen (Q3).
-
-## 3. Beslut
-
-| # | Beslut |
-| --- | --- |
-| A1 | Det finns en felskärm vid start med Retry, och databasen återställs eller raderas aldrig automatiskt. En id-konflikt visas som ett tydligt sparfel, utan överskrivning och utan nytt id. |
-| A2 | En ogiltig rad visar "Unreadable session record" och id om det finns. Inga ovaliderade värden visas, och felkoderna översätts till begriplig text. |
-| A3 | Ingen vapentyp är förvald. Felet "Choose a firearm type." finns kvar. |
-| A4 | Listan visar lokalt datum och lokal tid. Layouten tål större systemtext. |
-| A5 | `null` visas som "Not planned". Uppgiften döljs aldrig och visas aldrig som 0. |
-| A6 | Appen har bara mörkt tema, utan temaväljare. |
-| A7 | Systemtypsnitt. Inter kan komma senare. |
-| A8 / Q1 | Lucide-ikoner via `lucide-react-native` och `react-native-svg` (avsnitt 10). |
-| A9 / Q7 | "New session" finns kvar vid läsfel i listan, men inte på felskärmen vid start. |
-| A10 | Tavlornas texter används, utom där de strider mot besluten. |
-| A15 | Samma design på båda plattformarna. Vilka plattformsanpassningar som behövs avgörs först efter verifiering, och iOS är overifierat. |
-| F1 / Q6 | Sessionen låses vid första försöket. Retry skickar samma objekt, och det finns en dialog för att lämna efter ett sparfel (avsnitt 6). |
-| F2 | En bekräftelse visas vid osparade ändringar, för appens bakåtknapp, Androids bakåtknapp och iOS bakåtsvep. |
-| F3 / U7 | Inga fel visas före första sparförsöket. `Create session` validerar alltid hela formuläret, värdena behålls och fokus flyttas till det första ogiltiga fältet (`05`). Därefter valideras ett fält på nytt när det ändras, och bara det fältets fel uppdateras: felet tas bort när värdet blir giltigt och behålls eller uppdateras annars. All validering kommer från domänen (`validateSessionInput`). Formuläret har inga egna regler. |
-| F4 / U10 | Lokalt datum och lokal tid (A4). Formatet följer enhetens språk och region. `27 Oct 2026, 14:00` är bara ett exempel. |
-| F5 | Posterna i listan är inte klickbara och har inga pilar. **Ersatt i MVP:n (ägarbeslut 2026-10-28):** korten öppnar sessionsdetaljen och har en pil, se `implementation/mvp-plan.md`. |
-| F6 | Rubriken är `Sessions`. |
-| F7 | Formuläret startar med tomma fält och ingen vald typ (A3). |
-| Q2 | `expo-system-ui` läggs inte till nu (avsnitt 11). |
-| Q4 | Fältramar ska ha minst 3:1 kontrast. Ny token `inputBorder` (avsnitt 9). |
-
-## 4. Avvikelser från tavla 03
-
-| Ram i `03` | Avvikelse | Beslut |
-| --- | --- | --- |
-| Sessions · Unreadable record retained | Visar "Saved 26 Oct 2026 · Original record retained" | Datumet tas bort. Kortet visar id och orsak (A2, avsnitt 5.3). |
-| Sessions · Populated | Bara datum. Rundor som saknas utelämnas. | Datum och tid visas (A4), och `null` visas som "Not planned" (A5). |
-| New session · Default | Pistol är förvald | Ingen vald typ (A3) |
-| New session · Save failure | Fälten ser redigerbara ut. Texten "Your entries are still here. Try again." | Fälten är låsta, och en förklaring om låsningen visas (F1, avsnitt 7.3) |
-| Alla | Typsnittet Inter och ikoner ritade i tavlan | Systemtypsnitt och Lucide (A7, Q1) |
-| Alla | Fältram `#3A424B` | `inputBorder` `#68727C` (Q4) |
-
-## 5. Skärm A: sessionslistan
-
-**Header:** stor rubrik `Sessions` och undertexten `Your practice, recorded.` (`03`). Ingen tillbakaknapp.
-
-**Primär knapp:** `New session` med ikonen `plus`, överst under undertexten (`03`). Den är aktiv i alla tillstånd när listan visas, **även under laddning** (ägarbeslut 2026-10-27, som ersätter "inaktiverad" i tavla `03 · Loading`). Den syns inte på felskärmen vid start.
-
-**Sidfot:** `Saved locally on this device.` (`03`).
-
-### 5.1 Sessionspost (kort)
-
-Kortet är inte klickbart, har inga pilar och ingen tryckeffekt (F5). Raderna ligger i den här ordningen, och varje rad får radbrytas (A4):
-Antal står i singular för 1 och i plural annars: `1 planned round`, `5 planned rounds`, `1 shot / round` och `10 shots / round` (Ö3, steg 6).
-
-1. vapennamnet som avsnittsrubrik, till exempel `Glock 17`
-2. lokalt datum och tid, till exempel `27 Oct 2026, 14:00` (sekundär färg)
-3. typ och kaliber, till exempel `Pistol · 9×19 mm`
-4. distans och skott per runda, till exempel `25 m · 10 shots / round`
-5. planerade rundor, till exempel `5 planned rounds` eller `Not planned` (A5).
-
-**Tillgänglighet:** Kortet läses upp som en grupp, med en etikett som bygger på samma texter. För `null` lyder etiketten `Planned rounds: not planned` (U6, beslutad).
-
-### 5.2 Tillstånd
-
-| Tillstånd | Ram i tavla | Innehåll |
-| --- | --- | --- |
-| Laddar | `03 · Loading`, med avvikelsen att knappen är aktiv | `New session` är aktiv. Skelettkort visas, och texten `Loading saved sessions…` läses upp. |
-| Tom | `03 · Empty` | Ikonen `activity` (dekorativ), rubriken `Start your practice log`, texten `Keep session settings together, from your first round onward.`, knappen `New session` och sidfoten `No account needed. Records stay on this device.` |
-| Lista | `03 · Populated` | Kort enligt 5.1, nyast först |
-| Ogiltig rad | `03 · Unreadable record retained` med avvikelsen i 4 | Se 5.3 |
-| Läsfel (databasen är öppen men listningen misslyckades) | `03 · Read failure` | En banner med ikonen `circle-alert`, `Sessions couldn't be loaded`, och `Your saved records haven't been removed. Try reading them again.` Primärknappen är `Try again`, som läser listan på nytt, och den sekundära knappen är `New session` (Q7). Visas aldrig som en tom lista. |
-| Läsfel efter "Leave" (6.3) | samma | Samma som läsfel. Det får aldrig se ut som att sessionen saknas. |
-| Omladdning misslyckades, kort finns sedan tidigare (Ö2) | – (ny) | De tidigare korten visas kvar. Överst en banner med ikonen `circle-alert`, `Sessions couldn't be refreshed`, `Showing the sessions loaded earlier. Try again.` och knappen `Try again`. Ingen text om att posterna finns kvar. |
-| Större text | `03 · Large text / 130 %` | Text radbryts och sidan skrollar. Inget klipps av. |
-
-### 5.3 Ogiltig rad (A2)
-
-Korten för ogiltiga rader visas samlade **efter** de giltiga sessionerna, i den ordning databasen returnerar dem (Ö1, steg 6). Persistenskontraktet returnerar giltiga och ogiltiga rader separat, och ordningen bygger på ett datum som kan vara ogiltigt.
-- Ikonen `triangle-alert` (dekorativ) och rubriken `Unreadable session record`.
-- `ID 3f2504e0` (de första 8 tecknen) när id är giltigt. Hela id:t läses upp av skärmläsaren. Utan giltigt id står `ID unavailable`. (U5) Det förkortade id:t är bara en visuell referens. Internt används alltid hela id:t, även som nyckel i listan, och det förkortade värdet får aldrig användas som unik nyckel.
-- En rad per unik orsak, översatt från kolumnfelen (U4, beslutad). Råa felkoder och kolumnnamn visas aldrig:
-
-| Felkod från steg 3 | Text |
-| --- | --- |
-| `missingColumn`, `invalidType` | `Some saved details are missing or damaged.` |
-| `invalidId` | `The record ID is not valid.` |
-| `invalidTimestamp` | `The saved date and time are not valid.` |
-| `invalidTimeZone` | `The saved time zone is not valid.` |
-| `required`, `tooLong`, `notNormalized` | `A saved text detail is not valid.` |
-| `invalidNumber`, `tooManyDecimals`, `outOfRange` | `A saved number is not valid.` |
-| `unsupportedValue` | `The saved firearm type is not recognised.` |
-
-- Texten `This record can't be opened. Other sessions are still available. The original record is kept.` (från `03`, med ändrad sista mening).
-- Knappen `Try reading again`, som läser hela listan på nytt. Inget raderas eller ändras.
-
-Kortet skiljer sig från andra kort genom ikon och text, inte bara genom färg.
-
-## 6. Skärm B: formuläret för ny session
-
-**Header:** knappen `Back` med ikonen `chevron-left` och den stora rubriken `New session` (`03`). Knappen är en egen Lucide-ikonknapp med tillgängligt namn `Back` och en tryckyta på minst 48 dp. Den ersätter plattformens standardpil, så att samma ikonfamilj används överallt.
-
-**Fält i ordning** (`03`). Alla fält är tomma från början (F7).
-
-| Fält | Etikett | Kontroll | Tangentbord |
-| --- | --- | --- | --- |
-| `firearmName` | `Firearm name` | Textfält | standard |
-| `firearmType` | `Firearm type` | Fyra radrader: `Pistol`, `Revolver`, `Rifle`, `Other`. Vald rad har ikonen `check` och accentram, ovald har ikonen `circle`. **Ingen är förvald.** | – |
-| `calibreLabel` | `Calibre` | Textfält | standard |
-| `distanceMetres` | `Distance (m)` | Textfält | `decimal-pad`, med hjälptexten `Decimal keyboard · comma or point` när det är öppet |
-| `plannedShotsPerRound` | `Shots per round` | Textfält bredvid nästa fält | `number-pad` |
-| `plannedRounds` | `Planned rounds (optional)` | Textfält | `number-pad` |
-
-**Primärknapp:** `Create session`, längst ned. **Sidfot:** `Saved on this device. No account needed.` (`03`).
-
-**Feltexter.** De flesta kommer från valideringskontraktet och ramarna i `03`. Flera felkoder delar samma text.
-
-| Fält | Felkoder | Text |
-| --- | --- | --- |
-| Firearm name | `required` | `Enter a firearm name.` |
-| | `tooLong` | `Use 100 characters or fewer.` |
-| Firearm type | `required`, `unsupportedValue` | `Choose a firearm type.` (A3) |
-| Calibre | `required` | `Enter a calibre.` |
-| | `tooLong` | `Use 50 characters or fewer.` |
-| Distance | `required`, `invalidNumber`, `tooManyDecimals`, `outOfRange` | `Enter 0.1 to 1000 m, with at most one decimal.` |
-| Shots per round | `required`, `invalidNumber`, `outOfRange` | `Enter a whole number from 1 to 100.` |
-| Planned rounds | `invalidNumber`, `outOfRange` | `Leave empty or enter 1 to 100.` |
-
-Talen i texterna kommer från `sessionLimits.ts` och skrivs inte för hand i koden. Fel visas med ikonen `circle-alert`, text och felram, aldrig med enbart färg. När fel visas och uppdateras följer beslutet F3 / U7 i avsnitt 3. När användaren trycker på `Create session` och något är fel visas bannern `Check your session settings` med texten `Correct the fields below, then create your session.` (`03`).
-
-## 7. Formulärets tillstånd
-
-### 7.1 Översikt
-
-| Tillstånd | Ram | Fält | Primärknapp | Bakåt |
-| --- | --- | --- | --- | --- |
-| Orört | `03 · Default`, utan förvald typ | Redigerbara | `Create session` | Ingen fråga |
-| Ändrat | `03 · Filled` | Redigerbara | `Create session` | Dialogen "Discard" (7.4) |
-| Valideringsfel | `03 · Validation error` | Redigerbara | `Create session` | Dialogen "Discard" |
-| Sparar | `03 · Saving` | **Låsta** | `Creating session…` med ikonen `refresh-cw`, inaktiverad | Spärrad under ett normalt pågående försök (U8, 7.2) |
-| Sparfel | 7.3 (ny) | **Låsta** | `Try saving again` | Dialogen "Leave after failure" (7.5) |
-| Id-konflikt | 7.6 (ny) | **Låsta** | `Back to sessions` | Ingen fråga |
-| Sparat | – | – | – | Går direkt till listan, som läses om |
-
-**Spärr mot dubbla tryck:** Bara ett sparanrop åt gången får pågå. När första giltiga försöket görs skapas en stabil kopia av hela `Session`-objektet, alltså id, `createdAtUtc`, tidszon och inställningar. Retry skickar exakt den kopian (kontraktet i steg 3).
-
-### 7.2 Sparar
-
-- **Layout:** som `03 · Saving`.
-- **Låst:** alla fält, radraderna och bakåtnavigeringen, under ett normalt pågående sparförsök (U8).
-- **Långvarigt eller hängande anrop (U8):** Användaren får inte bli permanent inlåst på skärmen. Hanteringen planeras i detaljplanen för steg 5 före implementation, och den ska uppfylla följande:
-  - En UI-timeout får inte tolkas som att databasanropet har avbrutits eller att sessionen inte har sparats.
-  - Inga parallella sparförsök får startas.
-  - Att lokal sparning brukar gå fort är inget argument för spärren.
-- **Tillgänglighet:** `Creating session…` läses upp en gång, och knappen har `accessibilityState.busy`.
-
-### 7.3 Sparfel med låsta fält (ny, saknas i tavlorna)
-
-- **Layout:** som `03 · Save failure`. En banner överst, fälten under och primärknappen längst ned.
-- **Banner:** ikonen `circle-alert`, rubriken `Couldn't save session` (`03`) och texten `Your details are kept and locked. Retry uses the same session details to avoid creating a duplicate.` (P1, beslutad). Texten beskriver hur återförsöket fungerar och lovar inte att det lyckas. Uppgifterna finns kvar i formuläret, men de överlever inte att appen startas om.
-- **Under bannern:** ikonen `lock` och texten `Details locked` (P2, beslutad). Låsningen syns alltså i text och inte bara som nedtonade fält.
-- **Fält:** visar de inskickade värdena och är inte redigerbara. De har `accessibilityState.disabled`, och ramen har färgen `disabled` (`#77818B`, 4,13:1 mot surface).
-- **Handlingar:** `Try saving again` skickar samma sessionsobjekt. Bakåt öppnar dialogen i 7.5. Inget nytt försök görs automatiskt.
-- **Tillgänglighet:** Bannern läses upp som en statusändring, och fokus stannar i formuläret (`05`).
-
-### 7.4 Dialogen "Discard" (F2)
-
-- **Ram:** `02 · Discard unsaved changes?` i komponenttavlan.
-- **Visas när:** formuläret har ändrats men aldrig skickats, och användaren går bakåt via appens knapp, Androids bakåtknapp eller iOS bakåtsvep.
-- **Rubrik:** `Discard unsaved changes?`
-- **Text:** `This draft will be removed. Saved sessions won't change.` (`02`)
-- **Knappar:** `Keep editing` (förvald, inte destruktiv, får fokus först) och `Discard changes` (destruktiv stil).
-- **Keep editing** stänger dialogen och flyttar fokus tillbaka till `Back` (`05`).
-- **Discard changes** går tillbaka till listan.
-- **Visas inte** när formuläret är orört eller sessionen är sparad.
-
-### 7.5 Dialogen för att lämna efter sparfel (ny, Q6)
-
-- **Layout:** samma dialogkomponent som 7.4.
-- **Rubrik:** `Leave this screen?` (P3, beslutad)
-- **Text (ägarens beslut):**
-  `We couldn't confirm whether this session was saved. If it was saved, it will appear in Sessions. If it wasn't, leaving will discard these details.`
-- **Knappar:** `Stay` (förvald, inte destruktiv, får fokus först) och `Leave` (destruktiv stil).
-- **Stay** stänger dialogen. Formuläret är fortfarande låst, och inget nytt sparförsök görs.
-- **Leave** går tillbaka till listan, som läses om. Om läsningen misslyckas visas läsfelet (5.2), aldrig en tom lista.
-
-### 7.6 Id-konflikt (ny, A1, Q6)
-
-- **Layout:** som 7.3, men med en annan banner och knapp.
-- **Banner:** ikonen `circle-alert`, rubriken `Session not saved` (U1, beslutad) och texten `These details weren't saved because their ID is already used by another record. Nothing was overwritten.` (enligt ägarens krav i Q6)
-- **Fält:** låsta. Det finns ingen Retry, inget nytt id skapas automatiskt och inget skrivs över.
-- **Handling:** bara primärknappen `Back to sessions`, som går till listan utan att fråga. Bakåt fungerar på samma sätt.
-- **Tillgänglighet:** Bannern läses upp, och fokus flyttas till bannern.
-
-### 7.7 Felskärm vid start (ny, A1, Q7)
-
-Visas av rotlayouten i stället för navigeringen när databasen inte kan öppnas eller migreras.
-
-- **Layout:** helskärm i bakgrundsfärgen, utan header och utan bakåtnavigering. Överst ikonen `triangle-alert` (24 dp, dekorativ), därunder rubriken och texten, och primärknappen längst ned.
-- **Rubrik:** `Couldn't open saved sessions` (P4, beslutad)
-- **Text, beroende på fel:**
-  - `MigrationFailedError`, `JournalModeError`, `DatabaseStateError` och andra fel: `We couldn't open your saved sessions. Try again. If the problem continues, restart the app.` (U2, beslutad). Texten lovar ingenting om datans tillstånd, eftersom orsaken inte är känd.
-  - `DatabaseVersionTooNewError`: `Your saved sessions were created by a newer version of Target Practice. Update the app to open them. Nothing has been changed.` (U3, beslutad). Påståendet "Nothing has been changed" stämmer, eftersom `migrateDatabase` kontrollerar versionen före alla skrivningar, även före WAL (steg 3). Det är enhetstestat med fake men inte verifierat på enhet.
-- **Handling:** bara `Retry`, som kör initieringen och migrationen igen. **Ingen `New session`** (Q7). Appen raderar eller återställer aldrig databasen automatiskt.
-- **Tillgänglighet:** Rubriken är markerad som rubrik, och texten läses upp när skärmen visas. Råa felmeddelanden visas aldrig.
-
-## 8. Tema, typografi och avstånd
-
-- **Tema:** bara mörkt (A6). Färgerna kommer från `01`:
-  - `background #111315`, `surface #1C2024`, `elevated #272D33`
-  - `text #F4F2EF`, `secondary #B5BDC5`, `disabled #77818B`
-  - `accent #FF782D`, `onAccent #17130F`, `focus #FFAC7B`
-  - `error #FFABA7`, `warning #F3C77B`, `success #8ED9AB`, `info #A5C9EB`
-  - `border #3A424B`, men bara för avdelare
-  - ny: `inputBorder #68727C` (avsnitt 9).
-- **Typografi:** systemtypsnitt (A7) med storlekarna från `01`:
-  - sidrubrik 30/600
-  - avsnitt 20/600
-  - brödtext 16/400
-  - etikett 14/500
-  - stödtext 12/400.
-
-  Systemets textstorlek respekteras.
-- **Avstånd:** 4-punktsbas. Marginal 24, avstånd mellan grupper 24, mellan fält 16, mellan etikett och fält 8 och fint avstånd 4. Hörnradie 8, 12 och 16 (`01`).
-- **Tryckytor:** minst 48 dp. Primärknappar är 52 dp (`01`).
-
-## 9. Kontrast (Q4)
-
-Jag har räknat ut värdena med WCAG:s formel för relativ luminans. Tavlans egna siffror är påståenden som jag har kontrollerat.
-
-| Färgpar | Uppmätt | Tavlans påstående | Krav |
-| --- | --- | --- | --- |
-| text `#F4F2EF` mot background / surface / elevated | 16,66 / 14,67 / 12,45 | 16,7 / 14,7 | 4,5 |
-| secondary `#B5BDC5` mot background / surface | 9,80 / 8,62 | 9,8 / 8,6 | 4,5 |
-| accent `#FF782D` som text mot background / surface | 7,07 / 6,22 | 7,1 / 6,2 | 4,5 |
-| onAccent `#17130F` på accent `#FF782D` (primärknapp) | 7,02 | 7,0 | 4,5 |
-| error `#FFABA7` mot surface (text och felram) | 9,08 | 9,1 | 4,5 / 3 |
-| **inputBorder `#68727C`** (ny) mot background / surface | **3,80 / 3,35** | – | 3 (WCAG 1.4.11) |
-| focus `#FFAC7B` (fokusring) mot background / surface | 10,14 / 8,93 | – | 3 |
-| accent `#FF782D` (vald rad, ram) mot background / surface | 7,07 / 6,22 | – | 3, plus ikonen `check` |
-| secondary `#B5BDC5` (ikonen `circle` på ovald rad) mot surface | 8,62 | – | 3 |
-| disabled `#77818B` (låsta fält, inaktiv text) mot surface | 4,13 | – | undantag, men låsningen beskrivs också i text |
-| ~~border `#3A424B` som fältram~~ mot surface | 1,61 | "quiet separator" | **Underkänd som fältram.** Används bara för avdelare. |
-| ~~text `#F4F2EF` på accent~~ | 2,36 | – | **Får inte användas** |
-
-`inputBorder #68727C` är en neutral grå som når minst 3:1 mot både fältets fyllning (surface) och sidans bakgrund, och som skiljer sig från `disabled`. Den gäller för aktiva inmatningsfält och ovalda radrader. Fokus, fel och val har egna färger enligt tabellen och markeras alltid också med form eller ikon.
-
-## 10. Ikoner (Q1)
-
-**Paket:** `lucide-react-native` med `react-native-svg`. Implementationen ska använda exportnamnen i kolumnen "Komponent". De finns i typfilen för `lucide-react-native@1.56.0` (`dist/types/lucide-react-native.d.ts`). Iconify-id:na har jag slagit upp i Iconifys API medan dokumentet skrevs. Alla nio fanns. Ikonerna väljs och identifieras med Lucide-uppsättningen på Iconify (<https://icon-sets.iconify.design/lucide/>). Iconify används bara när man väljer ikoner: inga anrop till Iconifys API när appen körs, och inte Iconifys React-webbkomponent. Ikonerna följer med appen och fungerar offline. Bara de ikoner som används importeras, med namngivna importer från `lucide-react-native`. Versionerna står i `PLAN.md`, steg 5.
-
-| Lucide (Iconify-id) | Komponent | Används för | Dekorativ? |
-| --- | --- | --- | --- |
-| `lucide:plus` | `Plus` | Knappen `New session` | Ja, knappen har text |
-| `lucide:activity` | `Activity` | Tom lista | Ja |
-| `lucide:circle-alert` | `CircleAlert` | Felbanners och fältfel | Ja, texten bär informationen |
-| `lucide:triangle-alert` | `TriangleAlert` | Ogiltig rad och felskärm vid start | Ja |
-| `lucide:check` | `Check` | Vald vapentyp | Ja, läget anges med `accessibilityState.checked` |
-| `lucide:circle` | `Circle` | Ovald vapentyp | Ja |
-| `lucide:refresh-cw` | `RefreshCw` | `Creating session…` | Ja |
-| `lucide:lock` | `Lock` | Text om låsta fält | Ja |
-| `lucide:chevron-left` | `ChevronLeft` | Knappen `Back` i headern | Nej, knappen har tillgängligt namn `Back` |
-
-- **Storlek och linje (U9, beslutade tokens):** 20 dp i knappar och banners, 16 dp vid fältfel och 24 dp på tom lista och felskärm. Linjetjockleken är alltid 1,7, enligt rutnätet på 24 enheter i `02`. Färgen kommer från tokens (`text`, `secondary`, `onAccent`, `error` eller `warning`).
-- **Dekorativa ikoner:** göms för skärmläsare (`accessibilityElementsHidden` och `importantForAccessibility="no-hide-descendants"`).
-- **Ikonknappar:** har `accessibilityRole="button"`, ett tillgängligt namn och en tryckyta på minst 48 dp.
-- **Ingen ersättning:** emoji eller egenritade tecken används aldrig i stället för ikoner.
-
-**Licens:** Lucide har ISC-licens, *Copyright (c) 2026 Lucide Icons and Contributors*. En del Lucide-ikoner kommer från Feather och har MIT-licens, *Copyright (c) 2013-present Cole Bemis*. Av ikonerna ovan gäller det enligt paketets `LICENSE`, kontrollerat för version 1.56.0:
-- `check`, `chevron-left`, `circle`, `lock` och `plus`
-- `circle-alert` (tidigare `alert-circle`) och `triangle-alert` (tidigare `alert-triangle`).
-
-Båda licenstexterna ska bevaras när appen distribueras. Det görs i steg 5 med en fil med tredjepartsnotiser.
-
-## 11. Plattformsverifiering (Q2, A15)
-
-`expo-system-ui` läggs inte till. Följande verifieras, och om något test visar ett behov redovisas problemet och en ändring föreslås före installation.
-
-**Android (Galaxy S20, Expo Go):**
-- Bakgrunden är mörk vid start, vid skärmbyten och när tangentbordet öppnas, utan vit blinkning.
-- Statusfältets ikoner är ljusa och läsbara.
-- Navigationsfältet (kant till kant) har läsbara knappar mot den mörka bakgrunden.
-- Systemets tangentbord följer telefonens tema, som appen inte kan styra. Det dokumenteras hur det ser ut med ljust systemtema.
-- Androids bakåtknapp öppnar rätt dialog enligt 7.1.
-- Dialogerna (7.4–7.5) är egna komponenter och följer temat.
-- Texten radbryts vid den största systemtexten.
-
-**iOS (overifierat, ingen testenhet ännu):**
-- `keyboardAppearance="dark"` ger ett mörkt tangentbord.
-- Statusfältet är ljust.
-- Bakåtsvep blockeras och öppnar rätt dialog enligt 7.1.
-- Rotbakgrunden bakom skärmar och dialoger är mörk.
-- Dynamic Type följs.
-
-Tills det har testats på en riktig iOS-enhet påstås ingenting om iOS.
-
-## 12. Tillgänglighet
-
-- **Läsordning:** skärmrubrik, stödtext, fält i visuell ordning, fältfel, primär handling och sekundär handling (`01`).
-- **Fokus:**
-  - Efter validering flyttas fokus till det första ogiltiga fältet, och felet läses upp (`05`).
-  - Efter ett sparfel stannar fokus i formuläret och statusen läses upp.
-  - När en dialog stängs flyttas fokus tillbaka till knappen som öppnade den.
-  - I bekräftelsedialoger får det icke-destruktiva valet fokus först.
-- **Låsta fält:** har `accessibilityState.disabled` och en förklarande text (7.3, 7.6).
-- **Tangentbord:** Formuläret skrollar så att fältet med fokus och primärknappen syns ovanför tangentbordet (`03 · Keyboard open`).
-- **Rörelse:** ingen animation krävs, och inställningen för reducerad rörelse respekteras.
+# Target Practice — UI/UX specification 2.1
+
+Date: 2026-10-28  
+UI language: English  
+Document language: English for direct implementation handoff  
+Status: implementation target authorised by the owner; this document does not certify implementation or device verification.
+
+## 1. Purpose and authority
+
+A calm, precise mobile interface for recording recreational target-practice sessions: create a session, photograph a round, align the target, review detections, confirm a result, and retain a practice log. The interface must make uncertainty visible and manual correction easy.
+
+This document governs UI behaviour; tokens.json defines exact visual values. Both replace the old docs/design/ui-ux.md and five legacy boards. Existing domain and persistence contracts remain authoritative for data integrity. If a PNG contradicts this text, follow this text; reconcile token discrepancies explicitly in the implementation report. PNGs are rendered references, not measurements to reverse engineer. The HTML catalogue uses the same tokens. Do not treat it as a working scoring application or proof of React Native behaviour.
+
+The user supplied five reference boards. Foundations, Components, Current MVP and Prototype Flows were visually inspected. The Future Features attachment is only 191 × 2047 pixels and its fine text is not reliably readable. No unreadable detail is treated as a requirement.
+
+TargetScan informed the emphasis on quick review and precise editing, not the visual identity or detection algorithm. Do not copy its text, artwork or implementation.
+
+## 2. Scope and changes from the old boards
+
+Included: sessions, rounds, photo source, before/after photos, calibration, analysis states, editor, shot accounting, confirmation, completed history and recovery states.
+
+Excluded: login, account creation, cloud sync, activity-type management, firearm profiles, subscriptions, technique coaching and general developer tools. These exclusions follow the current MVP scope, not the older future-feature boards.
+
+Changes:
+- Keep charcoal and orange; reduce decorative glow and technical noise. No camouflage or weapon illustrations.
+- Use native system typography instead of an added Inter dependency.
+- Persistent labels above inputs; input borders are visible independently of the label.
+- Session cards now open details, unlike the old create/list-only MVP.
+- One Sessions hub with All / In progress / Finished filters; no redundant bottom tabs.
+- New session stays available during loading and read errors after database startup succeeds.
+- No default firearm type in a new form.
+- Explicit Demo score and Incomplete labels; never silently mix demo and real points.
+- Numbered accepted markers and dashed '?' suggestions; orange alone never means accepted.
+- A precision magnifier is part of this implementation target; its existing implementation status must be checked.
+- Replace oversized all-in-one images with per-component and per-screen exports.
+
+## 3. Colour tokens
+
+All UI colours are sRGB. Except scrim, tokens are opaque. Do not use global opacity on a whole control to create disabled states. Semantic colour is always paired with text, icon or border.
+
+| Token | HEX | Purpose |
+|---|---|---|
+| `background` | `#111315` | App canvas |
+| `surface` | `#1C2024` | Cards and inputs |
+| `elevated` | `#272D33` | Sheets, pressed secondary controls |
+| `text` | `#F4F2EF` | Primary content |
+| `secondary` | `#B5BDC5` | Secondary descriptions |
+| `muted` | `#929DA8` | Metadata and placeholders |
+| `accent` | `#FF782D` | Primary actions and selected controls |
+| `accentPressed` | `#E96820` | Primary pressed |
+| `onAccent` | `#17130F` | Text/icons on orange |
+| `accentSurface` | `#33241C` | Selected background |
+| `border` | `#3A424B` | Decorative separators only |
+| `inputBorder` | `#68727C` | Interactive input outline |
+| `focus` | `#FFAC7B` | Focus ring |
+| `success` | `#8ED9AB` | Confirmed/saved text |
+| `successSurface` | `#1D3027` | Success background |
+| `warning` | `#F3C77B` | Pending/demo/unresolved text |
+| `warningSurface` | `#332C20` | Warning background |
+| `error` | `#FFABA7` | Error and destructive text |
+| `errorSurface` | `#352426` | Error background |
+| `info` | `#A5C9EB` | Information text |
+| `infoSurface` | `#202D39` | Information background |
+| `disabledSurface` | `#272D33` | Disabled control surface |
+| `disabledText` | `#929DA8` | Disabled control text |
+| `photoPaper` | `#E7E2D5` | Illustrative target only |
+| `photoInk` | `#262724` | Illustrative target only |
+| `scrim` | `#000000B8` | Modal overlay, 72% black |
+
+### Contrast calculations
+
+Ratios use the sRGB relative luminance formula. These are token-pair calculations, not certification of the complete app. Normal text target: 4.5:1. Meaningful control boundaries and focus indicators target: 3:1 against adjacent colours. The decorative `border` token is not sufficient as the only input boundary.
+
+| Foreground / background | Ratio | Use |
+|---|---:|---|
+| `text` / `background` | 16.66:1 | Main text |
+| `secondary` / `surface` | 8.62:1 | Descriptions |
+| `muted` / `surface` | 5.94:1 | Metadata |
+| `onAccent` / `accent` | 7.02:1 | Primary label |
+| `onAccent` / `accentPressed` | 5.69:1 | Pressed label |
+| `inputBorder` / `surface` | 3.35:1 | Input boundary |
+| `inputBorder` / `background` | 3.80:1 | Control boundary |
+| `focus` / `surface` | 8.93:1 | Focus ring |
+| `error` / `errorSurface` | 8.13:1 | Error text |
+| `success` / `successSurface` | 8.42:1 | Saved text |
+| `warning` / `warningSurface` | 8.72:1 | Pending text |
+| `info` / `infoSurface` | 8.13:1 | Information text |
+| `text` / `accent` | 2.36:1 | Forbidden normal text pairing |
+
+Never use off-white text on the orange primary button. Use onAccent. On arbitrary photos, put labels and controls on opaque background/surface plates. Markers use two-tone outlines and a number or '?' symbol; contrast against every photograph cannot be guaranteed by one colour.
+
+## 4. Typography
+
+Native: iOS System (SF Pro), Android System (Roboto). No font download is required. Web reference: system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif. Exported PNGs use the renderer's installed system fallback; they do not reproduce SF Pro. Font metrics must be checked on both platforms.
+
+| Token | Size | Line height | Weight |
+|---|---:|---:|---:|
+| `display` | 40 | 48 | 600 |
+| `title` | 28 | 34 | 650 |
+| `section` | 20 | 26 | 600 |
+| `body` | 16 | 24 | 400 |
+| `button` | 16 | 22 | 600 |
+| `label` | 14 | 20 | 600 |
+| `caption` | 13 | 18 | 400 |
+| `micro` | 12 | 16 | 600 |
+
+Sizes are dp/sp-style logical units on Android and points on iOS. Native text scaling stays enabled. Weight 650 is a design target; use 600 where the platform font does not support it. Numeric scores use tabular numerals when supported. Display scores use 40/48; the large summary recipe uses 48/58 as an explicit local exception.
+
+Page titles: -0.6 logical unit letter spacing. Eyebrow labels: 12/16, weight 600, 1.5 spacing, uppercase. Body and inputs use sentence case. Avoid uppercase paragraphs. Scores must include their units and status in accessible text.
+
+Never clamp essential labels, error messages, names or scores to one line. At large text sizes, place paired fields and statistics vertically. Micro text is for nonessential metadata only, not instructions needed to complete a task.
+
+## 5. Layout, spacing and motion
+
+- Spacing scale: 4, 8, 12, 16, 20, 24, 32, 40, 48.
+- Screen horizontal inset: 20. Group gap: 24. Field gap: 16. Label-to-input gap: 8. Icon-to-label gap: 8.
+- Cards: 16 padding; 16 corner radius; 1 decorative border.
+- Input and button radius: 12. Small badge radius: 8. Sheets/dialogs: 24. Circular shapes: 999.
+- Main button minimum height: 52. Input minimum height: 56. All actionable hit areas: at least 48 × 48 on both platforms.
+- Icon visual size: 24 normally, 20 in compact rows, 16 for inline cues; all use 1.75 stroke. Small icons do not imply small touch targets.
+- Selected outlines: 2. Focus outline: 2 with 3 offset in web reference; translate to a clearly visible native focus treatment.
+- One primary action per decision area. Two secondary actions may share a row only while labels fit.
+- Screen exports: Android 360 logical width; iPhone 390 logical width. All PNGs are exported at 2×.
+- The artboards show full scrollable content, not a fixed device viewport. Some are taller than a physical screen.
+- Mock safe bands: Android 24 top/24 bottom; iPhone 54 top/34 bottom. These are presentation values, NEVER runtime constants. Use actual safe-area insets once per edge.
+- Forms scroll with keyboard avoidance. Primary actions remain reachable, not necessarily simultaneously visible with every field.
+- Editor controls sit outside the gesture canvas. A bottom action may be sticky only if content includes equivalent clearance plus safe inset.
+- iPhone: respect back swipe and home indicator. Android: respect system Back and edge-to-edge insets. Both must preserve drafts.
+- If a banner moves content down, keyboard layout must account for the real content position. Do not hardcode the test banner's height.
+- Motion: press 100 ms, transition 180 ms, sheet 220 ms. No decorative glow, parallax, looping shimmer or mandatory motion. Reduced-motion mode removes nonessential movement.
+
+## 6. Component catalogue and implementation contracts
+
+PNG paths are images/components/<ID>.png and images/screens/<android|ios>/<ID>.png. Every catalogue item has its own PNG; some images show several states of the same component family. Icons also have individual SVG and PNG files.
+
+| ID | Component | Contract |
+|---|---|---|
+| 01-colors | Colour tokens | Semantic tokens only; do not infer values from screenshots. |
+| 02-typography | Typography | Native scaling and system fonts; no bundled Inter. |
+| 03-buttons | Buttons | Default, pressed, focus, disabled, busy; busy action preserves label and rejects double submit. |
+| 04-icon-buttons | Icon buttons | Accessible action name, 48 hit area; destructive actions cannot be ambiguous. |
+| 05-text-fields | Text fields | Persistent label; empty, filled, focus, invalid, locked; label and error associated with field. |
+| 06-choice-list | Choice list | Radio semantics, exactly one value; selected check plus border. New form starts unselected. |
+| 07-select-sheet | Select & bottom sheet | Trigger exposes value and expanded state; modal choice list; safe Cancel/Back restores previous value until Done. |
+| 08-segments | Segmented control | Selection is text + background; filters are local view state, not navigation stacks. |
+| 09-checkbox-switch | Checkbox & switch | Checkbox for explicit acknowledgement; switch only for reversible on/off display behaviour. |
+| 10-status-badges | Status badges | Text describes state. Badge alone is not a button or a substitute for help text. |
+| 11-banners | Banners & feedback | Inline status with icon and explicit recovery. Do not promise data integrity after unknown failures. |
+| 12-session-card | Session card | Entire card opens details; accessible name includes date, state, round count and score basis. |
+| 13-round-card | Round card | Draft opens editor; confirmed opens read-only result. No silent editing of confirmed history. |
+| 14-score-summary | Score summary | Demo vs verified score basis, total vs subtotal, accounted vs unresolved are distinct dimensions. |
+| 15-photo-card | Photo input | Before optional, After required for image review. Source cancellation preserves existing photo. |
+| 16-progress | Progress & steps | Indeterminate unless measurable progress exists; cancelling keeps draft. Skeleton hidden from screen reader. |
+| 17-editor-markers | Hit markers | Accepted: numbered solid; suggestion: dashed question mark; selected: focus halo. Touch geometry is separate from hole diameter. |
+| 18-editor-toolbar | Editor tools & magnifier | Explicit add vs pan mode. Undo is local editor history. Fit and zoom have accessible buttons. |
+| 19-hit-inspector | Hit inspector | Shows selected hit status, diameter assumption and multiplicity. Removing proposal never silently records a miss. |
+| 20-shot-accounting | Shot accounting | Actual shots = confirmed marker multiplicities + explicit misses + unresolved. Suggestions are excluded. |
+| 21-dialogs | Confirmation dialog | Modal focus, safe choice first, Android Back cancels; restore triggering focus if staying. |
+| 22-empty-error | Empty & error states | Empty only after successful zero-row read. Read error preserves older cards when available. |
+| 23-navigation | Navigation & safe areas | Single stack. Return to same draft after cancel; current step is not automatically complete. |
+| 24-icons | Icon inventory | Original reference SVGs included; production can map names to installed Lucide equivalents. |
+
+### Detailed control states
+
+Buttons: orange primary; pressed accentPressed; focus ring; disabled explicit colours and disabled semantics. Loading button reads “Saving…” and exposes busy state. Never signal progress with a spinner alone. Danger uses errorSurface/error, not orange. A disabled primary should have nearby text explaining the missing prerequisite when unclear.
+
+Inputs: labels remain visible above entered values. On first submit validate all fields and focus the first error. Before first submit show no field errors. After first submit use the domain validator on change and update only that field's displayed error. Do not add independent UI validation rules. Error text precedes neither the label nor input in reading order; announce an error summary once.
+
+Selection: use radio rows for up to four short choices; for the Firearm type form field, use the select sheet with the four radio choices and Done/Cancel. Do not render two independent selectors for the same field. Checkmark means selected, not successful save. Unselected rows have an empty radio indicator.
+
+Dialogs: initial accessible focus goes to the title, with safe action first in reading order. Staying restores focus to the opener if mounted. Leaving navigates and focuses the destination heading. Backdrop dismissal only where equivalent to Cancel; destructive action always requires an explicit labelled button.
+
+Banners: error is not automatically fatal. Keep existing photos, fields and previous list contents unless a documented domain transition requires removal. Announce a new status once; rerenders must not repeat it continuously.
+
+## 7. Screens and navigation
+
+All screens have both Android and iPhone PNG exports.
+
+| ID | Screen | Primary purpose |
+|---|---|---|
+| 01-sessions | Sessions | See screen-specific behaviour below |
+| 02-new-session | New session | See screen-specific behaviour below |
+| 03-session-detail | Session detail | See screen-specific behaviour below |
+| 04-round-setup | New round | See screen-specific behaviour below |
+| 05-round-photos | Round photos | See screen-specific behaviour below |
+| 06-photo-source | Photo source | See screen-specific behaviour below |
+| 07-calibration | Align target | See screen-specific behaviour below |
+| 08-analysis-choice | Analyse or mark manually | See screen-specific behaviour below |
+| 09-analysing | Analysis in progress | See screen-specific behaviour below |
+| 10-hit-review | Review hits | See screen-specific behaviour below |
+| 11-manual-editor | Manual editor | See screen-specific behaviour below |
+| 12-round-confirm | Confirm round | See screen-specific behaviour below |
+| 13-round-complete | Round confirmed | See screen-specific behaviour below |
+| 14-session-summary | Session summary | See screen-specific behaviour below |
+| 15-analysis-error | Analysis unavailable | See screen-specific behaviour below |
+| 16-permission | Camera permission | See screen-specific behaviour below |
+| 17-resume-draft | Resume draft | See screen-specific behaviour below |
+| 18-list-error | List refresh error | See screen-specific behaviour below |
+| 19-form-error | Form validation | See screen-specific behaviour below |
+| 20-save-error | Uncertain save result | See screen-specific behaviour below |
+
+Main route: Sessions → Session detail → New round → Photos → Align target → Analyse or mark manually → Review hits → Review round → Confirmed → Session detail → Session complete → Sessions.
+
+- Sessions filters do not move records between storage locations. Finished sessions are history in the same hub.
+- New session uses no default firearm type. Name and calibre remain session snapshots; no profile feature is introduced.
+- Session detail shows only a subtotal while the session is active. A draft must be continued or discarded before finishing.
+- New round prefills planned shot count as an editable starting value. Diameter starts as an explicitly labelled assumption, never a silent fact derived from a calibre string.
+- Before photo is recommended for patched/reused targets. After-only analysis remains possible with a visible limitation.
+- Photo source delegates camera/library to platform UI. No custom fake camera screen is specified. Permission is requested after user action. Denied access offers settings and the alternative source.
+- Alignment uses four named ring intersections in order: top, right, bottom, left. Show the overlay for verification and allow undo/reset. Sample target art is synthetic, not a verified scoring definition.
+- Analyse action explains the image destination. No image is sent just by opening the screen. Endpoint URL and implementation details belong in settings/development configuration, not everyday workflow copy.
+- Analysing locks conflicting image edits. Cancellation must not delete the round. Failure offers Try again and Mark hits manually. Late responses never overwrite later edits.
+- Review shows the number of accepted markers and pending proposals. Pending proposals must be individually accepted or removed before confirmation. Do not add a one-tap Accept all in v2.
+- A tap selects a marker; moving it explicitly accepts the revised location according to the existing domain contract. Pan/zoom must not accidentally add a marker.
+- Review round explains every count and offers a clearly labelled incomplete confirmation when unresolved shots remain. Confirmed results are read-only. Incomplete confirmation is allowed only by the domain contract; never present it as a full score.
+- Round confirmed is a recovery-safe result screen, not an animation-dependent toast. Next round and Back to session are explicit choices.
+- Session complete shows only commensurate scores together. Demo and verified scores must be separate sections if both ever exist.
+- Resume draft preserves photos, alignment and edits. Discard requires a confirmation and must never delete confirmed rounds.
+
+### Screen sample data
+
+The screenshots illustrate multiple independent states, not one continuous test fixture. Complete session sample: 85 + 89 + 87 = 261 demo points across three 10-shot rounds. The separate incomplete round sample has 5 actual shots: 3 hits (10 + 9 + 9 = 28), 1 miss, 1 unresolved, for a 28-point demo subtotal. These sample values are illustrative and are not calculated from the target drawing.
+
+## 8. Error, recovery and edge-state copy
+
+Use the additional contracts in sections 14–17 for save semantics and validation. They take precedence over abbreviated mockup copy.
+
+| Trigger | Title / body | Actions and state |
+|---|---|---|
+| Startup DB failure | Couldn't open saved sessions / We couldn't open your saved sessions. Try again. If the problem continues, restart the app. | Retry only; no new session before DB ready. Never reset DB automatically. |
+| Newer DB version | Update required / Your saved sessions were created by a newer version of Target Practice. Update the app to open them. | Nothing has been changed only if implementation guarantees no writes. |
+| Initial list read failure | Sessions couldn't be loaded / Try reading your saved sessions again. | Try again and New session; not an empty state. |
+| Refresh failure | Sessions couldn't be refreshed / Showing the sessions loaded earlier. Try again. | Preserve cards; Try again. |
+| Invalid row | Unreadable session record / The original record is kept. | Validated short ID or ID unavailable; readable reasons only; retry read. |
+| Before photo missing | No before photo / Existing holes may appear as suggestions. Review every result. | Continue or add Before. |
+| Missing photo file | Photo unavailable / Choose this photo again to continue. Your round is still a draft. | Choose photo; no automatic deletion of the round. |
+| Image quality concern | This photo may be hard to review / Check blur, glare and visible rings. | Retake or continue manually; do not invent a quality score. |
+| Excluded image area | Some areas were not analysed / Check the highlighted areas manually. | Outline excluded region; unobserved shots remain unresolved. |
+| Registration failure | Photos couldn't be aligned / Retake a similar view or continue with the after photo. | Retry / After photo only / Manual; never fabricate detections. |
+| Analysis failure | Couldn't reach analysis service / Your photos and edits are still here. | Try again or Mark hits manually. |
+| Pending proposals | Review required / Review or remove every suggestion before confirming. | Confirmation disabled, editor available. |
+| Unsure diameter | Hole diameter is assumed / Check this value before using boundary scores. | Edit or explicitly confirm diameter. |
+| Unverified target | Demo score / This target's dimensions have not been verified. | Never remove label just because calibration succeeded. |
+| Session save failure | Couldn't confirm saving / Your details are kept and locked. Retry uses the same session details to avoid creating a duplicate. | Retry identical snapshot; no editing. |
+| Slow save | Still saving / This is taking longer than usual. The session may still be saved. You can keep waiting or go back. | No parallel Retry while request is in flight. |
+| Leave uncertain save | Leave this screen? / We couldn't confirm that this session was saved. If it was, it will appear in Sessions. | Stay / Leave; Leave reloads list. |
+| Final validation rejection | Session not saved / These details didn't pass the final check. This save attempt did not write anything. | Back to sessions; no retry of same invalid snapshot. |
+| ID conflict | Session not saved / This session couldn't be saved because its reference is already in use. | Back to sessions; no overwrite or silent new ID. |
+| Draft on finish | Finish the draft first / Continue or discard the unfinished round before ending this session. | Continue draft / Cancel. |
+| Replace after photo | Replace after photo? / Alignment and hit markers for this photo will be cleared. | Keep photo / Replace photo. |
+
+Copy must match real outcomes. A design sentence never authorises weakening domain checks or making unsupported data guarantees.
+
+## 9. Editor interaction details
+
+Canvas geometry remains image/tavle geometry, not device pixels. A visible hole ring is scaled with the image. Its accessible/touch hit area stays at least 48 logical units; when hit areas overlap, offer a marker list or cycle selection rather than silently selecting the wrong hit.
+
+Recommended magnifier: 120 logical diameter, 3 focus outline, displays approximately 2× local crop, positioned away from the finger and safe area. Hide when no editing gesture is active. Clamp it to the available editor region. Implement this as an editor improvement and verify it; reuse installed rendering and gesture facilities. Do not create a new image-analysis dependency for a magnifier.
+
+Pinch zoom and panning preserve marker positions in image coordinates. Zoom buttons and Fit are alternatives, not proof of screen-reader accessibility. Confirmed markers show unique numbers; proposals show '?'. Selected marker's inspector is outside the photo and identifies status, multiplicity and diameter. Removing a suggestion does not create a miss or change an existing unresolved counter automatically. Recalculate the unaccounted difference using the existing accounting contract and require the user to resolve it explicitly.
+
+Do not prescribe a physical diameter from these visual markers. The SVG illustration is decorative demo geometry. All scoring uses the application’s versioned target definition and explicit diameter. The current definition is synthetic, so its scores must remain labelled Demo score. Only a separately verified definition may produce real scores.
+
+## 10. Accessibility and platform verification
+
+Design intent, not a claim of tested compliance:
+- English visible labels and accessible names agree.
+- Session cards use a single descriptive accessible group/button; no duplicate child announcements.
+- Editor actions are labelled; suggestions can be reviewed in a list. Full nonvisual coordinate placement is not solved by this design; provide an honest limitation rather than claiming full editor accessibility.
+- Announce loading once; decorative icons/skeleton blocks are hidden from assistive technology.
+- All error states pair colour with icon/title/text.
+- At large text size, stack two-column fields and statistics; allow full-height scrollable sheets instead of clipping.
+- Test Android TalkBack, iOS VoiceOver, keyboard focus where applicable, device rotation, largest text and long names.
+- Test keyboard open, focus-first-error, repeated show/hide, Back and draft recovery on physical devices.
+- No status-bar notch, OS keyboard or camera hardware is drawn as a product asset.
+- No platform has been device-verified as part of this deliverable.
+
+## 11. Icons and ownership
+
+The icons/ directory contains original simple geometric reference SVGs and matching PNG exports created for this package. They are not extracted from the attached boards or redistributed Lucide files. In production, prefer the project's installed Lucide set and retain its actual licenses.
+
+Suggested mappings: back→ChevronLeft, next→ChevronRight, down→ChevronDown, plus→Plus, minus→Minus, check→Check, close→X, camera→Camera, image→Image, target→Target, history→History, clock→Clock, alert→TriangleAlert, info→Info, lock→Lock, refresh→RefreshCw, trash→Trash2, undo→Undo2, zoom-in→ZoomIn, zoom-out→ZoomOut, fit→Maximize, move→Move, save→Save, layers→Layers, more→Ellipsis, flag→Flag, eye→Eye, wifi-off→WifiOff. Confirm available exports against the installed package before coding; this design does not install a dependency.
+
+## 12. Handoff and acceptance
+
+Use tokens.json as the value source, component-overview.html as the inspectable catalogue, and ui-ux.md for behaviour. PNGs can be placed in Figma as references but are not editable Figma components. Rebuild native Figma components using these tokens if needed. SVG icons remain editable vectors.
+
+The catalogue's screen navigator and segmented states are interactive examples. Other buttons are visual specimens; no data is saved, uploaded or analysed. The HTML is self-contained, needs no network, and is not intended to replace the React Native application.
+
+Implementation order: map tokens → shared controls → session navigation → round/photo flow → editor/review → error/recovery states → device verification. Preserve existing migrations, scoring and persistence contracts. The owner has authorised this UI implementation and removal of Developer checks. This does not authorise changing scoring rules, historical records or analysis providers. Resolve ordinary implementation choices autonomously and record substantive deviations.
+
+Acceptance: no missing labels, no essential truncation at supported sizes, consistent token use, clear demo/uncertainty labels, no false empty state after read failure, all drafts recoverable according to actual implementation, and all user actions reachable with the keyboard open.
+
+## 13. Sources and unresolved questions
+
+Supplied boards: 01-foundations.png, 02-components.png, 03-current-mvp.png, 04-future-features.png, 05-prototype-flows.png. Prior decisions and app status supplied in this conversation are authoritative for existing behaviour.
+
+Product reference reviewed previously:
+- https://apps.apple.com/se/app/targetscan-pistol-rifle/id448045769
+- https://targetshootingapp.com/wiki/Scanning_targets/
+- https://targetshootingapp.com/wiki/Editing_shot_location/
+
+Open implementation questions: verified physical target dimensions; live analysis accuracy on real photos; complete native accessibility of the editor; native image orientation and permission behaviour; safe-area/keyboard behaviour in standalone Android and iOS builds. No visual mockup resolves those questions.
+
+
+## 14. Existing contracts to preserve
+
+This revision replaces a create/list-only design with the whole implemented MVP. It does not replace the domain model. Do not infer new persistent fields, limits or defaults from mock data.
+
+### Session input
+
+| Field | Existing contract | English validation copy |
+|---|---|---|
+| Firearm name | Required, trimmed and NFC-normalised; 1–100 Unicode code points | Enter a firearm name. / Use 100 characters or fewer. |
+| Firearm type | Pistol, Revolver, Rifle, Other; initially unselected | Choose a firearm type. |
+| Calibre | Required, trimmed and NFC-normalised; 1–50 Unicode code points | Enter a calibre. / Use 50 characters or fewer. |
+| Distance (m) | 0.1–1000; at most one decimal; accept decimal comma or point | Enter 0.1 to 1000 m, with at most one decimal. |
+| Shots per round | Integer 1–100 | Enter a whole number from 1 to 100. |
+| Planned rounds (optional) | Empty means null; otherwise integer 1–100 | Leave empty or enter 1 to 100. |
+
+Confirm these against the actual domain code before wiring components. Read numeric limits from its existing constants; never copy validation logic into components. Do not use permissive parseInt parsing or coerce an empty string into zero. Preserve text input until validation. New visual field components are adapters, not a second validator.
+
+Errors are absent before the first submit. On submit show all errors and focus/scroll to the first. After that, validate through the same domain function and update the edited field’s error. This is the v2 interaction rule, superseding the old design’s clear-error-until-next-submit rule.
+
+No session-name field is being added: illustrative headings such as “Precision practice” are not new data. Use actual firearmName and existing session metadata. Calibre and name remain session snapshots; no profiles in this change.
+
+### Saving and navigation
+
+- Freeze one ID, created timestamp, time zone and validated input snapshot for the first save. Every Retry uses that same snapshot. Preserve the existing coordinator and its cross-form exclusion.
+- Before saving, fields are editable. During saving and after an uncertain failure, fields stay locked. A slow-save message is informational, not proof of cancellation. No parallel save or Retry while an earlier attempt is running.
+- Keep the existing slow-operation threshold (currently 10 seconds), late-result guards and recovery navigation. A stale save must never navigate away from a newer form.
+- Validation/preparation errors before a write do not imply any record was saved. An uncertain persistence error must never say “nothing was saved”. Known conflict and final validation rejection have no Retry of the same invalid snapshot.
+- Leaving an uncertain save reloads Sessions. Never silently generate another ID to bypass a conflict. Never promise an uncertain operation was cancelled.
+- Unsaved edits dialog: “Discard unsaved changes?” / “This draft will be removed. Saved sessions won't change.” / “Keep editing” / “Discard changes”.
+- Uncertain save dialog: “Leave this screen?” / “We couldn't confirm whether this session was saved. If it was saved, it will appear in Sessions. If it wasn't, leaving will discard these details.” / “Stay” / “Leave”. Stay does not trigger Retry.
+- Platform Back and iOS back gestures follow the same protections as the visible Back button. Do not permanently trap a user behind a slow operation.
+
+### Lists and unreadable records
+
+Load on focus and reload after saves using the existing controller; preserve serialisation, disposal and stale-result guards. Filtering All / In progress / Finished is local presentation of actual session status. Preserve unreadable-record notices in every filter because their status is unknown; label them as records outside the filtered valid results. A filter with zero matches says “No matching sessions”, not “Start your practice log”. Do not introduce polling.
+
+Show date and time with device locale and time zone. Keep null rounds as “Not planned”, and singular forms “1 planned round” and “1 shot / round”. Runtime setting changes are not assumed to work without restart; record both observations in tests. Do not rewrite stored UTC timestamps when the display zone changes.
+
+Unreadable records follow valid records. Use only the error result’s ID and error codes, never unvalidated row values. Show the first eight ID characters or “ID unavailable”; use the full ID internally when present and preserve collision-safe fallback keys. Deduplicate reasons in a stable order:
+
+| Existing error code | User-facing reason |
+|---|---|
+| missingColumn, invalidType | Some saved details are missing or damaged. |
+| invalidId | The record ID is not valid. |
+| invalidTimestamp | The saved date and time are not valid. |
+| invalidTimeZone | The saved time zone is not valid. |
+| required, tooLong, notNormalized | A saved text detail is not valid. |
+| invalidNumber, tooManyDecimals, outOfRange | A saved number is not valid. |
+| unsupportedValue | The saved firearm type is not recognised. |
+
+Keep “The original record is kept.” and “Try reading again” only where the implementation truly retains that record. Never show raw codes, SQL columns, stack traces or an invalid saved date.
+
+## 15. Round, photo and analysis integrity
+
+- One draft round per session. Resume it after restart; discard requires confirmation. Confirmed rounds remain immutable. Session completion remains blocked by a draft.
+- All current target scores are demo, including completed sessions. Calibration does not verify target dimensions. Display subtotal and unresolved count for incomplete results. Never add demo and real results into one total.
+- Actual shots must equal accepted marker multiplicities + explicit misses + unresolved shots before confirmation, and no proposals may remain. Missing markers never automatically become misses. Use the existing domain’s confirmation eligibility, not independently computed UI rules.
+- Hole diameter begins as the explicit existing assumption (currently 9.0 mm). Show the assumption until the user confirms/changes it. Do not derive it from the calibre string or marker touch area.
+- Keep original and normalised photo copies, existing per-database storage separation, orphan cleanup and Android picker recovery. Use the same normalised image pixels for display, calibration, editing and analysis. Do not log images, local paths, image metadata or session values.
+- Cancelling image selection keeps the current photo. Replacing the after photo requires acknowledgement that its calibration and markers will be cleared. Handle absent files without deleting the draft.
+- Keep the current analysis server and API contract. Do not choose a new hosted provider, add analytics or transmit a photo merely because a screen opened. Send only what the configured analysis contract requires after the user selects Analyse.
+- Before/after registration failure offers recovery; no invented detections. After-only analysis explains limitations and marks excluded regions where the API supplies them. Do not invent masked-region coordinates or confidence numbers.
+- Proposals are visually and semantically separate from accepted hits. Accept, move or change them through the existing domain actions; remove does not record a miss. No Accept all action.
+- Keep cancellation, timeout, saved attempt status, replaced-image guards and late-response guards. During analysis lock incompatible edits. A failed analysis leaves the manual path usable.
+- Existing original photos can contain metadata; do not make a blanket promise that every stored photo is metadata-free. The normalised analysis copy is the metadata-stripped one.
+
+## 16. Remove Developer checks now
+
+Owner decision: remove the in-app development-check feature, rather than merely hiding its link. This includes the Developer checks route/screen, navigation entries, mode-switch controls, Test mode banner, test-database deletion controls, runtime scenario selectors and demo-analysis buttons. Remove reachable app wiring and feature-specific dead code after inspecting dependencies.
+
+The normal database is the app’s only runtime mode after this change. There is no new reset, delete-all or migration-on-removal operation. Do not open, move, merge, export or delete the two old test databases or their photo folders automatically. Do not copy testsessions into the normal database. Keep their names isolated in any still-useful test fixtures.
+
+Retain DatabaseGate’s production responsibilities: migrations, version guard, error screen, connection ownership, safe closure and waiting for operations. Retain operation tracking, save coordination and error safeguards where production uses them. Removing a screen is not justification to rewrite persistence.
+
+Inspect contentOffsetContext and the dynamic keyboardVerticalOffset added for the test banner. Remove them only if they become unused and the remaining layout really starts at the expected origin. Preserve behavior="padding" and the normal-mode keyboard correction; never restore Android’s old undefined behaviour simply to remove test code. If a real header now offsets the screen, measure/account for its actual position. Apply safe-area insets once per edge.
+
+Remove obsolete tests that exclusively assert the deleted UI. Keep domain, lifecycle, persistence and regression tests, along with synthetic fixtures used by tests. Do not delete every __DEV__ branch or test file indiscriminately. No replacement developer menu in this task.
+
+Update current documentation and test instructions that tell the owner to use test mode. Historical bug reports and measured evidence remain historical; annotate superseded instructions rather than falsifying their observations. Future device checks that create records must say they use the normal database and create real local sessions. Do not automatically seed records for screenshots or test failures on the owner’s device.
+
+## 17. Implementation and acceptance matrix
+
+Component PNGs are specifications of reusable families, not a requirement to build an unused component framework. Build a family where a real screen needs it; record unused specimens rather than add fake product settings. A screen mockup may be a modal/state of an existing route. No twenty-route requirement.
+
+| Area | Required result | Evidence |
+|---|---|---|
+| Visual tokens | Exact colours/type/spacing in shared native tokens; no screenshot sampling | Code review; token comparison |
+| Sessions | Loading, empty, filtered, populated, read failure, refresh failure, invalid rows; clickable cards | Existing tests plus relevant new behaviour tests; native check |
+| Session form | Sheet selection, domain validation, locked/slow/uncertain saves and navigation guards | Controller tests; native keyboard and Back check |
+| Rounds/photos | Draft recovery, actual counts, photo source/permissions, immutable confirmed result | Contract tests; physical camera/library check |
+| Editor | Correct image coordinates through zoom/pan; proposal review; multiplicity; magnifier; explicit modes | Geometry tests and native gesture check |
+| Results | Demo/incomplete labels; domain accounting; no mixed totals | Unit tests and flow check |
+| Removal | No Developer checks link, route, banner or runtime mode switching | Source audit; bundle/native check where available |
+| Data | No database replacement/reset, no destructive file cleanup added; history preserved | Migration/lifecycle checks; real-device restart |
+| Accessibility | 48 touch targets, large-text reflow, labels and readable status | Native TalkBack/VoiceOver when available |
+| Platforms | Android and iPhone safe areas, keyboard and photo layout | Separate actual results; unavailable platform marked unverified |
+
+Run the repository’s actual format, lint, typecheck and test commands; do not assume a historic test count. Run available platform export checks. Server tests are relevant if shared API code or server code changes; avoid modifying the detector as part of the redesign.
+
+A passing export or unit suite is not a device test. Do not claim iOS, physical camera, real-photo detection or native gestures verified without running them. Missing access to a phone is not a reason to stop all implementation; complete everything independently verifiable and leave one concise manual checklist.
+
+The earlier comprehensive verification step remains partly completed/paused. This change does not finish it, verify target dimensions or prove analysis accuracy on real photos.
+
+## 18. Repository assets and replacement map
+
+Canonical files after copying the package:
+
+- [ui-ux.md](ui-ux.md): this behavioural and visual specification.
+- [tokens.json](tokens.json): exact machine-readable design values.
+- [component-overview.html](component-overview.html): self-contained reference catalogue; not app code.
+- [images/README.md](images/README.md): image naming and index.
+- images/components/: 24 component-family PNGs.
+- images/screens/android/ and images/screens/ios/: 20 screen references each.
+- icons/: original reference SVG/PNG icons; production prefers installed Lucide.
+
+The old five boards are superseded: foundations → components 01–02; components → component catalogue; current MVP → screen catalogue; future features → excluded scope, not a backlog mandate; prototype flows → sections 7, 14 and 15. Update active links to those boards. Preserve unrelated documents and historical evidence.
+
+The source package’s HTML is a reference only. Do not port its CSS or synthetic image data into React Native wholesale. Do not infer real scoring geometry from any image in this directory.
