@@ -13,9 +13,21 @@ are tested on synthetic images only. How well they work on real photos is not ye
 - Python 3.14 (verified with 3.14.2). `pyproject.toml` allows only 3.14.
 - No system packages. OpenCV comes as a wheel (`opencv-python-headless`).
 
-## Setup
+## Start (every time)
 
-From `services/analysis`:
+From the repository root, in a terminal on the computer:
+
+```bash
+cd services/analysis
+source .venv/bin/activate          # needed in every new terminal, even if .venv already exists
+python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
+```
+
+The prompt shows `(.venv)` once the environment is active. Without activation, `python` is
+the system Python and the command fails with `No module named uvicorn` or similar. Stop the
+service with Ctrl+C, and leave the environment with `deactivate`.
+
+**First time only:** if `.venv` does not exist, create it and install, then start as above:
 
 ```bash
 python3 -m venv .venv
@@ -28,22 +40,18 @@ python -m pip install -c requirements-lock.txt -e '.[dev]'
   `python -m pip freeze --exclude-editable > requirements-lock.txt` after changing
   dependencies.
 
-## Run
+## Reach it from the S20
 
-**Only from this computer, or from the phone over USB:**
+`--host 0.0.0.0` makes the service reachable on your network. Use `--host 127.0.0.1` to keep it
+on this computer only.
 
-```bash
-python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
-```
+1. Find the computer's address:
 
-**From the S20 on the same Wi-Fi network** (development only, trusted network only):
+   ```bash
+   ipconfig getifaddr en0        # e.g. 192.168.1.23
+   ```
 
-```bash
-python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
-ipconfig getifaddr en0        # the computer's address, e.g. 192.168.1.23
-```
-
-1. Set the address in the app.
+2. Set the address in the app.
    - Create `apps/mobile/.env.local` with this line:
 
      ```
@@ -51,10 +59,10 @@ ipconfig getifaddr en0        # the computer's address, e.g. 192.168.1.23
      ```
 
    - Then restart `npx expo start`. Environment variables are read when the bundle is built.
-   - The app allows plain HTTP only in development, and only to `localhost`,
-     `127.0.0.1` or a private network address (10.x, 172.16–31.x, 192.168.x).
-2. If macOS asks whether Python may accept incoming connections, answer yes.
-3. Check from the phone's browser that `http://192.168.1.23:8000/health` shows
+   - The app allows plain HTTP only in development, and only to `localhost`, `127.0.0.1` or a
+     private network address (10.x, 172.16–31.x, 192.168.x).
+3. If macOS asks whether Python may accept incoming connections, answer yes.
+4. Check from the phone's browser that `http://192.168.1.23:8000/health` shows
    `{"status":"ok"}`.
 
 **Over USB instead of Wi-Fi**, if `adb` is installed:
@@ -62,11 +70,13 @@ ipconfig getifaddr en0        # the computer's address, e.g. 192.168.1.23
 1. Run `adb reverse tcp:8000 tcp:8000`.
 2. Use `EXPO_PUBLIC_ANALYSIS_URL=http://127.0.0.1:8000`.
 
-The service has no login. On `0.0.0.0`, anyone on the network can send it photos for
-analysis. It keeps nothing, and it limits size and concurrency, but it must not be
-exposed outside a trusted network or deployed as it is.
+The service has no login. On `0.0.0.0`, anyone on the network can send it photos for analysis.
+It keeps nothing, and it limits size and concurrency, but it must not be exposed outside a
+trusted network or deployed as it is.
 
 ## Checks
+
+With the environment active:
 
 ```bash
 ruff format --check app tests

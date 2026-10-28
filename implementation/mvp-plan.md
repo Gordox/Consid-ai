@@ -255,3 +255,30 @@ Det verifierar **inte** UI på telefonen. S20-checklistan finns i `docs/device-t
 - Riktiga bilder enligt `docs/evaluation.md`.
 - Tavelmåtten enligt `docs/target-calibration.md`.
 - Beslut om kalibrar och håldiameter.
+
+## 11. Granskning efter fas 2 (2026-10-28)
+
+**Ägarens beslut:**
+- En träff som berör gränsen får det högre värdet. Den tryckta linjen räknas som gräns.
+- Innertian ger inga extra poäng och ingen statistik.
+- Diametern är ett uttryckligt antagande som du bekräftar eller ändrar.
+- Demomärkningen finns kvar.
+
+Besluten står i `docs/decisions/2026-10-28-scoring-and-hole-diameter.md`.
+
+**Granskade påståenden och vad som ändrades:**
+
+| # | Påstående i leveransen | Vad granskningen visade | Åtgärd |
+| --- | --- | --- | --- |
+| 1 | En bildmapp per databas gör städningen säker | **Felaktigt.** Städningen litade på filernas ändringstid. iOS `copyItem` behåller originalets tid, så en bild som höll på att sparas kunde se gammal ut och raderas. Städningen raderade också vilken fil som helst i mappen som saknade referens. | Journalen `photo_files` (migration 6) skrivs innan filen skrivs. Bara journalförda filer som är äldre än 10 minuter enligt journalen raderas. Referensen kontrolleras precis före varje radering, i alla raderingsvägar. Mappen hör till databasöppningen. (`602764b`) |
+| 2 | Bara bilder utan platsdata skickas | **Det stämde i koden**, men det fanns ingen kontroll. Originalkopian har kvar platsdatan. | Uppladdningen byggs bara från den normaliserade filen. Före sändning kontrolleras att filen är en JPEG utan GPS och utan kvarvarande orientering. Annars skickas ingenting. (`a049859`) |
+| 3 | Det framgår att sifferkolumnerna hoppas över | **Bara före analysen**, i lägesbeskrivningen. | Varningen `numberColumnsSkipped` (kontrakt 1.2) och tydlig text före och efter analysen. Ett omarkerat hål räknas aldrig som miss. (`09b6183`) |
+| 4 | En bild räddas om Android avslutar appen | **Oprecist.** `expo-image-picker` håller resultatet bara i minnet. En kvarlämnad post utan resultat ignorerades tyst. | Det visas nu att valet avbröts. Exakt vilka fall som stöds står i `docs/photo-recovery.md`. Inget är verifierat på enhet. |
+
+**Kontroller:**
+- **App:** 688 Jest-tester. `format:check`, `lint` och `typecheck` gav exit 0.
+- **Server:** ruff, mypy och 26 pytest-tester.
+- **Riktiga HTTP-anrop mot servern lokalt:** Appens parser godtar svaren i båda lägena, inklusive `numberColumnsSkipped`.
+- **Kontrollen av metadata** prövad på riktiga JPEG-filer: utan GPS-tagg gav den `ok`, och med GPS-tagg gav den `location`.
+
+**S20:** Checklistan är omordnad till G1–G5 för grundflödet först. De avancerade återställningstesterna A1–A4 väntar tills grundflödet fungerar. Ingen punkt är godkänd.

@@ -1,6 +1,6 @@
 # Måltavlan: identifiering, underlag och mätmall
 
-Status 2026-10-28: Tavlan är **trolig men inte verifierad**. Poängen räknas på demogeometrin `demo-synthetic-v1` och märks som demo, tills punkterna i avsnitt 4 är uppmätta.
+Status 2026-10-28: Tavlan är **trolig men inte verifierad**. Besluten om poängregeln står i `docs/decisions/2026-10-28-scoring-and-hole-diameter.md`. Poängen räknas på demogeometrin `demo-synthetic-v1` och märks som demo, tills punkterna i avsnitt 4 är uppmätta.
 
 ## 1. Vad som har identifierats
 
@@ -43,28 +43,24 @@ Inga millimetermått har härletts från produktbildens pixlar.
 
 ## 2. Vad som redan gäller i appen
 
-- **Poängregel `contact-highest-v1`:**
-  - Ett hål som rör en gräns får det högre värdet. Det gäller i appen för alla tavlor.
-  - Gränsen för en zon är dess ytterradie. Hålets kant (centrum + diameter/2) jämförs mot den.
+Besluten står i `docs/decisions/2026-10-28-scoring-and-hole-diameter.md`.
+
+- **Gränsträff:** En träff som berör gränsen mellan två zoner räknas till det högre värdet (`contact-highest-v1`).
+  - Den tryckta ringlinjen är gränsen, så en zons ytterradie är ytterkanten på dess linje.
+  - Hålets kant (centrum + diameter/2) jämförs mot ytterradien.
+- **Innertian** ger inga extra poäng och ingen särskild statistik.
 - **Kalibreringen** görs på ytterkanten av den yttersta poängringen, där den korsar sifferaxlarna.
-- **Hålets diameter** sparas per runda tillsammans med var värdet kommer ifrån:
-  - *antagen* (9,0 mm som standard), eller
-  - *vald av dig*. Ditt val förs vidare till nästa runda i samma session.
-- **Kaliberetiketten används aldrig för att räkna fram en diameter.**
+- **Hålets diameter** är ett uttryckligt antagande (9,0 mm som standard) tills du ändrar eller bekräftar det.
+  - Kaliberetiketten används aldrig för att räkna fram en diameter.
+  - Ditt val förs vidare till nästa runda i samma session.
+- **Demomärkningen** finns kvar tills tavlan är verifierad.
 
-## 3. Beslut som återstår för dig
+## 3. Det som återstår
 
-1. **Är tavlan en ISSF 25/50 m pistoltavla i full skala?**
-   - Svarar mätningen i avsnitt 4 ja: lägg in ISSF-måtten som `issf-25m-50m-pistol-v1`, med mätningen och ISSF-källan som underlag.
-   - Svarar den nej: lägg in dina uppmätta mått som tavlans egen definition.
-2. **Linjen.**
-   - Räknas ringlinjen till det högre värdet, så att gränsen är linjens ytterkant? Det är det vanliga i ISSF:s poängräkning, men regeltexten här ovan säger det inte uttryckligen, så du behöver bekräfta det.
-   - Annars ska gränsen vara linjens mitt.
-3. **Innertian.** Ska den bara visas, eller räknas som X eller tiebreak? Appen räknar den inte i dag.
-4. **Håldiameter per kaliber.**
-   - Vilka kalibrar använder du?
-   - Varifrån ska den nominella diametern komma? Kulans nominella diameter, eller ett uppmätt hål?
-   - Tills det är bestämt sätter du diametern själv per session.
+1. **Är tavlan en ISSF 25/50 m pistoltavla i full skala?** Det avgörs av mätningen i avsnitt 4.
+   - Om svaret är ja: ISSF-måtten läggs in som `issf-25m-50m-pistol-v1`, med mätningen och ISSF-källan som underlag.
+   - Om svaret är nej: dina uppmätta mått läggs in som tavlans egen definition.
+2. **Ingenting annat behöver beslutas** för att aktivera tavlan. Linjen, innertian och diametern är redan bestämda.
 
 ## 4. Mätmall
 
@@ -82,10 +78,10 @@ Mät genom centrum, både vågrätt och lodrätt, och ange båda värdena. Diame
 | M4 | Svarta området, kant till kant (ring 7) | | |
 | M5 | Ring 9, ytterkant | | |
 | M6 | Ring 10, ytterkant | | |
-| M7 | Innertian, ytterkant | | |
-| M8 | Linjebredd på en svart linje på ljust papper (ring 3) | | – |
-| M9 | Linjebredd på en ljus linje i svart område (ring 9) | | – |
-| M10 | Avstånd från centrum till mitten av siffran "1" på höger axel | | – |
+| M7 | *Valfri:* innertian, ytterkant (bara för att jämföra med ISSF) | | |
+| M8 | *Valfri:* linjebredd på en svart linje på ljust papper (ring 3) | | – |
+| M9 | *Valfri:* linjebredd på en ljus linje i svart område (ring 9) | | – |
+| M10 | *Valfri:* avstånd från centrum till mitten av siffran "1" på höger axel | | – |
 
 **Foton** (S20, rakt framifrån, gott ljus):
 - **F1:** Hela tavlan med linjalen lagd vågrätt genom centrum.

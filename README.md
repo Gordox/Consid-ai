@@ -142,8 +142,10 @@ npx expo-doctor
 10. Start the next round, or **Finish session**. The list and the session show demo scores
     separately from any verified ones.
 
-If Android closes the app while the camera or photo picker is open, the photo is saved to its
-round on the next start (Android only).
+If Android closes the app while the camera or photo picker is open, the app tries to save the
+photo on the next start and otherwise tells you the pick was interrupted. Which cases actually
+work, and that none is verified on a phone yet, is in
+[docs/photo-recovery.md](docs/photo-recovery.md).
 
 ## Target and scoring
 
@@ -151,7 +153,9 @@ The owner's target is an X-Targets precision target whose layout matches the ISS
 and 50 m pistol target (rule 6.3.4.5: ring 10 is 50 mm, ring 1 is 500 mm, black area 200 mm).
 The manufacturer does not state its dimensions, so the match is **not verified**; the app ships
 only `demo-synthetic-v1`, the same ten-ring structure with invented radii (10 mm per ring). Every
-score is labelled as demo and kept apart from verified scores. What is needed to enable the real
+score is labelled as demo and kept apart from verified scores. A hole touching the boundary
+between two zones scores the higher value (the printed line counts as the boundary), and the
+inner ten gives no extra points ([decision](docs/decisions/2026-10-28-scoring-and-hole-diameter.md)). What is needed to enable the real
 target, and a measuring template, are in
 [docs/target-calibration.md](docs/target-calibration.md).
 
@@ -181,11 +185,16 @@ yourself.
 - Photos are **copied** into the app's own document folder under generated names: an unchanged
   copy and an upright JPEG without metadata. The originals in the phone's library are never
   changed or deleted. Discarding a round or replacing a photo deletes only the app's copies.
-- At start, the app removes copies in its own photo folder that no round refers to and that are
-  more than an hour old (left behind if the app stopped mid-save). Each database (normal, and
-  the development UI-check database) has its own folder.
+- The unchanged copy keeps the photo's metadata, which can include the location. It never
+  leaves the phone.
+- Every copy is recorded in the database before it is written. At start, the app deletes only
+  recorded copies that no round refers to and that are more than ten minutes old (left behind
+  if the app stopped mid-save), checking each one just before deleting it. Files it did not
+  record are never touched. Each database (normal, and the development UI-check database) has
+  its own folder.
 - Nothing is sent anywhere unless an analysis address is configured **and** you tap
-  **Analyze photos**. Only the upright copies without location data are sent.
+  **Analyze photos**. Only the upright copies are sent, and only after the app has checked that
+  they carry no location data.
 
 ## License
 
