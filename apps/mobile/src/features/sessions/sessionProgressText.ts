@@ -72,32 +72,6 @@ export function formatPoints(
   return `Subtotal ${plural(subtotal, 'point', 'points')}, ${missing}`;
 }
 
-export function formatGroup(result: ResultGroup): string {
-  return `${plural(result.rounds, 'round', 'rounds')} · ${formatPoints(result.subtotal, result.complete, result.unresolvedShots)}`;
-}
-
-export function formatProgressLine(
-  finishedAtUtc: string | null,
-  rounds: readonly RoundSummary[],
-  isVerified: IsVerified = isVerifiedTarget,
-): string {
-  const summary = summarizeRounds(rounds, isVerified);
-  const parts = [finishedAtUtc === null ? 'In progress' : 'Finished'];
-  if (summary.confirmedRounds === 0) {
-    parts.push('No confirmed rounds');
-  }
-  if (summary.verified !== null) {
-    parts.push(formatGroup(summary.verified));
-  }
-  if (summary.demo !== null) {
-    parts.push(`Demo scores: ${formatGroup(summary.demo)}`);
-  }
-  if (summary.draftSequence !== null) {
-    parts.push(`Round ${summary.draftSequence} in progress`);
-  }
-  return parts.join(' · ');
-}
-
 export function formatRoundResult(
   round: RoundSummary,
   isVerified: IsVerified = isVerifiedTarget,

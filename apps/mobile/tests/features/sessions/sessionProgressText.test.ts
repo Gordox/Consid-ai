@@ -1,7 +1,6 @@
 import type { RoundSummary } from '../../../src/persistence/roundRepository';
 import {
   formatPoints,
-  formatProgressLine,
   formatRoundResult,
   formatShortScore,
   summarizeRounds,
@@ -65,33 +64,6 @@ describe('formatPoints', () => {
     expect(formatPoints(41, true)).toBe('41 points');
     expect(formatPoints(40, false, 2)).toBe('Subtotal 40 points, 2 unresolved shots not counted');
     expect(formatPoints(1, false)).toBe('Subtotal 1 point, incomplete');
-  });
-});
-
-describe('formatProgressLine', () => {
-  it('describes a new session without inventing results', () => {
-    expect(formatProgressLine(null, [])).toBe('In progress · No confirmed rounds');
-  });
-
-  it('labels demo scores and keeps them apart from verified ones', () => {
-    expect(
-      formatProgressLine(
-        't',
-        [round({}), round({ sequence: 2, targetId: 'verified-v1', confirmedSubtotal: 1 })],
-        isVerified,
-      ),
-    ).toBe('Finished · 1 round · 1 point · Demo scores: 1 round · 40 points');
-    expect(
-      formatProgressLine(null, [round({ confirmedComplete: false, confirmedUnresolved: 1 })]),
-    ).toBe(
-      'In progress · Demo scores: 1 round · Subtotal 40 points, 1 unresolved shot not counted',
-    );
-  });
-
-  it('mentions a draft round', () => {
-    expect(formatProgressLine(null, [round({}), round({ sequence: 2, ...DRAFT })])).toBe(
-      'In progress · Demo scores: 1 round · 40 points · Round 2 in progress',
-    );
   });
 });
 
