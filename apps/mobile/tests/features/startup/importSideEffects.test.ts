@@ -1,5 +1,5 @@
-// Importing the developer checks, the gate and the routes must not open, create or delete any
-// database. Only explicit calls from the developer screen may do that.
+// Importing the gate and the root layout must not open, create or delete any database. Only
+// DatabaseGate's lifecycle opens the app's database, once it is mounted.
 
 const mockOpenDatabaseAsync = jest.fn();
 const mockDeleteDatabaseAsync = jest.fn();
@@ -35,12 +35,8 @@ jest.mock('lucide-react-native/icons/triangle-alert', () => ({
 describe('module imports', () => {
   it('open and delete no database', () => {
     jest.isolateModules(() => {
-      require('../../../src/features/dev-tools/testDatabases');
-      require('../../../src/features/dev-tools/DevChecksScreen');
-      require('../../../src/features/dev-tools/TestModeBanner');
       require('../../../src/features/startup/DatabaseGate');
       require('../../../src/features/startup/trackedConnection');
-      require('../../../app/dev/checks');
       require('../../../app/_layout');
     });
 

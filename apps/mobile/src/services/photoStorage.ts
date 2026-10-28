@@ -4,7 +4,7 @@ import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import { isPhotoFileName } from './photoFiles';
 
 // Copies picked photos into a folder in the app's document directory, which the system does
-// not clear. Each database has its own folder. This module only reads and writes files; which
+// not clear. This module only reads and writes files; which
 // files may be deleted is decided from the database (roundPhotos.ts). The originals in the
 // phone's library are never modified or deleted.
 
@@ -13,6 +13,10 @@ import { isPhotoFileName } from './photoFiles';
 export const NORMALIZED_MAX_SIDE_PX = 4096;
 // High JPEG quality keeps hole edges sharp; 1.0 would roughly double the size for no visible gain.
 const NORMALIZED_JPEG_QUALITY = 0.95;
+
+// The folder of the app's database. Earlier development builds also wrote 'photos-ui-check' for a
+// test database; that folder is left as it is and never opened.
+export const PHOTO_FOLDER = 'photos';
 
 export type PhotoStore = {
   // Copies the picked file unchanged under the given generated name. The copy keeps the photo's

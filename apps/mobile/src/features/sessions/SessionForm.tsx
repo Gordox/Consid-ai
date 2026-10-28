@@ -29,7 +29,6 @@ import { FIREARM_TYPES } from '../../domain/session/firearmType';
 import type { SessionField } from '../../domain/session/session';
 import { saveSession } from '../../persistence/sessionRepository';
 import { deviceTimeZone, newSessionId, nowUtcIso } from '../../services/deviceContext';
-import { useContentOffsetY } from '../startup/contentOffsetContext';
 import { useSessionStore } from '../startup/sessionStoreContext';
 import { fieldErrorMessage } from './fieldErrorMessages';
 import { FIREARM_TYPE_LABELS } from './firearmTypeLabels';
@@ -152,7 +151,6 @@ export function SessionForm() {
   const distanceMetresRef = useRef<TextInputInstance>(null);
   const plannedShotsPerRoundRef = useRef<TextInputInstance>(null);
   const plannedRoundsRef = useRef<TextInputInstance>(null);
-  const contentOffsetY = useContentOffsetY();
 
   useEffect(() => {
     controller.resume();
@@ -267,11 +265,9 @@ export function SessionForm() {
       <KeyboardAvoidingView
         // Padding on Android too: in Expo Go on a Galaxy S20 the window does not shrink for the
         // keyboard, so without it the lower fields cannot be reached.
-        // See docs/bugs/keyboard-covers-lower-form-fields.md.
+        // See docs/bugs/keyboard-covers-lower-form-fields.md. Nothing is drawn above the screens,
+        // so the default keyboardVerticalOffset of 0 applies; E1 measured that as correct.
         behavior="padding"
-        // KeyboardAvoidingView measures itself relative to its parent, so add how far the screen
-        // content starts below the top of the root view (0 without the test-mode banner).
-        keyboardVerticalOffset={contentOffsetY}
         style={styles.fill}
       >
         <ScrollView

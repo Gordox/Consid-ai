@@ -1,21 +1,14 @@
 import { openDatabaseAsync } from 'expo-sqlite';
 import { type ReactNode, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
-import { ActivityIndicator, type LayoutChangeEvent, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, View } from 'react-native';
 
 import { Screen } from '../../components/Screen';
 import { colors } from '../../components/tokens';
+import { DATABASE_NAME } from '../../persistence/database';
 import { openSessionDatabase } from '../../persistence/openSessionDatabase';
-import { createPhotoStore } from '../../services/photoStorage';
-import {
-  assertDevelopment,
-  databaseNameForMode,
-  photoFolderForMode,
-} from '../dev-tools/testDatabases';
-import { TestModeBanner } from '../dev-tools/TestModeBanner';
+import { createPhotoStore, PHOTO_FOLDER } from '../../services/photoStorage';
 import { createSaveCoordinator } from '../sessions/saveCoordinator';
-import { ContentOffsetContext } from './contentOffsetContext';
-import { createDatabaseLifecycle, type DatabaseMode } from './databaseLifecycle';
-import { type DatabaseModeControl, DatabaseModeContext } from './databaseModeContext';
+import { createDatabaseLifecycle } from './databaseLifecycle';
 import { PhotoStoreContext } from './photoStoreContext';
 import { SessionStoreContext } from './sessionStoreContext';
 import { StartupErrorScreen } from './StartupErrorScreen';
@@ -29,13 +22,12 @@ function reportDevError(error: unknown): void {
 
 function createAppDatabaseLifecycle() {
   return createDatabaseLifecycle({
-    // The name is resolved per open, so the test database is guarded on every attempt.
-    openAndMigrate: (mode) =>
+    openAndMigrate: () =>
       openSessionDatabase({
-        open: () => openDatabaseAsync(databaseNameForMode(mode)),
+        open: () => openDatabaseAsync(DATABASE_NAME),
         reportCloseFailure: reportDevError,
       }),
-    photoFolderFor: (mode) => photoFolderForMode(mode),
+    photoFolder: PHOTO_FOLDER,
     createCoordinator: () => createSaveCoordinator(),
     reportError: reportDevError,
   });
@@ -45,27 +37,10 @@ function createAppDatabaseLifecycle() {
 export function DatabaseGate({ children }: { children: ReactNode }) {
   const [lifecycle] = useState(createAppDatabaseLifecycle);
   const state = useSyncExternalStore(lifecycle.subscribe, lifecycle.getState);
-  const mode = useSyncExternalStore(lifecycle.subscribe, lifecycle.getMode);
-  // Where the screens start below the test-mode banner; SessionForm needs it for the keyboard.
-  const [measuredContentOffsetY, setMeasuredContentOffsetY] = useState(0);
-  // Only the banner moves the content, so normal mode never reuses a value from test mode.
-  const contentOffsetY = mode === 'test' ? measuredContentOffsetY : 0;
   const store = state.status === 'ready' ? state.store : null;
   const photos = useMemo(
     () => (store === null ? null : createPhotoStore(store.photoFolder)),
     [store],
-  );
-  const modeControl = useMemo<DatabaseModeControl>(
-    () => ({
-      mode,
-      switchMode: (next: DatabaseMode) => {
-        if (next === 'test') {
-          assertDevelopment();
-        }
-        lifecycle.switchMode(next);
-      },
-    }),
-    [lifecycle, mode],
   );
 
   useEffect(() => {
@@ -96,23 +71,7 @@ export function DatabaseGate({ children }: { children: ReactNode }) {
     );
   }
 
-  return (
-    <DatabaseModeContext.Provider value={modeControl}>
-      <View style={styles.fill}>
-        {mode === 'test' ? <TestModeBanner /> : null}
-        <View
-          onLayout={(event: LayoutChangeEvent) => {
-            setMeasuredContentOffsetY(event.nativeEvent.layout.y);
-          }}
-          style={styles.fill}
-        >
-          <ContentOffsetContext.Provider value={contentOffsetY}>
-            {content}
-          </ContentOffsetContext.Provider>
-        </View>
-      </View>
-    </DatabaseModeContext.Provider>
-  );
+  return <View style={styles.fill}>{content}</View>;
 }
 
 const styles = StyleSheet.create({

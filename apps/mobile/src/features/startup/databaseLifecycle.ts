@@ -8,16 +8,11 @@ import { trackConnection, type TrackedConnection } from './trackedConnection';
 export type SessionStore = {
   readonly db: SessionDatabase;
   readonly coordinator: SaveCoordinator;
-  // The photo folder that belongs to this database. Set together with the connection, so rows
-  // and photo files of different databases can never be mixed.
+  // The photo folder that belongs to this database, handed out together with the connection.
   readonly photoFolder: string;
 };
 
 export type StartupErrorKind = 'newerVersion' | 'other';
-
-// 'test' is the development-only UI check database. The mode lives only in memory, so a full
-// restart always opens the normal database again.
-export type DatabaseMode = 'normal' | 'test';
 
 export type DatabaseLifecycleState =
   | { readonly status: 'loading' }
@@ -25,21 +20,17 @@ export type DatabaseLifecycleState =
   | { readonly status: 'failed'; readonly errorKind: StartupErrorKind };
 
 export type DatabaseLifecycleDeps = {
-  openAndMigrate: (mode: DatabaseMode) => Promise<ClosableSessionDatabase>;
-  photoFolderFor: (mode: DatabaseMode) => string;
+  openAndMigrate: () => Promise<ClosableSessionDatabase>;
+  photoFolder: string;
   createCoordinator: () => SaveCoordinator;
   reportError: (error: unknown) => void;
 };
 
 export type DatabaseLifecycle = {
   getState(): DatabaseLifecycleState;
-  getMode(): DatabaseMode;
   subscribe(listener: () => void): () => void;
   activate(): void;
   retry(): void;
-  // Closes the current connection (after its save and running operations settle) and then
-  // opens the other database, on the same serial queue.
-  switchMode(mode: DatabaseMode): void;
   deactivate(): void;
 };
 
@@ -50,12 +41,11 @@ export function classifyStartupError(error: unknown): StartupErrorKind {
 const LOADING: DatabaseLifecycleState = { status: 'loading' };
 
 // Owns the database connection for DatabaseGate. Opening, migrating and closing run on one
-// serial queue, so two initialisations never overlap (Retry, effect restarts, StrictMode,
-// mode switches) and a new connection opens only after the previous one has closed.
+// serial queue, so two initialisations never overlap (Retry, effect restarts, StrictMode) and a
+// new connection opens only after the previous one has closed.
 // The generation number only decides whether a finished result is still wanted.
 export function createDatabaseLifecycle(deps: DatabaseLifecycleDeps): DatabaseLifecycle {
   let state: DatabaseLifecycleState = LOADING;
-  let mode: DatabaseMode = 'normal';
   let generation = 0;
   let active = false;
   let open: { connection: TrackedConnection; coordinator: SaveCoordinator } | null = null;
@@ -97,7 +87,6 @@ export function createDatabaseLifecycle(deps: DatabaseLifecycleDeps): DatabaseLi
   function startInitialisation(): void {
     generation += 1;
     const wanted = generation;
-    const wantedMode = mode;
     setState(LOADING);
     enqueue(async () => {
       if (!active || wanted !== generation) {
@@ -105,7 +94,7 @@ export function createDatabaseLifecycle(deps: DatabaseLifecycleDeps): DatabaseLi
       }
       let db: ClosableSessionDatabase;
       try {
-        db = await deps.openAndMigrate(wantedMode);
+        db = await deps.openAndMigrate();
       } catch (error) {
         if (active && wanted === generation) {
           deps.reportError(error);
@@ -122,15 +111,13 @@ export function createDatabaseLifecycle(deps: DatabaseLifecycleDeps): DatabaseLi
       open = { connection, coordinator };
       setState({
         status: 'ready',
-        store: { db: connection.db, coordinator, photoFolder: deps.photoFolderFor(wantedMode) },
+        store: { db: connection.db, coordinator, photoFolder: deps.photoFolder },
       });
     });
   }
 
   return {
     getState: () => state,
-
-    getMode: () => mode,
 
     subscribe(listener) {
       listeners.add(listener);
@@ -151,16 +138,6 @@ export function createDatabaseLifecycle(deps: DatabaseLifecycleDeps): DatabaseLi
       if (!active || state.status !== 'failed') {
         return;
       }
-      startInitialisation();
-    },
-
-    switchMode(next) {
-      if (!active || next === mode) {
-        return;
-      }
-      mode = next;
-      // The loading state unmounts the screens first, so their late results are discarded.
-      closeCurrent();
       startInitialisation();
     },
 

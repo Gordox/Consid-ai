@@ -9,7 +9,6 @@ import type { DraftRound } from '../../domain/round/round';
 import { findTarget } from '../../domain/target/targetDefinition';
 import {
   applyAnalysisResult,
-  type AttemptSource,
   createAnalysisAttempt,
   failAnalysisAttempt,
   getLatestAttempt,
@@ -34,12 +33,7 @@ import {
   suggestionSummary,
 } from './analysisText';
 import { uploadablePhoto } from './analysisPhotos';
-import {
-  candidatesToMarks,
-  DEMO_ALGORITHM_VERSION,
-  demoCandidates,
-  duplicateRadiusPx,
-} from './suggestions';
+import { candidatesToMarks, duplicateRadiusPx } from './suggestions';
 
 function reportDevError(error: unknown): void {
   if (__DEV__) {
@@ -67,7 +61,7 @@ export function AnalysisPanel({
   const [config] = useState(readAnalysisConfig);
   const [message, setMessage] = useState<Message | null>(null);
   const [latest, setLatest] = useState<LatestAttempt | null>(null);
-  const [confirmReplace, setConfirmReplace] = useState<AttemptSource | null>(null);
+  const [confirmReplace, setConfirmReplace] = useState(false);
   const target = findTarget(draft.targetId);
   const { after, before } = draft.photos;
   const pending = draft.marks.filter((mark) => !mark.accepted).length;
@@ -96,8 +90,8 @@ export function AnalysisPanel({
     targetKnown: target !== null,
   });
 
-  async function run(source: AttemptSource): Promise<void> {
-    setConfirmReplace(null);
+  async function run(): Promise<void> {
+    setConfirmReplace(false);
     if (running || after === null || target === null || draft.calibration === null) return;
     onRunningChange(true);
     setMessage(null);
@@ -106,32 +100,11 @@ export function AnalysisPanel({
       await createAnalysisAttempt(db, {
         attemptId,
         roundId: draft.id,
-        source,
+        source: 'service',
         createdAtUtc: nowUtcIso(),
         afterFileName: after.fileName,
         beforeFileName: before?.fileName ?? null,
       });
-      if (source === 'demo') {
-        const candidates = demoCandidates(draft.calibration, target);
-        if (candidates === null) {
-          await failAnalysisAttempt(db, attemptId, 'calibrationNeeded');
-          setMessage({ tone: 'error', text: ANALYSIS_BLOCK_TEXT.notCalibrated });
-          return;
-        }
-        await applyAnalysisResult(db, {
-          attemptId,
-          roundId: draft.id,
-          algorithmVersion: DEMO_ALGORITHM_VERSION,
-          resultJson: JSON.stringify({ candidates }),
-          suggestions: candidatesToMarks(candidates, newId),
-          duplicateRadiusPx: duplicateRadiusPx(candidates, after),
-        });
-        setMessage({
-          tone: 'info',
-          text: 'Demo suggestions added. They are fixed positions, not analysis of your photo.',
-        });
-        return;
-      }
       if (config === null) return;
       const afterUpload = uploadablePhoto(after, photos.uri);
       const beforeUpload = before === null ? null : uploadablePhoto(before, photos.uri);
@@ -192,8 +165,7 @@ export function AnalysisPanel({
     }
   }
 
-  const start = (source: AttemptSource) =>
-    pending > 0 ? setConfirmReplace(source) : void run(source);
+  const start = () => (pending > 0 ? setConfirmReplace(true) : void run());
   // While a request runs here, an older stored result would be misleading.
   const status = running
     ? ({ tone: 'info', text: 'Analysing… this can take up to a minute.' } as const)
@@ -224,7 +196,7 @@ export function AnalysisPanel({
             busy={running}
             disabled={block !== null}
             label={lastFailed ? 'Try analysis again' : 'Analyze photos'}
-            onPress={() => start('service')}
+            onPress={start}
           />
         </>
       )}
@@ -241,30 +213,15 @@ export function AnalysisPanel({
             : `${pending} suggestions to review. Open the editor to accept or delete them.`}
         </Text>
       ) : null}
-      {__DEV__ ? (
-        <>
-          <Text style={styles.demo}>
-            Development only: demo suggestions are fixed positions on the target, not analysis of
-            your photo.
-          </Text>
-          <Button
-            busy={running}
-            disabled={block !== null}
-            label="Add demo suggestions"
-            onPress={() => start('demo')}
-            variant="secondary"
-          />
-        </>
-      ) : null}
       {message === null ? null : <Banner body={message.text} tone={message.tone} />}
       <ConfirmDialog
         body="Suggestions you haven't accepted or changed are replaced. Hits you marked, accepted or edited stay."
         cancelLabel="Keep current"
         confirmLabel="Replace suggestions"
-        onCancel={() => setConfirmReplace(null)}
-        onConfirm={() => confirmReplace !== null && void run(confirmReplace)}
+        onCancel={() => setConfirmReplace(false)}
+        onConfirm={() => void run()}
         title="Replace the suggestions to review?"
-        visible={confirmReplace !== null}
+        visible={confirmReplace}
       />
     </View>
   );
@@ -291,10 +248,6 @@ const styles = StyleSheet.create({
   },
   pending: {
     ...typography.label,
-    color: colors.warning,
-  },
-  demo: {
-    ...typography.supporting,
     color: colors.warning,
   },
 });

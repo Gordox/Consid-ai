@@ -1,13 +1,5 @@
-import { candidatesToMarks, demoCandidates } from '../../../src/features/analysis/suggestions';
+import { candidatesToMarks } from '../../../src/features/analysis/suggestions';
 import { suggestionSummary } from '../../../src/features/analysis/analysisText';
-import { DEMO_TARGET } from '../../../src/domain/target/targetDefinition';
-
-const CALIBRATION = [
-  { x: 500, y: 100 },
-  { x: 900, y: 500 },
-  { x: 500, y: 900 },
-  { x: 100, y: 500 },
-] as const;
 
 describe('candidatesToMarks', () => {
   it('turns candidates into one-shot suggestions and flags uncertain ones', () => {
@@ -27,21 +19,6 @@ describe('candidatesToMarks', () => {
       ['m2', 1, 'suggested', true, 'c2'],
       ['m3', 1, 'suggested', true, 'c3'],
     ]);
-  });
-});
-
-describe('demoCandidates', () => {
-  it('places fixed target positions through the calibration', () => {
-    const candidates = demoCandidates(CALIBRATION, DEMO_TARGET);
-    expect(candidates).toHaveLength(3);
-    expect(candidates?.[0]?.x).toBeCloseTo(512, 6);
-    expect(candidates?.[0]?.y).toBeCloseTo(484, 6);
-    expect(candidates?.every((candidate) => candidate.id.startsWith('demo-'))).toBe(true);
-  });
-
-  it('gives nothing for an invalid calibration', () => {
-    const swapped = [CALIBRATION[0], CALIBRATION[2], CALIBRATION[1], CALIBRATION[3]] as const;
-    expect(demoCandidates(swapped, DEMO_TARGET)).toBeNull();
   });
 });
 
