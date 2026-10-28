@@ -175,7 +175,7 @@ export function createGestureController(newMarkId: () => string) {
       snapshot = nextSnapshot;
       callbacks = nextCallbacks;
     },
-    // Canvas position in the window, so touch page coordinates can be made canvas-relative.
+    // Canvas position in page coordinates, so touch pageX/pageY can be made canvas-relative.
     setOrigin(nextOrigin: Point): void {
       origin = nextOrigin;
     },

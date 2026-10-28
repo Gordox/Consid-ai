@@ -181,7 +181,11 @@ export function HitEditor({ draft }: { draft: DraftRound }) {
               };
               setCanvas(size);
               setView((current) => current ?? fitView(image, size));
-              canvasRef.current?.measureInWindow((x, y) => gestures.setOrigin({ x, y }));
+              // measure() reports page coordinates, the same system as touch pageX/pageY.
+              // measureInWindow can differ by the status bar (step 7 measurements).
+              canvasRef.current?.measure((_x, _y, _width, _height, pageX, pageY) =>
+                gestures.setOrigin({ x: pageX, y: pageY }),
+              );
             }}
             style={styles.canvas}
             {...gestures.panHandlers}
