@@ -3,20 +3,20 @@
 A mobile app for logging recreational target-practice sessions, built with React Native, Expo
 (SDK 58) and TypeScript. The app lives in [`apps/mobile`](apps/mobile).
 
-> **Status:** Early development. Domain validation (step 2), local SQLite persistence (step 3),
-> the new-session form (step 5) and the session list (step 6) are implemented and unit tested.
-> The app opens to the **Sessions** list, newest first, with a **New session** button.
+> **Status: partial MVP with a working manual flow.** You can create a session, open it, run
+> rounds with before and after photos, calibrate the after photo, mark and correct hits, confirm
+> rounds, finish the session and see the results in the list. Two things are **not** real yet:
 >
-> On a Galaxy S20 in Expo Go, creating sessions, the list, and sessions kept after a full app
-> restart have been checked manually. Date and time display across languages and time zones is
-> only partly checked. Error cases (read failures, unreadable records, startup errors) still need
-> fault-injection tests. iOS is untested. See [PLAN.md](PLAN.md) for the plan and progress.
+> - **Scores use a synthetic demo target.** The real target's dimensions and scoring rules are
+>   not verified, so scores are only for trying the workflow (see *Target and scoring*).
+> - **No automatic analysis is connected.** The analysis boundary is built, but no service has
+>   been chosen, so hits are marked by hand. Development builds can add fixed demo suggestions,
+>   clearly labelled as not real analysis.
 >
-> **Known issue, fixed for the tested case:** the keyboard used to hide the lowest fields of the
-> new-session form on Android. The fix is verified for *Planned rounds* in Expo Go on a Galaxy
-> S20; other fields, accessibility with the keyboard open, other keyboards, a custom Android
-> build and iOS are not yet verified. See
-> [docs/bugs/keyboard-covers-lower-form-fields.md](docs/bugs/keyboard-covers-lower-form-fields.md).
+> Automated checks pass (format, lint, types, 611 Jest tests; CI on GitHub). The new MVP screens
+> have **not yet been tested on a phone**; see the
+> [S20 checklist](docs/device-tests/mvp.md). iOS is untested. See [PLAN.md](PLAN.md) and
+> [implementation/mvp-plan.md](implementation/mvp-plan.md).
 
 ## Prerequisites
 
@@ -91,7 +91,7 @@ npm run typecheck
 npm test -- --runInBand
 ```
 
-**CI:** [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs `npm ci` and the same four checks on every pull request to `main` and every push to `main`, using the Node version in `apps/mobile/.nvmrc`. It has no builds, deployment or device tests, so a green run does not mean the app has been checked on a phone. The workflow has been checked locally in a clean clone but **not yet in GitHub Actions**.
+**CI:** [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs `npm ci` and the same four checks on every pull request to `main` and every push to `main`, using the Node version in `apps/mobile/.nvmrc`. It has no builds, deployment or device tests, so a green run does not mean the app has been checked on a phone. It passed in GitHub Actions for pull request #2 and the push to `main` (`d802586`).
 
 **Run manually when dependencies change** (not part of CI, because they depend on Expo's online services and can fail when Expo publishes a new patch):
 
@@ -100,10 +100,59 @@ npx expo install --check
 npx expo-doctor
 ```
 
+## Using the app
+
+1. **New session** on the Sessions list: firearm, calibre, distance and planned shots/rounds.
+2. Open the session and tap **Start round**. Shots fired defaults to the planned number; change it
+   if the round was interrupted.
+3. **Before photo (optional):** after covering old holes with matching stickers. **After photo:**
+   after the round, from the same spot. Fill the frame with the whole target, hold the phone
+   straight in front of it, and avoid glare and shadows.
+4. **Calibrate and mark hits:** tap where the outer ring crosses the line of numbers at the top,
+   right, bottom and left. The rings are drawn back onto the photo so you can check the fit.
+   Then tap each hole. Tap a mark to select it, drag to move it, set several shots for one hole,
+   delete or undo. Pinch or use +/− to zoom.
+5. Declare known **misses** and **unresolved** shots on the round screen. Missing marks are never
+   counted as misses, and unresolved shots make the result a subtotal.
+6. **Confirm round** when the shots add up. Confirmed rounds cannot be changed.
+7. Start the next round, or **Finish session**. The list shows status, rounds and points.
+
+Hole diameter is an assumed value per round (default 9.0 mm). A hole touching a ring line gets
+the higher score.
+
+## Target and scoring
+
+The owner's target is an X-Targets precision target (ten rings, 1–10). Its physical dimensions,
+line treatment and scoring rules are **not verified**, so the app ships only
+`demo-synthetic-v1`: the same ten-ring structure with invented radii (10 mm per ring). Every
+score in the app is labelled as demo. To enable real scoring the app needs, from a reliable
+source: the outer radius of each scoring zone in millimetres, how printed lines count, whether
+the inner ring matters, the target's size, and where nominal hole diameters come from.
+
+## Analysis service (not connected)
+
+The contract is [`contracts/analysis.openapi.yaml`](contracts/analysis.openapi.yaml). The app
+sends photos only after the user taps **Analyze photos**, and only when an address is
+configured:
+
+```bash
+# apps/mobile/.env.local (ignored by Git); see apps/mobile/.env.example
+EXPO_PUBLIC_ANALYSIS_URL=https://analysis.example
+```
+
+HTTPS is required; plain HTTP is accepted only for `localhost`/`127.0.0.1` in development (with
+`adb reverse tcp:8000 tcp:8000` on a USB-connected Android phone). The address is not a secret.
+Provider keys must stay on the server. No service or provider has been chosen, so nothing is
+configured and no server code exists yet.
+
 ## Data and privacy
 
-Sessions are stored locally on the device in SQLite (`target-practice.db`). Nothing is sent to a
-server.
+- Sessions, rounds, marks and results are stored locally in SQLite (`target-practice.db`).
+- Photos are **copied** into the app's own document folder under generated names; the
+  originals in the phone's library are never changed or deleted. Discarding a round or
+  replacing a photo deletes only the app's copy.
+- Nothing is sent to a server unless an analysis address is configured **and** you tap
+  **Analyze photos**.
 
 ## License
 

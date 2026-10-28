@@ -18,7 +18,8 @@ Kamera, bildanalys, poängberäkning, mål, backend, autentisering, synk, redige
 | 5 | Skapa session | Implementerat och enhetstestat. Lyckat flöde kontrollerat på S20, och persistens efter omstart verifierad via listan (steg 6, M5). Tangentbordsbuggen är åtgärdad för det testade flödet (`840e8c7`). Felflöden återstår (steg 7). iOS overifierat. |
 | 6 | Lista sessioner | Implementerat och enhetstestat. M1–M5 och M7–M10 godkända på S20, och M6 delvis kontrollerad men inte verifierad. Felinjektion återstår (steg 7). iOS overifierat. |
 | 7 | Dokumentation och integrationstester på enhet | **Pausat** (2026-10-27). 7a (checklistan) och 7b (testgrunden) är klara. T1–T6 och N4 är godkända på S20. Tangentbordsfelet i testläge är åtgärdat efter E2. 7c–7f och den kvarstående verifieringen återstår (`implementation/step-7-verification.md` §11). |
-| 8 | CI | Implementerat och lokalt kontrollerat i en ren klon. **Inte verifierat i GitHub Actions** (8c). |
+| 8 | CI | **Verifierat i GitHub Actions**: PR #2 (`679c863`) och push till `main` (`d802586`), med alla steg gröna. |
+| MVP | Rundor, foton, editor, poäng och analysgräns | **Delvis klar MVP** med fungerande manuellt flöde (`implementation/mvp-plan.md`). Demotavla och ingen ansluten analys. **Inte testad på S20** (`docs/device-tests/mvp.md`). |
 
 ## Verifierade versioner (npm-registret och Expo-dokumentationen för SDK 58, 2026-10-27)
 
@@ -478,3 +479,7 @@ Detaljplanen, med förutsättningar, beslut, delsteg och resultat, finns i `impl
 - Distans som börjar med decimaltecken (`.5`) eller slutar med det (`25.`) avvisas. Inledande nollor (`007`) godtas som 7.
 - npm 11 kör inte installationsskripten för `@parcel/watcher` och `unrs-resolver` utan godkännande. Lint och bundling fungerar ändå, så de är inte godkända.
 - Inga commits görs utan att ägaren ber om det. Föreslagna granskningspunkter är efter varje steg.
+
+## MVP (ägarbeslut 2026-10-28)
+
+Ägaren beslutade att bygga MVP:n självständigt och att det beslutet ersätter ordningen ovan: steg 7 förblir pausat och vapenprofiler skjuts upp. Plan, delar och resultat finns i `implementation/mvp-plan.md`. Checklistan för S20 finns i `docs/device-tests/mvp.md`.

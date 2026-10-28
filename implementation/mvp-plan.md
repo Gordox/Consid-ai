@@ -133,6 +133,43 @@ Automatiskt (Jest):
 
 Det verifierar **inte** UI på telefonen. S20-checklistan finns i `docs/device-tests/mvp.md`.
 
-## 8. Resultat
+## 8. Resultat (2026-10-28)
 
-Fylls i per del.
+**Integrerat i lokal `main`** (fast-forward per branch, inget pushat):
+
+| Branch | Commit | Innehåll |
+| --- | --- | --- |
+| `feature/mvp-domain` | `0de867d` | Plan, demotavla, homografi, poängregel och skottredovisning |
+| `feature/mvp-persistence` | `898b6ec` | Migration 2, rund-repository och bildlagring (`expo-file-system`) |
+| `feature/mvp-rounds-ui` | `f203e38` | Sessionsdetalj, klickbara kort, rundskärm, foton (`expo-image-picker`) och avslut |
+| `feature/mvp-editor` | `efb086c` | Kalibrering, editor, zoom och panorering, ångra |
+| `feature/mvp-analysis` | `5341236` | OpenAPI-kontrakt, klient, validering, analysförsök och demoförslag |
+| `fix/editor-touch-origin` | `9a2bb9e` | Beröringar mäts i samma koordinatsystem som duken |
+| `feature/mvp-docs` | se git log | README, `.env.example`, checklistan och den här statusen |
+
+**Kontroller per del:**
+- `format:check`, `lint`, `typecheck` och `npm test -- --runInBand` gav exit 0. Totalt 40 sviter och 611 tester.
+- När beroenden lades till kördes även `npx expo install --check` ("Dependencies are up to date") och `npx expo-doctor` (20 av 20).
+- `npx expo export --platform android` gick igenom för varje del.
+- Release-bundlen innehåller inte demoknappen, eftersom `__DEV__`-koden tas bort i produktionsbygget.
+
+**Kriterierna A1–A10:** Allt är implementerat. Det är **inte verifierat på S20**, och ingen punkt i `docs/device-tests/mvp.md` är körd.
+
+**Avvikelser och val:**
+- **Zoom:** Den görs med `PanResponder` (nyp, drag och knappar) i stället för gestbibliotek, så att inga nya beroenden behövs.
+- **Hålets diameter** ändras på rundskärmen, inte i editorn. Annars skulle två skärmar ändra samma värde samtidigt.
+- **Ångra** finns bara så länge editorn är öppen. Varje ändring sparas direkt.
+- **`useFocusLoad`:** En liten gemensam hook för att läsa data vid fokus, som används av tre skärmar.
+- **Främmande nycklar** är deklarerade, men `PRAGMA foreign_keys` aktiveras inte. Transaktioner körs på en egen anslutning där pragman inte gäller. Repositoryt kontrollerar därför sambanden själv.
+
+**Externa blockerare:**
+1. **Verifierad specifikation för tavlan** (§3). Utan den är all poäng demopoäng.
+2. **Val av analystjänst eller algoritm och en servermiljö.** `CLAUDE.md` förbjuder att foton skickas innan ägaren har valt tjänst. Därför finns ingen server.
+3. **Körning på S20.**
+
+**Kända begränsningar:**
+- Editorns bildyta går inte att använda med TalkBack. Missar och oklara skott går att registrera utan den.
+- `getPendingResultAsync` (Android som dödar aktiviteten under kameran) hanteras inte.
+- Orienteringen kontrolleras genom att jämföra bildens proportioner. En avvikelse varnar men rättas inte.
+- Fotokopior som blir kvar om appen kraschar mellan kopiering och skrivning städas inte automatiskt.
+- iOS är overifierat.

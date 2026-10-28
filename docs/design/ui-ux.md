@@ -45,7 +45,7 @@ Ramarna i tavla `03` kallas här vid sitt namn i tavlan, till exempel *"03 · Ne
 | F2 | En bekräftelse visas vid osparade ändringar, för appens bakåtknapp, Androids bakåtknapp och iOS bakåtsvep. |
 | F3 / U7 | Inga fel visas före första sparförsöket. `Create session` validerar alltid hela formuläret, värdena behålls och fokus flyttas till det första ogiltiga fältet (`05`). Därefter valideras ett fält på nytt när det ändras, och bara det fältets fel uppdateras: felet tas bort när värdet blir giltigt och behålls eller uppdateras annars. All validering kommer från domänen (`validateSessionInput`). Formuläret har inga egna regler. |
 | F4 / U10 | Lokalt datum och lokal tid (A4). Formatet följer enhetens språk och region. `27 Oct 2026, 14:00` är bara ett exempel. |
-| F5 | Posterna i listan är inte klickbara och har inga pilar. |
+| F5 | Posterna i listan är inte klickbara och har inga pilar. **Ersatt i MVP:n (ägarbeslut 2026-10-28):** korten öppnar sessionsdetaljen och har en pil, se `implementation/mvp-plan.md`. |
 | F6 | Rubriken är `Sessions`. |
 | F7 | Formuläret startar med tomma fält och ingen vald typ (A3). |
 | Q2 | `expo-system-ui` läggs inte till nu (avsnitt 11). |
