@@ -135,3 +135,20 @@ export function latestAttemptText(
   const known = attempt.errorCode !== null ? STORED_ERROR_TEXT[attempt.errorCode] : undefined;
   return { tone: 'error', text: known ?? 'The last analysis failed. Try again.' };
 }
+
+// Banner titles from the error table in docs/design/ui-ux.md §8; the body is ANALYSIS_ERROR_TEXT.
+export function analysisErrorTitle(code: string): string {
+  switch (code) {
+    case 'network':
+    case 'timeout':
+    case 'rateLimited':
+    case 'serverError':
+      return "Couldn't reach analysis service";
+    case 'registrationFailed':
+      return "Photos couldn't be aligned";
+    case 'unusableImage':
+      return 'This photo may be hard to review';
+    default:
+      return "Couldn't analyse the photos";
+  }
+}

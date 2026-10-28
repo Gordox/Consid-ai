@@ -1,5 +1,6 @@
 import {
   analysisBlock,
+  analysisErrorTitle,
   latestAttemptText,
   modeText,
 } from '../../../src/features/analysis/analysisText';
@@ -55,5 +56,15 @@ describe('latestAttemptText', () => {
     expect(
       latestAttemptText({ status: 'succeeded', errorCode: null, source: 'demo' }, false).text,
     ).toContain('demo');
+  });
+});
+
+describe('analysisErrorTitle', () => {
+  it('names the failure the way the error table does', () => {
+    expect(analysisErrorTitle('network')).toBe("Couldn't reach analysis service");
+    expect(analysisErrorTitle('timeout')).toBe("Couldn't reach analysis service");
+    expect(analysisErrorTitle('registrationFailed')).toBe("Photos couldn't be aligned");
+    expect(analysisErrorTitle('unusableImage')).toBe('This photo may be hard to review');
+    expect(analysisErrorTitle('invalidResponse')).toBe("Couldn't analyse the photos");
   });
 });

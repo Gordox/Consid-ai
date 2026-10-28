@@ -1,40 +1,35 @@
+import Camera from 'lucide-react-native/icons/camera';
+import ChevronRight from 'lucide-react-native/icons/chevron-right';
 import { useRouter } from 'expo-router';
-import { useCallback, useRef, useState } from 'react';
-import { Linking, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Image, Linking, StyleSheet, Text, View } from 'react-native';
 
 import { Banner } from '../../components/Banner';
 import { Button } from '../../components/Button';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { Screen } from '../../components/Screen';
 import { ScreenHeader } from '../../components/ScreenHeader';
-import { Stepper } from '../../components/Stepper';
+import { ScoreSummary } from '../../components/ScoreSummary';
 import { colors, radius, spacing, typography } from '../../components/tokens';
-import type { ConfirmedRound, DraftRound, PhotoRole } from '../../domain/round/round';
-import { buildConfirmedResult, evaluateDraft } from '../../domain/round/roundEvaluation';
-import { ACTUAL_SHOTS_RANGE, HIT_DIAMETER_MM_RANGE } from '../../domain/round/roundRules';
-import { DEMO_TARGET_NOTICE, findTarget } from '../../domain/target/targetDefinition';
-import {
-  confirmRound,
-  type DraftCounts,
-  discardDraftRound,
-  getRound,
-  removeDraftPhoto,
-  updateDraftCounts,
-} from '../../persistence/roundRepository';
+import type { ConfirmedRound, DraftRound, PhotoRole, RoundPhoto } from '../../domain/round/round';
+import { findTarget } from '../../domain/target/targetDefinition';
+import { clearPendingPick, recordPendingPick } from '../../persistence/pendingPhotoPick';
+import { getRound, removeDraftPhoto } from '../../persistence/roundRepository';
 import { getSession } from '../../persistence/sessionRepository';
 import { nowUtcIso } from '../../services/deviceContext';
-import type { PickOutcome } from '../../services/pickedPhoto';
 import { choosePhoto, takePhoto } from '../../services/photoPicker';
-import { clearPendingPick, recordPendingPick } from '../../persistence/pendingPhotoPick';
+import type { PickOutcome } from '../../services/pickedPhoto';
 import { AnalysisPanel } from '../analysis/AnalysisPanel';
-import { formatPoints } from '../sessions/sessionProgressText';
 import { usePhotoStore } from '../startup/photoStoreContext';
 import { useSessionStore } from '../startup/sessionStoreContext';
 import { useFocusLoad } from '../useFocusLoad';
-import { PhotoSlot } from './PhotoSlot';
 import { discardPhotos, photoSaveDeps } from './photoActions';
+import { PhotoSlot } from './PhotoSlot';
+import { ActualShots, HoleDiameterCard } from './RoundCounts';
+import { RoundProgress } from './RoundProgress';
 import { savePickedPhoto } from './roundPhotos';
-import { roundStatusText } from './roundText';
+import { initialRoundStep, type RoundStep } from './roundSteps';
+import { useDraftCounts } from './useDraftCounts';
 
 function reportDevError(error: unknown): void {
   if (__DEV__) {
@@ -44,15 +39,15 @@ function reportDevError(error: unknown): void {
 
 type LoadedRound = {
   readonly round: DraftRound | ConfirmedRound;
+  readonly firearmName: string;
   // The session's calibre label, shown next to the diameter assumption. Never parsed.
   readonly calibreLabel: string;
   readonly missing: { readonly before: boolean; readonly after: boolean };
 };
 
 const PHOTO_TIPS =
-  'Before the round, cover old holes with matching stickers and take the before photo. ' +
-  'After the round, take the after photo from the same spot. Fill the frame with the whole ' +
-  'target, hold the phone straight in front of it, and avoid glare and shadows.';
+  'For reused targets, add a before photo after covering the previous holes. Take the after ' +
+  'photo from the same spot, with the whole target in the frame, straight on, without glare.';
 
 const DIAMETER_SOURCE_TEXT = {
   assumed: 'assumed',
@@ -62,14 +57,41 @@ const DIAMETER_SOURCE_TEXT = {
 
 type PendingPick = { readonly role: PhotoRole; readonly source: 'camera' | 'library' };
 
+function Thumbnail({
+  title,
+  photo,
+  missing,
+}: {
+  title: string;
+  photo: RoundPhoto | null;
+  missing: boolean;
+}) {
+  const photos = usePhotoStore();
+  return (
+    <View style={styles.thumb}>
+      <Text style={styles.secondary}>{title}</Text>
+      {photo === null || missing ? (
+        <Text style={styles.muted}>{photo === null ? 'None' : 'Unavailable'}</Text>
+      ) : (
+        <Image
+          accessibilityLabel={`${title} photo`}
+          resizeMode="contain"
+          source={{ uri: photos.uri(photo.fileName) }}
+          style={[styles.thumbImage, { aspectRatio: photo.width / photo.height }]}
+        />
+      )}
+    </View>
+  );
+}
+
 function DraftRoundView({
   draft,
-  calibreHint,
+  calibreLabel,
   missing,
   onChanged,
 }: {
   draft: DraftRound;
-  calibreHint: string;
+  calibreLabel: string;
   missing: LoadedRound['missing'];
   onChanged: () => void;
 }) {
@@ -77,42 +99,30 @@ function DraftRoundView({
   const photos = usePhotoStore();
   const router = useRouter();
   const target = findTarget(draft.targetId);
-  // This screen is the only place that edits the counts, so local state stays authoritative
-  // while it is open; every change is written in order.
-  const [counts, setCounts] = useState<DraftCounts>(() => ({
-    actualShots: draft.actualShots,
-    declaredMisses: draft.declaredMisses,
-    unresolvedShots: draft.unresolvedShots,
-    hitDiameterMm: draft.hitDiameterMm,
-    hitDiameterSource: draft.hitDiameterSource,
-  }));
-  const writes = useRef<Promise<void>>(Promise.resolve());
+  const { counts, change, saveFailed } = useDraftCounts(db, draft, reportDevError);
+  const [step, setStep] = useState<RoundStep>(() => initialRoundStep(draft));
   const [message, setMessage] = useState<string | null>(null);
-  const [permission, setPermission] = useState<{ canAskAgain: boolean } | null>(null);
+  const [permission, setPermission] = useState<{ role: PhotoRole; canAskAgain: boolean } | null>(
+    null,
+  );
   const [busy, setBusy] = useState(false);
   // While analysis runs, photos and marks stay as the request saw them.
   const [analysisRunning, setAnalysisRunning] = useState(false);
   const locked = busy || analysisRunning;
-  const [dialog, setDialog] = useState<
-    | { kind: 'confirm' }
-    | { kind: 'discard' }
-    | { kind: 'replaceAfter'; pick: PendingPick | null }
-    | null
-  >(null);
-
-  const current: DraftRound = { ...draft, ...counts };
-  const evaluation = evaluateDraft(current, target);
+  const [replaceAfter, setReplaceAfter] = useState<{ pick: PendingPick | null } | null>(null);
   const afterAnnotated = draft.calibration !== null || draft.marks.length > 0;
+  const roundPath = `/sessions/${draft.sessionId}/rounds/${draft.id}`;
 
-  function changeCounts(next: DraftCounts): void {
-    setCounts(next);
-    writes.current = writes.current
-      .then(() => updateDraftCounts(db, draft.id, next))
-      .catch((error: unknown) => {
-        reportDevError(error);
-        setMessage("Couldn't save the shot counts. Change a value to try again.");
-      });
-  }
+  // Returning from the editor with a new alignment moves on to analysis; nothing else advances
+  // a step on its own.
+  const wasCalibrated = useRef(draft.calibration !== null);
+  useEffect(() => {
+    const calibrated = draft.calibration !== null;
+    if (calibrated && !wasCalibrated.current) {
+      setStep((current) => (current === 'photos' ? 'analyse' : current));
+    }
+    wasCalibrated.current = calibrated;
+  }, [draft.calibration]);
 
   async function runPick({ role, source }: PendingPick): Promise<void> {
     setMessage(null);
@@ -128,9 +138,10 @@ function DraftRoundView({
     }
     const outcome: PickOutcome = source === 'camera' ? await takePhoto() : await choosePhoto();
     if (outcome.kind !== 'picked') {
+      // Cancelling keeps the current photo.
       await clearPendingPick(db).catch(reportDevError);
       if (outcome.kind === 'permissionDenied') {
-        setPermission({ canAskAgain: outcome.canAskAgain });
+        setPermission({ role, canAskAgain: outcome.canAskAgain });
       } else if (outcome.kind === 'failed') {
         setMessage("Couldn't use that photo. Try again or choose another one.");
       }
@@ -155,7 +166,7 @@ function DraftRoundView({
 
   function requestPick(pick: PendingPick): void {
     if (pick.role === 'after' && afterAnnotated) {
-      setDialog({ kind: 'replaceAfter', pick });
+      setReplaceAfter({ pick });
     } else {
       void runPick(pick);
     }
@@ -175,50 +186,17 @@ function DraftRoundView({
     }
   }
 
-  async function confirm(): Promise<void> {
-    setDialog(null);
-    if (busy) return;
-    setBusy(true);
-    try {
-      await writes.current;
-      await confirmRound(db, draft.id, buildConfirmedResult(current, target), nowUtcIso());
-      router.back();
-    } catch (error) {
-      reportDevError(error);
-      setMessage("Couldn't confirm the round. Your marks are kept. Try again.");
-      onChanged();
-    } finally {
-      setBusy(false);
-    }
-  }
+  const afterUsable = draft.photos.after !== null && !missing.after;
+  const openEditor = () => router.push(`${roundPath}/editor`);
 
-  async function discard(): Promise<void> {
-    setDialog(null);
-    setBusy(true);
-    try {
-      await writes.current;
-      const files = await discardDraftRound(db, draft.id);
-      await discardPhotos(db, photos, files, reportDevError);
-      router.back();
-    } catch (error) {
-      reportDevError(error);
-      setMessage("Couldn't discard the round. Try again.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  const resultText =
-    evaluation.score === null
-      ? null
-      : formatPoints(
-          evaluation.score.subtotal,
-          evaluation.status === 'complete',
-          evaluation.status === 'incomplete' ? counts.unresolvedShots : undefined,
-        );
-
-  return (
+  const banners = (
     <>
+      {saveFailed ? (
+        <Banner
+          body="Couldn't save the shot counts or diameter. Change a value to try again."
+          tone="error"
+        />
+      ) : null}
       {message === null ? null : <Banner body={message} tone="error" />}
       {permission === null ? null : (
         <Banner
@@ -237,207 +215,178 @@ function DraftRoundView({
               variant="secondary"
             />
           )}
+          <Button
+            label="Use library instead"
+            onPress={() => requestPick({ role: permission.role, source: 'library' })}
+            variant="secondary"
+          />
         </Banner>
       )}
+    </>
+  );
 
-      <View style={styles.card}>
-        <Text accessibilityRole="header" style={styles.sectionTitle}>
-          Shots
-        </Text>
-        <Stepper
-          label="Shots fired"
-          max={ACTUAL_SHOTS_RANGE.max}
-          min={ACTUAL_SHOTS_RANGE.min}
-          onChange={(value) => changeCounts({ ...counts, actualShots: value })}
-          value={counts.actualShots}
-        />
-        <Stepper
-          label="Declared misses"
-          max={ACTUAL_SHOTS_RANGE.max}
-          min={0}
-          onChange={(value) => changeCounts({ ...counts, declaredMisses: value })}
-          value={counts.declaredMisses}
-        />
-        <Stepper
-          label="Unresolved shots"
-          max={ACTUAL_SHOTS_RANGE.max}
-          min={0}
-          onChange={(value) => changeCounts({ ...counts, unresolvedShots: value })}
-          value={counts.unresolvedShots}
-        />
-        <Text style={styles.supporting}>
-          {
-            "Declare a miss only when you know the shot missed. Use unresolved when you can't tell where a shot went; it is not counted as 0."
-          }
-        </Text>
-        <Stepper
-          label="Hole diameter"
-          max={HIT_DIAMETER_MM_RANGE.max}
-          min={HIT_DIAMETER_MM_RANGE.min}
-          onChange={(value) =>
-            changeCounts({ ...counts, hitDiameterMm: value, hitDiameterSource: 'userSet' })
-          }
-          step={0.5}
-          value={counts.hitDiameterMm}
-          valueText={`${counts.hitDiameterMm.toFixed(1)} mm`}
-        />
-        {counts.hitDiameterSource === 'assumed' ? (
-          <>
-            <Text style={styles.notice}>
-              {`Assumed, not set: ${counts.hitDiameterMm.toFixed(1)} mm is a default and is not taken from your calibre${calibreHint === '' ? '' : ` (${calibreHint})`}. Set the diameter your bullets make, or confirm this value.`}
-            </Text>
-            <Button
-              label={`Use ${counts.hitDiameterMm.toFixed(1)} mm`}
-              onPress={() => changeCounts({ ...counts, hitDiameterSource: 'userSet' })}
-              variant="secondary"
+  return (
+    <>
+      {step === 'setup' ? (
+        <>
+          {banners}
+          <ActualShots counts={counts} disabled={locked} onChange={change} />
+          <HoleDiameterCard
+            calibreLabel={calibreLabel}
+            counts={counts}
+            disabled={locked}
+            onChange={change}
+          />
+          {target?.isDemo !== false ? (
+            <Banner
+              body="Geometry is not yet verified. Scores will be labelled as demo."
+              title="Demo target"
+              tone="warning"
             />
-          </>
-        ) : (
-          <Text style={styles.supporting}>
-            Set by you. New rounds in this session start with this diameter.
+          ) : null}
+          <Button icon={Camera} label="Add photos" onPress={() => setStep('photos')} />
+        </>
+      ) : null}
+
+      {step === 'photos' ? (
+        <>
+          <Text style={styles.secondary}>Add photos of the same target.</Text>
+          <RoundProgress current="photos" draft={draft} />
+          {banners}
+          <PhotoSlot
+            busy={locked}
+            editable
+            hint="Recommended for reused targets: taken after covering old holes, before shooting."
+            missing={missing.before}
+            onChoose={() => requestPick({ role: 'before', source: 'library' })}
+            onRemove={() => void removePhoto('before')}
+            onTake={() => requestPick({ role: 'before', source: 'camera' })}
+            photo={draft.photos.before}
+            required={false}
+            title="Before"
+          />
+          <PhotoSlot
+            busy={locked}
+            editable
+            hint="Taken after the round. Hits are marked on this photo."
+            missing={missing.after}
+            onChoose={() => requestPick({ role: 'after', source: 'library' })}
+            onRemove={() =>
+              afterAnnotated ? setReplaceAfter({ pick: null }) : void removePhoto('after')
+            }
+            onTake={() => requestPick({ role: 'after', source: 'camera' })}
+            photo={draft.photos.after}
+            required
+            title="After"
+          />
+          <Text style={styles.secondary}>{PHOTO_TIPS}</Text>
+          {draft.calibration === null ? (
+            <>
+              <Button
+                disabled={!afterUsable || locked}
+                icon={ChevronRight}
+                label="Align target"
+                onPress={openEditor}
+              />
+              {afterUsable ? null : (
+                <Text style={styles.secondary}>Add the after photo to align the target.</Text>
+              )}
+            </>
+          ) : (
+            <>
+              <Button icon={ChevronRight} label="Continue" onPress={() => setStep('analyse')} />
+              <Button
+                disabled={!afterUsable || locked}
+                label="Check alignment"
+                onPress={openEditor}
+                variant="secondary"
+              />
+            </>
+          )}
+          <Button
+            label="Shots and hole diameter"
+            onPress={() => setStep('setup')}
+            variant="secondary"
+          />
+        </>
+      ) : null}
+
+      {step === 'analyse' ? (
+        <>
+          <RoundProgress current="review" draft={draft} />
+          {banners}
+          <View style={styles.thumbs}>
+            <Thumbnail missing={missing.before} photo={draft.photos.before} title="Before" />
+            <Thumbnail missing={missing.after} photo={draft.photos.after} title="After" />
+          </View>
+          {draft.photos.before === null ? (
+            <Banner
+              body="Existing holes may appear as suggestions. Review every result."
+              title="No before photo"
+              tone="warning"
+            />
+          ) : null}
+          <AnalysisPanel
+            draft={draft}
+            onChanged={onChanged}
+            onOpenEditor={openEditor}
+            onRunningChange={setAnalysisRunning}
+            photosMissing={missing.after || missing.before}
+            running={analysisRunning}
+          />
+          <Button
+            disabled={locked}
+            label="Review round"
+            onPress={() => router.push(`${roundPath}/confirm`)}
+            variant="secondary"
+          />
+          <Button
+            disabled={locked}
+            label="Change photos"
+            onPress={() => setStep('photos')}
+            variant="secondary"
+          />
+          <Text style={styles.muted}>
+            {target?.isDemo !== false ? 'Demo score geometry · ' : ''}manual review required
           </Text>
-        )}
-        <Text style={styles.supporting}>
-          The scoring size of a hole: a hole touching a ring line gets the higher score, so this
-          matters for hits near lines.
-        </Text>
-      </View>
-
-      <View style={styles.section}>
-        <Text accessibilityRole="header" style={styles.sectionTitle}>
-          Photos
-        </Text>
-        <Text style={styles.supporting}>{PHOTO_TIPS}</Text>
-        <PhotoSlot
-          busy={locked}
-          editable
-          hint="Optional. Taken after covering old holes, before shooting."
-          missing={missing.before}
-          onChoose={() => requestPick({ role: 'before', source: 'library' })}
-          onRemove={() => void removePhoto('before')}
-          onTake={() => requestPick({ role: 'before', source: 'camera' })}
-          photo={draft.photos.before}
-          title="Before"
-        />
-        <PhotoSlot
-          busy={locked}
-          editable
-          hint="Taken after the round. Hits are marked on this photo."
-          missing={missing.after}
-          onChoose={() => requestPick({ role: 'after', source: 'library' })}
-          onRemove={() =>
-            afterAnnotated
-              ? setDialog({ kind: 'replaceAfter', pick: null })
-              : void removePhoto('after')
-          }
-          onTake={() => requestPick({ role: 'after', source: 'camera' })}
-          photo={draft.photos.after}
-          title="After"
-        />
-      </View>
-
-      <AnalysisPanel
-        draft={draft}
-        onChanged={onChanged}
-        onRunningChange={setAnalysisRunning}
-        photosMissing={missing.after || missing.before}
-        running={analysisRunning}
-      />
-
-      <View style={styles.card}>
-        <Text accessibilityRole="header" style={styles.sectionTitle}>
-          Hits
-        </Text>
-        <Text style={styles.body}>
-          {draft.calibration === null ? 'Not calibrated' : 'Calibrated'} ·{' '}
-          {evaluation.hitShots === 1
-            ? '1 confirmed hit shot'
-            : `${evaluation.hitShots} confirmed hit shots`}
-          {evaluation.pendingSuggestions > 0
-            ? ` · ${evaluation.pendingSuggestions} ${evaluation.pendingSuggestions === 1 ? 'suggestion' : 'suggestions'} to review`
-            : ''}
-        </Text>
-        <Button
-          busy={analysisRunning}
-          disabled={draft.photos.after === null || missing.after}
-          label={draft.calibration === null ? 'Calibrate and mark hits' : 'Edit hits'}
-          onPress={() => router.push(`/sessions/${draft.sessionId}/rounds/${draft.id}/editor`)}
-        />
-        {draft.photos.after === null ? (
-          <Text style={styles.supporting}>Add an after photo to mark hits.</Text>
-        ) : null}
-      </View>
-
-      <View style={styles.card}>
-        <Text accessibilityRole="header" style={styles.sectionTitle}>
-          Result
-        </Text>
-        <Text style={styles.body}>{roundStatusText(evaluation, counts.actualShots)}</Text>
-        {resultText === null ? null : <Text style={styles.total}>{resultText}</Text>}
-        {target?.isDemo === true ? <Text style={styles.notice}>{DEMO_TARGET_NOTICE}</Text> : null}
-        <Button
-          busy={locked}
-          disabled={evaluation.blockReason !== null}
-          label="Confirm round"
-          onPress={() => setDialog({ kind: 'confirm' })}
-        />
-        <Button
-          busy={locked}
-          label="Discard round"
-          onPress={() => setDialog({ kind: 'discard' })}
-          variant="destructive"
-        />
-      </View>
+        </>
+      ) : null}
 
       <ConfirmDialog
-        body={[
-          evaluation.status === 'incomplete'
-            ? 'Unresolved shots stay unknown and the round shows a subtotal.'
-            : null,
-          counts.hitDiameterSource === 'assumed'
-            ? `The hole diameter ${counts.hitDiameterMm.toFixed(1)} mm is an unconfirmed assumption and is saved as such.`
-            : null,
-          'Confirmed rounds cannot be changed.',
-        ]
-          .filter((line) => line !== null)
-          .join(' ')}
-        cancelLabel="Keep editing"
-        confirmLabel="Confirm round"
-        onCancel={() => setDialog(null)}
-        onConfirm={() => void confirm()}
-        title={`Confirm round ${draft.sequence}?`}
-        visible={dialog?.kind === 'confirm'}
-      />
-      <ConfirmDialog
-        body="The round, its marks and its photo copies in this app are removed. Photos in your phone's library are not touched."
-        cancelLabel="Keep round"
-        confirmLabel="Discard round"
-        onCancel={() => setDialog(null)}
-        onConfirm={() => void discard()}
-        title={`Discard round ${draft.sequence}?`}
-        visible={dialog?.kind === 'discard'}
-      />
-      <ConfirmDialog
-        body="The calibration and hit marks belong to the current after photo and will be cleared."
+        body="Alignment and hit markers for this photo will be cleared."
         cancelLabel="Keep photo"
         confirmLabel="Replace photo"
-        onCancel={() => setDialog(null)}
+        onCancel={() => setReplaceAfter(null)}
         onConfirm={() => {
-          const pending = dialog?.kind === 'replaceAfter' ? dialog.pick : null;
-          setDialog(null);
+          const pending = replaceAfter?.pick ?? null;
+          setReplaceAfter(null);
           if (pending === null) {
             void removePhoto('after');
           } else {
             void runPick(pending);
           }
         }}
-        title="Replace the after photo?"
-        visible={dialog?.kind === 'replaceAfter'}
+        title="Replace after photo?"
+        visible={replaceAfter !== null}
       />
     </>
   );
 }
 
+function plural(count: number, one: string, many: string): string {
+  return count === 1 ? `1 ${one}` : `${count} ${many}`;
+}
+
+function Stat({ value, label }: { value: number; label: string }) {
+  return (
+    <View accessible accessibilityLabel={`${value} ${label}`} style={styles.stat}>
+      <Text style={styles.statValue}>{value}</Text>
+      <Text style={styles.statLabel}>{label}</Text>
+    </View>
+  );
+}
+
+// Read-only: a confirmed result is never edited or rescored.
 function ConfirmedRoundView({
   round,
   missing,
@@ -450,36 +399,51 @@ function ConfirmedRoundView({
   const values = result.shots.flatMap((shot) =>
     Array.from({ length: shot.shots }, () => shot.value),
   );
+  const accounted = result.actualShots - result.unresolvedShots;
   return (
     <>
+      <ScoreSummary
+        complete={result.status === 'complete'}
+        demo={target?.isDemo !== false}
+        detail={`${accounted} of ${plural(result.actualShots, 'shot', 'shots')} accounted for${result.status === 'complete' ? '' : ' · subtotal'}`}
+        eyebrow={`Round ${round.sequence}`}
+        points={result.subtotal}
+      />
+      <View style={styles.stats}>
+        <Stat label={values.length === 1 ? 'Hit' : 'Hits'} value={values.length} />
+        <Stat
+          label={result.declaredMisses === 1 ? 'Miss' : 'Misses'}
+          value={result.declaredMisses}
+        />
+        <Stat label="Unresolved" value={result.unresolvedShots} />
+      </View>
       <View style={styles.card}>
-        <Text style={styles.total}>
-          {formatPoints(result.subtotal, result.status === 'complete', result.unresolvedShots)}
-        </Text>
-        <Text style={styles.body}>
-          {result.actualShots === 1 ? '1 shot fired' : `${result.actualShots} shots fired`} ·{' '}
-          {values.length} hits · {result.declaredMisses} misses · {result.unresolvedShots}{' '}
-          unresolved
-        </Text>
         {values.length === 0 ? null : (
           <Text style={styles.body}>
             Hit scores: {[...values].sort((a, b) => b - a).join(', ')}
           </Text>
         )}
-        <Text style={styles.supporting}>
+        <Text style={styles.secondary}>
           Hole diameter {result.hitDiameterMm.toFixed(1)} mm (
           {DIAMETER_SOURCE_TEXT[result.hitDiameterSource ?? 'unrecorded']}) ·{' '}
           {target?.label ?? result.targetId} · rule {result.scoringRule}
         </Text>
-        {target?.isDemo !== false ? <Text style={styles.notice}>{DEMO_TARGET_NOTICE}</Text> : null}
-        <Text style={styles.supporting}>{"Confirmed results can't be changed."}</Text>
+        <Text style={styles.secondary}>{"Confirmed results can't be changed."}</Text>
       </View>
+      {target?.isDemo !== false ? (
+        <Banner
+          body="This round used unverified target geometry. It is not an official score."
+          title="Demo score"
+          tone="warning"
+        />
+      ) : null}
       <PhotoSlot
         busy={false}
         editable={false}
         hint="No before photo."
         missing={missing.before}
         photo={round.photos.before}
+        required={false}
         title="Before"
       />
       <PhotoSlot
@@ -488,6 +452,7 @@ function ConfirmedRoundView({
         hint="No after photo."
         missing={missing.after}
         photo={round.photos.after}
+        required
         title="After"
       />
     </>
@@ -507,9 +472,11 @@ export function RoundScreen({ sessionId, roundId }: { sessionId: string; roundId
     const isMissing = (fileName: string | undefined) =>
       fileName !== undefined && !photos.exists(fileName);
     const found = await getSession(db, sessionId);
+    const settings = found !== null && 'session' in found ? found.session.settings : null;
     return {
       round,
-      calibreLabel: found !== null && 'session' in found ? found.session.settings.calibreLabel : '',
+      firearmName: settings?.firearmName ?? '',
+      calibreLabel: settings?.calibreLabel ?? '',
       missing: {
         before: isMissing(round.photos.before?.fileName),
         after: isMissing(round.photos.after?.fileName),
@@ -522,12 +489,24 @@ export function RoundScreen({ sessionId, roundId }: { sessionId: string; roundId
     router.canGoBack() ? router.back() : router.replace(`/sessions/${sessionId}`);
   const loaded = state.status === 'loaded' ? state.data : null;
   const title = loaded === null ? 'Round' : `Round ${loaded.round.sequence}`;
+  const subtitle =
+    loaded === null
+      ? undefined
+      : loaded.round.state === 'confirmed'
+        ? 'Confirmed · read-only'
+        : loaded.firearmName === ''
+          ? 'Draft saved'
+          : `${loaded.firearmName} · Draft saved`;
 
   return (
     <Screen scroll>
       <View style={styles.stack}>
-        <ScreenHeader onBack={goBack} title={title} />
-        {state.status === 'loading' ? <Text style={styles.supporting}>Loading round…</Text> : null}
+        <ScreenHeader onBack={goBack} subtitle={subtitle} title={title} />
+        {state.status === 'loading' ? (
+          <Text accessibilityLiveRegion="polite" style={styles.secondary}>
+            Loading round…
+          </Text>
+        ) : null}
         {state.status === 'failed' ? (
           <>
             <Banner
@@ -543,7 +522,7 @@ export function RoundScreen({ sessionId, roundId }: { sessionId: string; roundId
         ) : null}
         {loaded?.round.state === 'draft' ? (
           <DraftRoundView
-            calibreHint={loaded.calibreLabel}
+            calibreLabel={loaded.calibreLabel}
             draft={loaded.round}
             key={loaded.round.id}
             missing={loaded.missing}
@@ -566,29 +545,64 @@ const styles = StyleSheet.create({
     gap: spacing.small,
     padding: spacing.field,
     borderRadius: radius.card,
+    borderWidth: 1,
+    borderColor: colors.border,
     backgroundColor: colors.surface,
-  },
-  section: {
-    gap: spacing.small,
-  },
-  sectionTitle: {
-    ...typography.section,
-    color: colors.text,
-  },
-  total: {
-    ...typography.title,
-    color: colors.text,
   },
   body: {
     ...typography.body,
     color: colors.text,
   },
-  supporting: {
+  secondary: {
     ...typography.body,
     color: colors.secondary,
   },
-  notice: {
+  muted: {
     ...typography.caption,
-    color: colors.warning,
+    color: colors.muted,
+    textAlign: 'center',
+  },
+  thumbs: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.small,
+  },
+  thumb: {
+    flexGrow: 1,
+    flexBasis: 140,
+    gap: spacing.label,
+    padding: spacing.field,
+    borderRadius: radius.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  thumbImage: {
+    width: '100%',
+    maxHeight: 160,
+    borderRadius: radius.small,
+  },
+  stats: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.small,
+  },
+  stat: {
+    flexGrow: 1,
+    flexBasis: 90,
+    alignItems: 'center',
+    gap: spacing.fine,
+    padding: spacing.field,
+    borderRadius: radius.card,
+    backgroundColor: colors.surface,
+  },
+  statValue: {
+    ...typography.title,
+    color: colors.text,
+    fontVariant: ['tabular-nums'],
+  },
+  statLabel: {
+    ...typography.caption,
+    color: colors.secondary,
   },
 });
