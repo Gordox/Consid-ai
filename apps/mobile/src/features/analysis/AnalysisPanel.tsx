@@ -190,7 +190,7 @@ export function AnalysisPanel({
         roundId: draft.id,
         algorithmVersion: result.value.algorithmVersion,
         resultJson: JSON.stringify(result.value),
-        suggestions: candidatesToMarks(result.value.candidates, newId),
+        suggestions: candidatesToMarks(result.value.candidates, newId, attemptId),
         duplicateRadiusPx: duplicateRadiusPx(result.value.candidates, after),
         calibration: draft.calibration,
       });

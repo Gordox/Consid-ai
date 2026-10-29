@@ -23,12 +23,14 @@ function mark(id: string, xMm: number, yMm: number, shots = 1): HitMark {
     uncertain: false,
     accepted: true,
     candidateId: null,
+    attemptId: null,
   };
 }
 
 function draft(overrides: Partial<DraftRound> = {}): DraftRound {
   return {
     state: 'draft',
+    revision: 0,
     id: 'r',
     sessionId: 's',
     sequence: 1,
@@ -152,6 +154,7 @@ describe('pending suggestions', () => {
     source: 'suggested',
     accepted: false,
     candidateId: 'c1',
+    attemptId: null,
   };
 
   it('are not hits, are not scored and block confirmation', () => {

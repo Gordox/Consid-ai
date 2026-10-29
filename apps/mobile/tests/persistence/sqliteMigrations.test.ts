@@ -30,6 +30,7 @@ describe('migrations on SQLite', () => {
       'round_id',
       'role',
       'started_at_utc',
+      'draft_revision',
     ]);
   });
 
@@ -60,7 +61,9 @@ describe('migrations on SQLite', () => {
     const db = openNodeSqlite();
     await migrateTo(db, LATEST_SCHEMA_VERSION);
     expect(() =>
-      db.raw.exec("INSERT INTO pending_photo_picks VALUES (2, 'r', 'after', 't')"),
+      db.raw.exec(
+        "INSERT INTO pending_photo_picks (slot, round_id, role, started_at_utc) VALUES (2, 'r', 'after', 't')",
+      ),
     ).toThrow(/CHECK/);
   });
 
@@ -107,5 +110,66 @@ describe('migration 4 on SQLite', () => {
     expect(db.raw.prepare('SELECT after_file_name FROM analysis_attempts').get()).toEqual({
       after_file_name: null,
     });
+  });
+});
+
+describe('migration 8 on SQLite', () => {
+  it('adds the revision and trace columns to a schema-7 database without changing its rows', async () => {
+    const db = openNodeSqlite();
+    await migrateTo(db, 7);
+    db.raw.exec(`INSERT INTO sessions VALUES ('s1','t','UTC','P','pistol','9 mm',25,5,NULL,NULL)`);
+    db.raw.exec(`INSERT INTO rounds (id, session_id, sequence, state, created_at_utc, actual_shots,
+      declared_misses, unresolved_shots, target_id, hit_diameter_mm, calibration_json)
+      VALUES ('d1','s1',2,'draft','t',3,0,0,'demo-synthetic-v1',9.65,'{"points":[]}')`);
+    db.raw.exec(`INSERT INTO rounds (id, session_id, sequence, state, created_at_utc, actual_shots,
+      declared_misses, unresolved_shots, target_id, hit_diameter_mm, confirmed_at_utc,
+      confirmed_json, confirmed_subtotal, confirmed_complete)
+      VALUES ('c1','s1',1,'confirmed','t',1,0,0,'demo-synthetic-v1',9.123,'t2','{"x":1}',10,1)`);
+    db.raw.exec(`INSERT INTO round_marks (id, round_id, ordinal, x, y, shots, source, uncertain,
+      accepted, candidate_id) VALUES ('m1','c1',0,1.5,2.5,1,'suggested',0,0,'c7')`);
+    db.raw.exec(`INSERT INTO analysis_attempts (id, round_id, created_at_utc, source, status)
+      VALUES ('a1','d1','t','service','pending')`);
+    db.raw.exec(`INSERT INTO pending_photo_picks VALUES (1,'d1','after','t')`);
+    const before = (sql: string) => db.raw.prepare(sql).all();
+    const rounds = before('SELECT * FROM rounds ORDER BY id');
+    const marks = before('SELECT * FROM round_marks');
+    const attempts = before('SELECT * FROM analysis_attempts');
+
+    await db.execAsync(MIGRATIONS[7] ?? '');
+
+    const withoutNew = (rows: Record<string, unknown>[], keys: string[]) =>
+      rows.map((row) =>
+        Object.fromEntries(Object.entries(row).filter(([key]) => !keys.includes(key))),
+      );
+    expect(withoutNew(before('SELECT * FROM rounds ORDER BY id'), ['draft_revision'])).toEqual(
+      rounds,
+    );
+    expect(before('SELECT draft_revision FROM rounds')).toEqual([
+      { draft_revision: 0 },
+      { draft_revision: 0 },
+    ]);
+    expect(withoutNew(before('SELECT * FROM round_marks'), ['attempt_id'])).toEqual(marks);
+    expect(before('SELECT attempt_id FROM round_marks')).toEqual([{ attempt_id: null }]);
+    expect(withoutNew(before('SELECT * FROM analysis_attempts'), ['calibration_json'])).toEqual(
+      attempts,
+    );
+    expect(before('SELECT draft_revision FROM pending_photo_picks')).toEqual([
+      { draft_revision: null },
+    ]);
+    // Stored diameters keep their full precision.
+    expect(before("SELECT hit_diameter_mm FROM rounds WHERE id = 'c1'")).toEqual([
+      { hit_diameter_mm: 9.123 },
+    ]);
+  });
+
+  it('refuses a negative revision', async () => {
+    const db = openNodeSqlite();
+    await migrateTo(db, 8);
+    db.raw.exec(`INSERT INTO sessions VALUES ('s1','t','UTC','P','pistol','9 mm',25,5,NULL,NULL)`);
+    expect(() =>
+      db.raw.exec(`INSERT INTO rounds (id, session_id, sequence, state, created_at_utc,
+        actual_shots, declared_misses, unresolved_shots, target_id, hit_diameter_mm, draft_revision)
+        VALUES ('r','s1',1,'draft','t',1,0,0,'demo-synthetic-v1',9,-1)`),
+    ).toThrow();
   });
 });

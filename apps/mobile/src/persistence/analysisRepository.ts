@@ -152,8 +152,8 @@ export async function applyAnalysisResult(
     for (const mark of input.suggestions) {
       if (isDuplicate(mark, kept, input.duplicateRadiusPx)) continue;
       await txn.runAsync(
-        `INSERT INTO round_marks (id, round_id, ordinal, x, y, shots, source, uncertain, accepted, candidate_id)
-         VALUES (?, ?, ?, ?, ?, 1, 'suggested', ?, 0, ?)`,
+        `INSERT INTO round_marks (id, round_id, ordinal, x, y, shots, source, uncertain, accepted, candidate_id, attempt_id)
+         VALUES (?, ?, ?, ?, ?, 1, 'suggested', ?, 0, ?, ?)`,
         [
           mark.id,
           input.roundId,
@@ -162,6 +162,7 @@ export async function applyAnalysisResult(
           mark.position.y,
           mark.uncertain ? 1 : 0,
           mark.candidateId,
+          input.attemptId,
         ],
       );
       ordinal += 1;

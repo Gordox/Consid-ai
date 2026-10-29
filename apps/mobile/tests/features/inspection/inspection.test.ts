@@ -25,6 +25,7 @@ function mark(id: string, x: number, y: number, accepted = true): HitMark {
     uncertain: false,
     accepted,
     candidateId: null,
+    attemptId: null,
   };
 }
 

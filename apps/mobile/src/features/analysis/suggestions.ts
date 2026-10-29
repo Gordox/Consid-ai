@@ -9,6 +9,7 @@ export const UNCERTAIN_BELOW_CONFIDENCE = 0.6;
 export function candidatesToMarks(
   candidates: readonly AnalysisCandidate[],
   newId: () => string,
+  attemptId: string,
 ): HitMark[] {
   return candidates.map((candidate) => ({
     id: newId(),
@@ -18,6 +19,7 @@ export function candidatesToMarks(
     uncertain: candidate.uncertain || candidate.confidence < UNCERTAIN_BELOW_CONFIDENCE,
     accepted: false,
     candidateId: candidate.id,
+    attemptId,
   }));
 }
 

@@ -11,13 +11,21 @@ describe('candidatesToMarks', () => {
         { id: 'c3', x: 50, y: 60, diameterPx: null, confidence: 0.95, uncertain: true },
       ],
       () => `m${(next += 1)}`,
+      'attempt-1',
     );
     expect(
-      marks.map((mark) => [mark.id, mark.shots, mark.source, mark.uncertain, mark.candidateId]),
+      marks.map((mark) => [
+        mark.id,
+        mark.shots,
+        mark.source,
+        mark.uncertain,
+        mark.candidateId,
+        mark.attemptId,
+      ]),
     ).toEqual([
-      ['m1', 1, 'suggested', false, 'c1'],
-      ['m2', 1, 'suggested', true, 'c2'],
-      ['m3', 1, 'suggested', true, 'c3'],
+      ['m1', 1, 'suggested', false, 'c1', 'attempt-1'],
+      ['m2', 1, 'suggested', true, 'c2', 'attempt-1'],
+      ['m3', 1, 'suggested', true, 'c3', 'attempt-1'],
     ]);
   });
 });

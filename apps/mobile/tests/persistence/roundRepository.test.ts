@@ -101,6 +101,7 @@ const DRAFT_ROW = {
   target_id: 'demo-synthetic-v1',
   hit_diameter_mm: 9,
   hit_diameter_source: 'assumed',
+  draft_revision: 0,
   calibration_json: JSON.stringify({
     points: [
       { x: 500, y: 100 },
@@ -195,6 +196,7 @@ describe('getRound', () => {
           uncertain: 0,
           accepted: 1,
           candidate_id: null,
+          attempt_id: null,
         },
       ],
     });
@@ -215,6 +217,7 @@ describe('getRound', () => {
         uncertain: false,
         accepted: true,
         candidateId: null,
+        attemptId: null,
       },
     ]);
   });
@@ -282,6 +285,7 @@ describe('draft writes', () => {
         uncertain: true,
         accepted: false,
         candidateId: 'c1',
+        attemptId: null,
       },
       {
         id: 'a',
@@ -291,6 +295,7 @@ describe('draft writes', () => {
         uncertain: false,
         accepted: true,
         candidateId: null,
+        attemptId: null,
       },
     ];
 
@@ -306,8 +311,8 @@ describe('draft writes', () => {
       (call) => 'sql' in call && call.sql.startsWith('INSERT INTO round_marks'),
     );
     expect(inserts.map((call) => ('params' in call ? call.params : null))).toEqual([
-      ['b', ROUND_ID, 0, 2, 2, 1, 'suggested', 1, 0, 'c1'],
-      ['a', ROUND_ID, 1, 1, 1, 2, 'manual', 0, 1, null],
+      ['b', ROUND_ID, 0, 2, 2, 1, 'suggested', 1, 0, 'c1', null],
+      ['a', ROUND_ID, 1, 1, 1, 2, 'manual', 0, 1, null, null],
     ]);
   });
 

@@ -37,6 +37,9 @@ export type HitMark = {
   // edited marks are always accepted.
   readonly accepted: boolean;
   readonly candidateId: string | null;
+  // The analysis attempt a suggestion came from. Null for marks the user added and for
+  // suggestions saved before attempts were recorded on marks; never guessed afterwards.
+  readonly attemptId: string | null;
 };
 
 // Calibration taps on the after photo, in order: top, right, bottom, left of the outer ring.
@@ -48,6 +51,9 @@ export type DraftRound = {
   readonly sessionId: string;
   readonly sequence: number;
   readonly createdAtUtc: string;
+  // Grows with every stored change to the draft. A write sends the revision it was based on and
+  // is refused when the draft changed meanwhile, so an outdated view never overwrites newer work.
+  readonly revision: number;
   readonly actualShots: number;
   readonly declaredMisses: number;
   readonly unresolvedShots: number;

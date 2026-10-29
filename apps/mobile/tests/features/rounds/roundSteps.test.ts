@@ -18,6 +18,7 @@ const MARK: HitMark = {
   uncertain: false,
   accepted: true,
   candidateId: null,
+  attemptId: null,
 };
 
 const CALIBRATION = [
@@ -30,6 +31,7 @@ const CALIBRATION = [
 function draft(overrides: Partial<DraftRound>): DraftRound {
   return {
     state: 'draft',
+    revision: 0,
     id: 'r1',
     sessionId: 's1',
     sequence: 1,

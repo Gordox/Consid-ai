@@ -14,6 +14,7 @@ const suggestion: HitMark = {
   uncertain: true,
   accepted: false,
   candidateId: 'c1',
+  attemptId: null,
 };
 
 function apply(state: EditorState, ...actions: Parameters<typeof editorReducer>[1][]): EditorState {
@@ -49,6 +50,7 @@ describe('editorReducer', () => {
         uncertain: false,
         accepted: true,
         candidateId: null,
+        attemptId: null,
       },
     ]);
     expect(state.selectedId).toBe('m1');
@@ -106,6 +108,7 @@ describe('editorReducer', () => {
       uncertain: false,
       accepted: true,
       candidateId: null,
+      attemptId: null,
     };
     const edited: HitMark = {
       ...suggestion,
@@ -157,6 +160,7 @@ describe('editable calibration', () => {
     uncertain: false,
     accepted: true,
     candidateId: null,
+    attemptId: null,
   };
 
   function calibrated(): EditorState {

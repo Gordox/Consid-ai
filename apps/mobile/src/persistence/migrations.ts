@@ -135,6 +135,21 @@ CREATE TABLE training_templates (
   last_used_at_utc TEXT
 ) STRICT;`;
 
+// Stabilisation: optimistic concurrency and traceability. Only adds columns; existing rows get
+// draft_revision 0 and NULL in the rest, so no history is rewritten.
+// - rounds.draft_revision grows with every write to a draft; screens send the revision they
+//   showed, so a write based on an outdated view is refused instead of overwriting newer work.
+// - analysis_attempts.calibration_json is the calibration the attempt was sent with, so
+//   suggestions found with an earlier alignment can be told apart. NULL for older attempts.
+// - round_marks.attempt_id names the attempt a suggestion came from. NULL for marks the user
+//   added and for suggestions saved before this schema; it is never filled in afterwards.
+// - pending_photo_picks.draft_revision is the draft revision the pick started from. NULL for a
+//   pick recorded before this schema.
+const MIGRATION_8_DRAFT_REVISION = `ALTER TABLE rounds ADD COLUMN draft_revision INTEGER NOT NULL DEFAULT 0 CHECK (draft_revision >= 0);
+ALTER TABLE analysis_attempts ADD COLUMN calibration_json TEXT;
+ALTER TABLE round_marks ADD COLUMN attempt_id TEXT;
+ALTER TABLE pending_photo_picks ADD COLUMN draft_revision INTEGER CHECK (draft_revision IS NULL OR draft_revision >= 0);`;
+
 // Append only: index + 1 is the schema version. Never edit or reorder a shipped entry.
 export const MIGRATIONS: readonly string[] = [
   MIGRATION_1_CREATE_SESSIONS,
@@ -144,6 +159,7 @@ export const MIGRATIONS: readonly string[] = [
   MIGRATION_5_DIAMETER_SOURCE,
   MIGRATION_6_PHOTO_FILE_JOURNAL,
   MIGRATION_7_PROFILES_AND_TEMPLATES,
+  MIGRATION_8_DRAFT_REVISION,
 ];
 
 export const LATEST_SCHEMA_VERSION = MIGRATIONS.length;

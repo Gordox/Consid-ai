@@ -33,6 +33,7 @@ function suggestion(id: string, x: number, y: number, uncertain = false): HitMar
     uncertain,
     accepted: false,
     candidateId: `c-${id}`,
+    attemptId: null,
   };
 }
 

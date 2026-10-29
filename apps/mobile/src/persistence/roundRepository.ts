@@ -68,9 +68,14 @@ export class RoundNotEditableError extends Error {
 
 const isCount = (value: number): boolean => isActualShots(value);
 const isPositiveInteger = (value: number): boolean => Number.isInteger(value) && value > 0;
+const isRevision = (value: number): boolean => Number.isInteger(value) && value >= 0;
+
+const MARK_SELECT =
+  'SELECT id, x, y, shots, source, uncertain, accepted, candidate_id, attempt_id FROM round_marks WHERE round_id = ? ORDER BY ordinal';
 
 const ROUND_COLUMNS = `id, session_id, sequence, state, created_at_utc, actual_shots, declared_misses,
-  unresolved_shots, target_id, hit_diameter_mm, hit_diameter_source, calibration_json, confirmed_at_utc, confirmed_json`;
+  unresolved_shots, target_id, hit_diameter_mm, hit_diameter_source, calibration_json, confirmed_at_utc, confirmed_json,
+  draft_revision`;
 
 async function sessionFinishedAt(db: SessionDatabase, sessionId: string): Promise<string | null> {
   const row = await db.getFirstAsync('SELECT finished_at_utc FROM sessions WHERE id = ?', [
@@ -204,13 +209,11 @@ export async function getRound(db: SessionDatabase, roundId: string): Promise<Ro
   if (state !== 'draft') {
     throw new InvalidRoundDataError('state');
   }
-  const markRows = await db.getAllAsync(
-    'SELECT id, x, y, shots, source, uncertain, accepted, candidate_id FROM round_marks WHERE round_id = ? ORDER BY ordinal',
-    [roundId],
-  );
+  const markRows = await db.getAllAsync(MARK_SELECT, [roundId]);
   return {
     ...base,
     state: 'draft',
+    revision: readNumber(row, 'draft_revision', isRevision),
     actualShots: readNumber(row, 'actual_shots', isCount),
     declaredMisses: readNumber(row, 'declared_misses', isCount),
     unresolvedShots: readNumber(row, 'unresolved_shots', isCount),
@@ -232,10 +235,7 @@ export async function getRoundAnnotations(
   if (row === null || row === undefined) {
     return null;
   }
-  const markRows = await db.getAllAsync(
-    'SELECT id, x, y, shots, source, uncertain, accepted, candidate_id FROM round_marks WHERE round_id = ? ORDER BY ordinal',
-    [roundId],
-  );
+  const markRows = await db.getAllAsync(MARK_SELECT, [roundId]);
   return {
     calibration: parseCalibration(readNullableString(row, 'calibration_json')),
     marks: markRows.map(parseMarkRow),
@@ -306,8 +306,8 @@ export async function saveDraftAnnotations(
     await txn.runAsync('DELETE FROM round_marks WHERE round_id = ?', [roundId]);
     for (const [ordinal, mark] of marks.entries()) {
       await txn.runAsync(
-        `INSERT INTO round_marks (id, round_id, ordinal, x, y, shots, source, uncertain, accepted, candidate_id)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO round_marks (id, round_id, ordinal, x, y, shots, source, uncertain, accepted, candidate_id, attempt_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           mark.id,
           roundId,
@@ -319,6 +319,7 @@ export async function saveDraftAnnotations(
           mark.uncertain ? 1 : 0,
           mark.accepted ? 1 : 0,
           mark.candidateId,
+          mark.attemptId,
         ],
       );
     }

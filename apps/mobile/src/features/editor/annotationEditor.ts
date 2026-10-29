@@ -119,6 +119,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
         uncertain: false,
         accepted: true,
         candidateId: null,
+        attemptId: null,
       };
       return edit(state, { ...state, marks: [...state.marks, mark] }, mark.id);
     }

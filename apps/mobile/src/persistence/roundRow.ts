@@ -150,6 +150,7 @@ export function parseMarkRow(row: unknown): HitMark {
     // Only suggestions can be pending; a stored manual or edited mark is always accepted.
     accepted: accepted === 1 || source !== 'suggested',
     candidateId: readNullableString(row, 'candidate_id'),
+    attemptId: readNullableString(row, 'attempt_id'),
   };
 }
 

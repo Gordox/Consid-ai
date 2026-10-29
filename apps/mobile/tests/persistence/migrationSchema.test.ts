@@ -13,6 +13,24 @@ import {
 } from '../../src/domain/round/roundRules';
 import { LATEST_SCHEMA_VERSION, MIGRATIONS } from '../../src/persistence/migrations';
 
+// FNV-1a over UTF-16 code units plus the length: enough to notice any edit, not a security hash.
+function fingerprint(text: string): string {
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < text.length; index += 1) {
+    hash ^= text.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return `${text.length}:${hash.toString(16)}`;
+}
+
+const FROZEN_FINGERPRINTS: Record<number, string> = {
+  3: '273:fe35d593',
+  4: '288:2e2948a6',
+  5: '135:32248012',
+  6: '380:9db8f79b',
+  7: '936:5cbad9b2',
+};
+
 // Migration 1 may already exist on devices. This copy fails the test if it is edited;
 // schema changes belong in a new migration.
 const FROZEN_MIGRATION_1 = `CREATE TABLE sessions (
@@ -91,7 +109,7 @@ describe('MIGRATIONS', () => {
 
   it('derives the latest schema version from the migration list', () => {
     expect(LATEST_SCHEMA_VERSION).toBe(MIGRATIONS.length);
-    expect(LATEST_SCHEMA_VERSION).toBe(7);
+    expect(LATEST_SCHEMA_VERSION).toBe(8);
   });
 
   // If a domain limit changes, this fails and forces a decision about stored rows and a
@@ -122,6 +140,18 @@ describe('MIGRATIONS', () => {
 
   it('keeps migration 2 unchanged', () => {
     expect(MIGRATIONS[1]).toBe(FROZEN_MIGRATION_2);
+  });
+
+  // Migrations 3–7 are on devices too. Their text is pinned by hash so an edit fails here;
+  // a schema change belongs in a new migration.
+  it.each([
+    [3, FROZEN_FINGERPRINTS[3]],
+    [4, FROZEN_FINGERPRINTS[4]],
+    [5, FROZEN_FINGERPRINTS[5]],
+    [6, FROZEN_FINGERPRINTS[6]],
+    [7, FROZEN_FINGERPRINTS[7]],
+  ])('keeps migration %i unchanged', (version, hash) => {
+    expect(fingerprint(MIGRATIONS[version - 1] ?? '')).toBe(hash);
   });
 
   // Later migrations run on devices with saved sessions and rounds: they may only add.
