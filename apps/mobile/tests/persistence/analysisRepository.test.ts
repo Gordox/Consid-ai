@@ -44,7 +44,7 @@ function suggestion(id: string, x: number, y: number, uncertain = false): HitMar
 
 async function draftWithAfter() {
   const db = await databaseWithDraft();
-  await setDraftPhoto(db, ROUND_ID, after('a.jpg'));
+  await setDraftPhoto(db, ROUND_ID, after('a.jpg'), await draftRevision(db));
   return db;
 }
 
@@ -142,7 +142,7 @@ describe('analysis attempts on SQLite', () => {
   it('ignores an answer for an after photo that was replaced meanwhile', async () => {
     const db = await draftWithAfter();
     await startAttempt(db, 'a1', 't1');
-    await setDraftPhoto(db, ROUND_ID, after('b.jpg'));
+    await setDraftPhoto(db, ROUND_ID, after('b.jpg'), await draftRevision(db));
     await expect(apply(db, 'a1', [suggestion('s1', 1, 1)])).resolves.toEqual({ kind: 'stale' });
     expect(await marks(db)).toEqual([]);
     await expect(getLatestAttempt(db, ROUND_ID)).resolves.toMatchObject({
@@ -212,7 +212,7 @@ describe('applyAnalysisResult: after photo only by choice', () => {
 
   async function pairedDraft() {
     const db = await draftWithAfter();
-    await setDraftPhoto(db, ROUND_ID, before('before.jpg'));
+    await setDraftPhoto(db, ROUND_ID, before('before.jpg'), await draftRevision(db));
     return db;
   }
 
@@ -234,7 +234,7 @@ describe('applyAnalysisResult: after photo only by choice', () => {
       beforeFileName: 'before.jpg',
       calibration: TEST_CALIBRATION,
     });
-    await setDraftPhoto(db, ROUND_ID, before('before-2.jpg'));
+    await setDraftPhoto(db, ROUND_ID, before('before-2.jpg'), await draftRevision(db));
     await expect(apply(db, 'a2', [suggestion('s', 100, 100)])).resolves.toEqual({ kind: 'stale' });
   });
 });

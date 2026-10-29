@@ -1,7 +1,7 @@
 import { Directory, File, Paths } from 'expo-file-system';
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 
-import { isPhotoFileName } from './photoFiles';
+import { isDeletableCameraTemporary, isPhotoFileName } from './photoFiles';
 
 // Copies picked photos into a folder in the app's document directory, which the system does
 // not clear. This module only reads and writes files; which
@@ -38,6 +38,10 @@ export type PhotoStore = {
   delete(fileName: string): void;
   // Reads the first bytes of a copy, for checking the normalised file before upload.
   readHead(fileName: string, length: number): Uint8Array;
+  // Deletes the file the in-app camera wrote, once its copies are saved or the save definitely
+  // failed. Only a file in the app's cache outside the photo folder is deleted; returns whether
+  // it was.
+  deleteCameraTemporary(uri: string): boolean;
 };
 
 export function createPhotoStore(folderName: string): PhotoStore {
@@ -99,6 +103,13 @@ export function createPhotoStore(folderName: string): PhotoStore {
       if (file.exists) {
         file.delete();
       }
+    },
+
+    deleteCameraTemporary(uri) {
+      if (!isDeletableCameraTemporary(uri, Paths.cache.uri, [folder().uri])) return false;
+      const file = new File(uri);
+      if (file.exists) file.delete();
+      return true;
     },
 
     readHead(fileName, length) {

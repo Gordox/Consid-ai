@@ -26,6 +26,8 @@ const NOT_SAVED_TEXT = {
     'Taking or choosing a photo was interrupted when the app closed, and no photo came back. Take or choose it again.',
   roundClosed:
     'A photo came back after the app was closed, but its round is no longer in progress. Nothing was changed.',
+  roundChanged:
+    "A photo came back after the app was closed, but the round had changed since, so it wasn't added. Take or choose it again.",
   saveFailed:
     "A photo came back after the app was closed, but it couldn't be saved. Take or choose it again.",
 } as const;
@@ -50,7 +52,7 @@ export function PhotoRecovery() {
             await savePickedPhoto(
               pick.role,
               picked,
-              photoSaveDeps(db, photos, pick.roundId, reportDevError),
+              photoSaveDeps(db, photos, pick.roundId, pick.draftRevision, reportDevError),
             );
           },
           clearPending: () => clearPendingPick(db),

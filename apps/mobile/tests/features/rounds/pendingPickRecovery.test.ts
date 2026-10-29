@@ -5,7 +5,12 @@ import {
 import type { PendingPhotoPick } from '../../../src/persistence/pendingPhotoPick';
 import { RoundNotEditableError } from '../../../src/persistence/roundRepository';
 
-const PICK: PendingPhotoPick = { roundId: 'r1', role: 'after', startedAtUtc: 't' };
+const PICK: PendingPhotoPick = {
+  roundId: 'r1',
+  role: 'after',
+  startedAtUtc: 't',
+  draftRevision: 2,
+};
 const DELIVERED = {
   canceled: false,
   assets: [{ uri: 'file:///cache/p.jpg', width: 4, height: 3 }],

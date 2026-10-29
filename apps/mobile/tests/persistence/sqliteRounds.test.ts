@@ -161,14 +161,19 @@ const manual = (id: string, x: number, y: number): HitMark => ({
 
 async function draftWithAfter(): Promise<Db> {
   const db = await databaseWithDraft();
-  await setDraftPhoto(db, ROUND_ID, {
-    role: 'after',
-    fileName: 'a.jpg',
-    originalFileName: 'a.o.jpg',
-    width: 3024,
-    height: 4032,
-    addedAtUtc: 't',
-  });
+  await setDraftPhoto(
+    db,
+    ROUND_ID,
+    {
+      role: 'after',
+      fileName: 'a.jpg',
+      originalFileName: 'a.o.jpg',
+      width: 3024,
+      height: 4032,
+      addedAtUtc: 't',
+    },
+    await draftRevision(db),
+  );
   return db;
 }
 

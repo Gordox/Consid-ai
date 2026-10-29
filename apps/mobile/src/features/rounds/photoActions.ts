@@ -32,17 +32,19 @@ export function discardPhotos(
   });
 }
 
+// expectedRevision: the draft revision the user's choice was based on (see setDraftPhoto).
 export function photoSaveDeps(
   db: SessionDatabase,
   photos: PhotoStore,
   roundId: string,
+  expectedRevision: number | null,
   reportError: (error: unknown) => void,
 ): SavePhotoDeps {
   return {
     recordFile: (fileName) => recordPhotoFile(db, fileName, nowUtcIso()),
     copyOriginal: photos.copyOriginal,
     createNormalized: photos.createNormalized,
-    saveRow: (photo) => setDraftPhoto(db, roundId, photo),
+    saveRow: (photo) => setDraftPhoto(db, roundId, photo, expectedRevision),
     discardFiles: async (fileNames) => {
       await discardPhotos(db, photos, fileNames, reportError);
     },

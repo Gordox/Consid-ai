@@ -326,14 +326,19 @@ describe('draft writes', () => {
   it('clears calibration and marks when the after photo is replaced, and returns the old file', async () => {
     const db = fake({ existingPhoto: 'old.jpg' });
 
-    const replaced = await setDraftPhoto(db, ROUND_ID, {
-      role: 'after',
-      fileName: 'new.jpg',
-      originalFileName: 'new-original.jpg',
-      width: 10,
-      height: 10,
-      addedAtUtc: 't',
-    });
+    const replaced = await setDraftPhoto(
+      db,
+      ROUND_ID,
+      {
+        role: 'after',
+        fileName: 'new.jpg',
+        originalFileName: 'new-original.jpg',
+        width: 10,
+        height: 10,
+        addedAtUtc: 't',
+      },
+      0,
+    );
 
     expect(replaced).toEqual(['old.jpg', 'old-original.jpg']);
     expect(writes(db)).toEqual([
@@ -346,14 +351,19 @@ describe('draft writes', () => {
 
   it('keeps marks when the before photo changes', async () => {
     const db = fake({});
-    await setDraftPhoto(db, ROUND_ID, {
-      role: 'before',
-      fileName: 'b.jpg',
-      originalFileName: null,
-      width: 1,
-      height: 1,
-      addedAtUtc: 't',
-    });
+    await setDraftPhoto(
+      db,
+      ROUND_ID,
+      {
+        role: 'before',
+        fileName: 'b.jpg',
+        originalFileName: null,
+        width: 1,
+        height: 1,
+        addedAtUtc: 't',
+      },
+      0,
+    );
     expect(writes(db)).toEqual(['INSERT INTO round_photos', 'UPDATE rounds SET']);
   });
 });

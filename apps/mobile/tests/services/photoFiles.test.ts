@@ -1,4 +1,9 @@
-import { isPhotoFileName, photoFileName } from '../../src/services/photoFiles';
+import {
+  isDeletableCameraTemporary,
+  isInsideDirectory,
+  isPhotoFileName,
+  photoFileName,
+} from '../../src/services/photoFiles';
 
 const ID = 'ABCDEF12-3456-4789-8abc-def012345678';
 
@@ -26,5 +31,37 @@ describe('isPhotoFileName', () => {
     expect(isPhotoFileName('photo.jpg')).toBe(false);
     expect(isPhotoFileName(`../${ID.toLowerCase()}.jpg`)).toBe(false);
     expect(isPhotoFileName(`${ID.toLowerCase()}.jpg/..`)).toBe(false);
+  });
+});
+
+describe('isInsideDirectory', () => {
+  const cache = 'file:///data/user/0/app/cache';
+  it('accepts a file below the directory and compares whole segments', () => {
+    expect(isInsideDirectory(`${cache}/Camera/a.jpg`, cache)).toBe(true);
+    expect(isInsideDirectory(`${cache}/a.jpg`, `${cache}/`)).toBe(true);
+    expect(isInsideDirectory('file:///data/user/0/app/cache-old/a.jpg', cache)).toBe(false);
+    expect(isInsideDirectory(cache, cache)).toBe(false);
+  });
+
+  it('refuses paths that could leave the directory or are not file URIs', () => {
+    expect(isInsideDirectory(`${cache}/../files/photos/a.jpg`, cache)).toBe(false);
+    expect(isInsideDirectory(`${cache}/%2e%2e/files/a.jpg`, cache)).toBe(false);
+    expect(isInsideDirectory(`${cache}/a%2Fb.jpg`, cache)).toBe(false);
+    expect(isInsideDirectory(`${cache}/a.jpg?x=1`, cache)).toBe(false);
+    expect(isInsideDirectory('content://media/external/images/1', cache)).toBe(false);
+    expect(isInsideDirectory(`${cache}/%E0%A4%A.jpg`, cache)).toBe(false);
+  });
+});
+
+describe('isDeletableCameraTemporary', () => {
+  const cache = 'file:///data/user/0/app/cache';
+  const photos = 'file:///data/user/0/app/files/photos';
+  it('allows only the cache, never the photo folder or anything else', () => {
+    expect(isDeletableCameraTemporary(`${cache}/Camera/x.jpg`, cache, [photos])).toBe(true);
+    expect(isDeletableCameraTemporary(`${photos}/x.jpg`, cache, [photos])).toBe(false);
+    expect(isDeletableCameraTemporary(`${cache}/photos/x.jpg`, cache, [`${cache}/photos`])).toBe(
+      false,
+    );
+    expect(isDeletableCameraTemporary('file:///storage/DCIM/x.jpg', cache, [photos])).toBe(false);
   });
 });

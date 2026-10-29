@@ -4,7 +4,7 @@ import { MIGRATIONS } from '../../src/persistence/migrations';
 import { setDraftPhoto } from '../../src/persistence/roundRepository';
 import type { PhotoStore } from '../../src/services/photoStorage';
 import { openNodeSqlite } from '../support/nodeSqliteDatabase';
-import { databaseWithDraft, ROUND_ID } from '../support/sqliteFixtures';
+import { databaseWithDraft, ROUND_ID, draftRevision } from '../support/sqliteFixtures';
 
 // Real SQLite for rows and journal; the photo folder is a set of names.
 function folder(names: string[]): PhotoStore & { readonly files: Set<string> } {
@@ -20,6 +20,7 @@ function folder(names: string[]): PhotoStore & { readonly files: Set<string> } {
       files.delete(name);
     },
     readHead: () => new Uint8Array(),
+    deleteCameraTemporary: () => false,
   };
 }
 
@@ -45,7 +46,12 @@ describe('abandoned photo cleanup on SQLite', () => {
     await recordPhotoFile(db, 'used-original.jpg', OLD);
     await recordPhotoFile(db, 'abandoned.jpg', OLD);
     await recordPhotoFile(db, 'saving-now.jpg', FRESH);
-    await setDraftPhoto(db, ROUND_ID, photo('used.jpg', 'used-original.jpg'));
+    await setDraftPhoto(
+      db,
+      ROUND_ID,
+      photo('used.jpg', 'used-original.jpg'),
+      await draftRevision(db),
+    );
     // Not in this database's journal: another database's, an older version's, or unknown.
     const store = folder([
       'used.jpg',
@@ -74,7 +80,12 @@ describe('abandoned photo cleanup on SQLite', () => {
   it('keeps a file a row refers to even when asked to delete it', async () => {
     const db = await databaseWithDraft();
     await recordPhotoFile(db, 'used.jpg', OLD);
-    await setDraftPhoto(db, ROUND_ID, photo('used.jpg', 'used-original.jpg'));
+    await setDraftPhoto(
+      db,
+      ROUND_ID,
+      photo('used.jpg', 'used-original.jpg'),
+      await draftRevision(db),
+    );
     const store = folder(['used.jpg']);
     await expect(discardPhotos(db, store, ['used.jpg'], ignore)).resolves.toEqual({
       deleted: [],

@@ -15,11 +15,10 @@ import { colors, radius, spacing, typography } from '../../components/tokens';
 import type { ConfirmedRound, DraftRound, PhotoRole, RoundPhoto } from '../../domain/round/round';
 import { findTarget } from '../../domain/target/targetDefinition';
 import { clearPendingPick, recordPendingPick } from '../../persistence/pendingPhotoPick';
-import { getRound, removeDraftPhoto } from '../../persistence/roundRepository';
+import { DraftChangedError, getRound, removeDraftPhoto } from '../../persistence/roundRepository';
 import { getSession } from '../../persistence/sessionRepository';
 import { nowUtcIso } from '../../services/deviceContext';
 import { choosePhoto } from '../../services/photoPicker';
-import type { PickOutcome } from '../../services/pickedPhoto';
 import { AnalysisPanel } from '../analysis/AnalysisPanel';
 import { useRoundAnalysis } from '../analysis/useRoundAnalysis';
 import { usePhotoStore } from '../startup/photoStoreContext';
@@ -29,6 +28,7 @@ import { discardPhotos, photoSaveDeps } from './photoActions';
 import { PhotoSlot } from './PhotoSlot';
 import { ActualShots, HoleDiameterCard } from './RoundCounts';
 import { RoundProgress } from './RoundProgress';
+import { libraryPickMessage, pickLibraryPhoto } from './libraryPick';
 import { savePickedPhoto } from './roundPhotos';
 import { createActionGuard } from './nextRound';
 import { initialRoundStep, type RoundStep } from './roundSteps';
@@ -117,7 +117,7 @@ function DraftRoundView({
   const photos = usePhotoStore();
   const router = useRouter();
   const target = findTarget(draft.targetId);
-  const { counts, change, saveFailed, lostChanges } = useDraftCounts(
+  const { counts, change, saveFailed, lostChanges, written, revision } = useDraftCounts(
     db,
     draft,
     reportDevError,
@@ -163,49 +163,51 @@ function DraftRoundView({
     }, []),
   );
 
+  // The draft revision a photo change is based on: the draft shown here, advanced by this
+  // screen's own count writes. Null when the draft changed elsewhere and is being read again.
+  async function currentRevision(): Promise<number | null> {
+    if ((await written()) === 'changed') {
+      setMessage('The round changed elsewhere. Check it, then try again.');
+      return null;
+    }
+    return revision();
+  }
+
   async function runPick({ role, source }: PendingPick): Promise<void> {
     setMessage(null);
+    const draftRevision = await currentRevision();
+    if (draftRevision === null) return;
     if (source === 'camera') {
-      // The in-app camera with its guide (expo-camera). It saves the photo itself, so there is
-      // no pending system picker result to recover.
+      // The in-app camera with its guide (expo-camera). It saves the photo itself, only to the
+      // draft at this revision.
       if (cameraGuard.current.tryEnter()) {
-        router.push(`${roundPath}/camera?role=${role}`);
+        router.push(`${roundPath}/camera?role=${role}&rev=${draftRevision}`);
       }
       return;
     }
-    try {
-      // If Android ends the app while the picker is open, the next start finds the photo
-      // through this record (PhotoRecovery).
-      await recordPendingPick(db, { roundId: draft.id, role, startedAtUtc: nowUtcIso() });
-    } catch (error) {
-      reportDevError(error);
-      setMessage("Couldn't prepare the photo. Nothing was changed. Try again.");
-      return;
-    }
-    const outcome: PickOutcome = await choosePhoto();
-    if (outcome.kind !== 'picked') {
-      // Cancelling keeps the current photo.
-      await clearPendingPick(db).catch(reportDevError);
-      if (outcome.kind === 'failed') {
-        setMessage("Couldn't use that photo. Try again or choose another one.");
-      }
-      return;
-    }
-    setBusy(true);
-    try {
-      await savePickedPhoto(
-        role,
-        outcome.photo,
-        photoSaveDeps(db, photos, draft.id, reportDevError),
-      );
-      onChanged();
-    } catch (error) {
-      reportDevError(error);
-      setMessage("Couldn't save the photo. Nothing was changed. Try again.");
-    } finally {
-      await clearPendingPick(db).catch(reportDevError);
-      setBusy(false);
-    }
+    // If Android ends the app while the picker is open, the next start finds the photo through
+    // the pending record (PhotoRecovery). The camera screen's library button does the same.
+    const outcome = await pickLibraryPhoto(
+      {
+        recordPending: (pick) => recordPendingPick(db, pick),
+        clearPending: () => clearPendingPick(db),
+        choose: choosePhoto,
+        save: async (picked) => {
+          await savePickedPhoto(
+            role,
+            picked,
+            photoSaveDeps(db, photos, draft.id, draftRevision, reportDevError),
+          );
+        },
+        onSaving: () => setBusy(true),
+        now: nowUtcIso,
+        reportError: reportDevError,
+      },
+      { roundId: draft.id, role, draftRevision },
+    );
+    setBusy(false);
+    setMessage(libraryPickMessage(outcome));
+    if (outcome.kind !== 'cancelled') onChanged();
   }
 
   function requestPick(pick: PendingPick): void {
@@ -217,14 +219,21 @@ function DraftRoundView({
   }
 
   async function removePhoto(role: PhotoRole): Promise<void> {
+    const draftRevision = await currentRevision();
+    if (draftRevision === null) return;
     setBusy(true);
     try {
-      const removed = await removeDraftPhoto(db, draft.id, role);
+      const removed = await removeDraftPhoto(db, draft.id, role, draftRevision);
       await discardPhotos(db, photos, removed, reportDevError);
       onChanged();
     } catch (error) {
       reportDevError(error);
-      setMessage("Couldn't remove the photo. Try again.");
+      setMessage(
+        error instanceof DraftChangedError
+          ? "The round changed elsewhere, so the photo wasn't removed. Check it, then try again."
+          : "Couldn't remove the photo. Try again.",
+      );
+      onChanged();
     } finally {
       setBusy(false);
     }

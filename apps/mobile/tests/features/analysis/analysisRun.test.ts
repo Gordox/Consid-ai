@@ -65,7 +65,7 @@ function controlledFetch() {
 
 async function calibratedDraft(): Promise<Db> {
   const db = await databaseWithDraft();
-  await setDraftPhoto(db, ROUND_ID, AFTER);
+  await setDraftPhoto(db, ROUND_ID, AFTER, await draftRevision(db));
   await saveDraftAnnotations(db, ROUND_ID, await draftRevision(db), TEST_CALIBRATION, []);
   return db;
 }

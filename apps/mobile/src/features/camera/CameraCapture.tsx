@@ -14,10 +14,20 @@ import { IconButton } from '../../components/IconButton';
 import { ScreenHeader } from '../../components/ScreenHeader';
 import { colors, radius, spacing, typography } from '../../components/tokens';
 import type { PhotoRole } from '../../domain/round/round';
+import { clearPendingPick, recordPendingPick } from '../../persistence/pendingPhotoPick';
+import {
+  DraftChangedError,
+  RoundNotEditableError,
+  RoundNotFoundError,
+} from '../../persistence/roundRepository';
+import { nowUtcIso } from '../../services/deviceContext';
 import { choosePhoto } from '../../services/photoPicker';
+import type { SaveOutcome } from '../leaveGuard';
+import { libraryPickMessage, pickLibraryPhoto } from '../rounds/libraryPick';
 import { createActionGuard } from '../rounds/nextRound';
 import { photoSaveDeps } from '../rounds/photoActions';
 import { savePickedPhoto } from '../rounds/roundPhotos';
+import { useLeaveGuard } from '../useLeaveGuard';
 import { usePhotoStore } from '../startup/photoStoreContext';
 import { useSessionStore } from '../startup/sessionStoreContext';
 import { guideLayout } from './cameraGuide';
@@ -73,14 +83,37 @@ function Guide({ width, height }: { width: number; height: number }) {
   );
 }
 
+const LEAVE_TEXTS = {
+  stillSaving: {
+    title: 'Still saving the photo',
+    body: 'Saving is taking longer than usual. If you leave, the photo may still be added to the round when it finishes.',
+  },
+  notSaved: {
+    title: "The photo wasn't saved",
+    body: 'Leave without the photo? Your round is unchanged.',
+  },
+} as const;
+
+// Errors after which the camera file is certainly not needed: the photo was refused by the round.
+function isDefiniteRefusal(error: unknown): boolean {
+  return (
+    error instanceof DraftChangedError ||
+    error instanceof RoundNotEditableError ||
+    error instanceof RoundNotFoundError
+  );
+}
+
 export function CameraCapture({
   sessionId,
   roundId,
   role,
+  draftRevision,
 }: {
   sessionId: string;
   roundId: string;
   role: PhotoRole;
+  // The draft the user saw when opening the camera; a photo is added only to that state.
+  draftRevision: number;
 }) {
   const { db } = useSessionStore();
   const photos = usePhotoStore();
@@ -111,19 +144,22 @@ export function CameraCapture({
     return () => subscription.remove();
   }, []);
 
-  const close = () =>
+  const goBack = () =>
     router.canGoBack() ? router.back() : router.replace(`/sessions/${sessionId}/rounds/${roundId}`);
+  // The save in progress, read when the user tries to leave (useLeaveGuard).
+  const saving = useRef<Promise<SaveOutcome> | null>(null);
+  const leave = useLeaveGuard(() => saving.current, LEAVE_TEXTS);
+  // After a saved photo the camera closes, unless the user already left: one navigation at most,
+  // and never away from a newer screen.
+  const close = () => leave.complete(goBack);
 
-  // Saves through the same path as library photos: an unchanged copy, then the upright copy
-  // without metadata that marks and analysis use. Nothing changes if saving fails.
-  async function save(picked: { uri: string; width: number; height: number }): Promise<void> {
+  // Runs one save and records it for the leave guard.
+  async function track(work: Promise<SaveOutcome>): Promise<SaveOutcome> {
+    saving.current = work;
     try {
-      await savePickedPhoto(role, picked, photoSaveDeps(db, photos, roundId, reportDevError));
-      close();
-    } catch (error) {
-      reportDevError(error);
-      setMessage("Couldn't save the photo. Nothing was changed. Try again.");
-      guard.current.release();
+      return await work;
+    } finally {
+      saving.current = null;
     }
   }
 
@@ -131,32 +167,97 @@ export function CameraCapture({
     if (!ready || !guard.current.tryEnter()) return;
     setBusy(true);
     setMessage(null);
+    let pictureUri: string | null = null;
     try {
       // skipProcessing stays off so the photo is rotated upright before it is saved.
       const picture = await camera.current?.takePictureAsync({ quality: 1, exif: false });
       if (picture === undefined) throw new Error('No picture');
-      await save({ uri: picture.uri, width: picture.width, height: picture.height });
+      pictureUri = picture.uri;
+      const taken = { uri: picture.uri, width: picture.width, height: picture.height };
+      // Saved through the same path as library photos: an unchanged copy, then the upright
+      // copy without metadata that marks and analysis use. Nothing changes if saving fails.
+      let refusal: unknown = null;
+      const outcome = await track(
+        savePickedPhoto(
+          role,
+          taken,
+          photoSaveDeps(db, photos, roundId, draftRevision, reportDevError),
+        ).then(
+          () => 'saved' as const,
+          (error: unknown) => {
+            refusal = error;
+            return 'failed' as const;
+          },
+        ),
+      );
+      // The camera's own file is deleted only when its copies are saved, or when the round
+      // refused the photo for good; after any other failure it is kept.
+      if (outcome === 'saved' || isDefiniteRefusal(refusal)) {
+        try {
+          photos.deleteCameraTemporary(pictureUri);
+        } catch (error) {
+          reportDevError(error);
+        }
+      }
+      if (outcome === 'saved') {
+        close();
+        return;
+      }
+      reportDevError(refusal);
+      setMessage(
+        refusal instanceof DraftChangedError
+          ? "The round changed while the photo was being saved, so it wasn't added. Go back and check the round."
+          : refusal instanceof RoundNotEditableError || refusal instanceof RoundNotFoundError
+            ? "This round is no longer in progress, so the photo wasn't added."
+            : "Couldn't save the photo. Nothing was changed. Try again.",
+      );
+      guard.current.release();
     } catch (error) {
       reportDevError(error);
-      setMessage("Couldn't take the photo. Try again, or choose one from the library.");
+      setMessage(
+        pictureUri === null
+          ? "Couldn't take the photo. Try again, or choose one from the library."
+          : "Couldn't save the photo. Nothing was changed. Try again.",
+      );
       guard.current.release();
     } finally {
       setBusy(false);
     }
   }
 
+  // The same pending record and recovery as the round screen's library button (libraryPick.ts).
   async function chooseFromLibrary(): Promise<void> {
     if (!guard.current.tryEnter()) return;
     setBusy(true);
     setMessage(null);
-    const outcome = await choosePhoto();
-    if (outcome.kind === 'picked') {
-      await save(outcome.photo);
+    const outcome = await track(
+      pickLibraryPhoto(
+        {
+          recordPending: (pick) => recordPendingPick(db, pick),
+          clearPending: () => clearPendingPick(db),
+          choose: choosePhoto,
+          save: async (picked) => {
+            await savePickedPhoto(
+              role,
+              picked,
+              photoSaveDeps(db, photos, roundId, draftRevision, reportDevError),
+            );
+          },
+          now: nowUtcIso,
+          reportError: reportDevError,
+        },
+        { roundId, role, draftRevision },
+      ).then((result) => {
+        setMessage(libraryPickMessage(result));
+        return result.kind === 'saved' ? 'saved' : 'failed';
+      }),
+    );
+    setBusy(false);
+    if (outcome === 'saved') {
+      close();
     } else {
-      if (outcome.kind === 'failed') setMessage("Couldn't use that photo. Try another one.");
       guard.current.release();
     }
-    setBusy(false);
   }
 
   if (permission === null) {
@@ -167,7 +268,7 @@ export function CameraCapture({
     return (
       <SafeAreaView style={styles.page}>
         <View style={styles.stack}>
-          <ScreenHeader onBack={close} title="Camera access" subtitle={ROLE_TITLE[role]} />
+          <ScreenHeader onBack={goBack} title="Camera access" subtitle={ROLE_TITLE[role]} />
           <Banner
             body={
               permission.canAskAgain
@@ -191,6 +292,7 @@ export function CameraCapture({
           />
           {message === null ? null : <Banner body={message} tone="error" />}
         </View>
+        {leave.dialog}
       </SafeAreaView>
     );
   }
@@ -198,7 +300,7 @@ export function CameraCapture({
   return (
     <SafeAreaView edges={['top', 'bottom', 'left', 'right']} style={styles.dark}>
       <View style={styles.topBar}>
-        <IconButton icon={X} label="Cancel" onPress={close} />
+        <IconButton icon={X} label="Close camera" onPress={goBack} />
         <Text accessibilityRole="header" style={styles.title}>
           {ROLE_TITLE[role]}
         </Text>
@@ -266,6 +368,7 @@ export function CameraCapture({
           </Text>
         ) : null}
       </View>
+      {leave.dialog}
     </SafeAreaView>
   );
 }

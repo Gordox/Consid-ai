@@ -384,14 +384,18 @@ export async function saveDraftAnnotations(
 
 // Marks and calibration are in after-photo pixels, so replacing the after photo clears them.
 // Returns the replaced files so the caller can delete them after this commit.
+// expectedRevision is the draft the user saw when choosing to take or pick the photo, so a photo
+// that finishes saving late never replaces a newer photo or clears marks made meanwhile. Null
+// only for a pick recorded before revisions existed, recovered after a restart.
 export async function setDraftPhoto(
   db: SessionDatabase,
   roundId: string,
   photo: RoundPhoto,
+  expectedRevision: number | null,
 ): Promise<string[]> {
   let replaced: string[] = [];
   await db.withExclusiveTransactionAsync(async (txn) => {
-    await requireDraft(txn, roundId);
+    await requireDraftAt(txn, roundId, expectedRevision);
     const existing = await txn.getFirstAsync(
       'SELECT file_name, original_file_name FROM round_photos WHERE round_id = ? AND role = ?',
       [roundId, photo.role],
@@ -426,10 +430,11 @@ export async function removeDraftPhoto(
   db: SessionDatabase,
   roundId: string,
   role: PhotoRole,
+  expectedRevision: number,
 ): Promise<string[]> {
   let removed: string[] = [];
   await db.withExclusiveTransactionAsync(async (txn) => {
-    await requireDraft(txn, roundId);
+    await requireDraftAt(txn, roundId, expectedRevision);
     const existing = await txn.getFirstAsync(
       'SELECT file_name, original_file_name FROM round_photos WHERE round_id = ? AND role = ?',
       [roundId, role],

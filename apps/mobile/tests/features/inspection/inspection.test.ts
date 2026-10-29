@@ -58,14 +58,19 @@ function watchWrites(db: SessionDatabase): { db: SessionDatabase; writes: string
 
 async function draftWithMarks() {
   const db = await databaseWithDraft();
-  await setDraftPhoto(db, ROUND_ID, {
-    role: 'after',
-    fileName: 'a.jpg',
-    originalFileName: 'a.o.jpg',
-    width: 1000,
-    height: 1000,
-    addedAtUtc: 't',
-  });
+  await setDraftPhoto(
+    db,
+    ROUND_ID,
+    {
+      role: 'after',
+      fileName: 'a.jpg',
+      originalFileName: 'a.o.jpg',
+      width: 1000,
+      height: 1000,
+      addedAtUtc: 't',
+    },
+    await draftRevision(db),
+  );
   await saveDraftAnnotations(db, ROUND_ID, await draftRevision(db), CALIBRATION, [
     mark('centre', 500, 500),
     mark('pending', 700, 700, false),

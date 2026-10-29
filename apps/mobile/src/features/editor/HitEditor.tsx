@@ -46,6 +46,7 @@ import { DraftChangedError, saveDraftAnnotations } from '../../persistence/round
 import { newId } from '../../services/deviceContext';
 import { createDraftWriteQueue } from '../rounds/draftWriteQueue';
 import { RoundProgress } from '../rounds/RoundProgress';
+import { useLeaveGuard } from '../useLeaveGuard';
 import { roundStatusText } from '../rounds/roundText';
 import { formatShortScore } from '../sessions/sessionProgressText';
 import { usePhotoStore } from '../startup/photoStoreContext';
@@ -83,6 +84,17 @@ function reportDevError(error: unknown): void {
     console.warn('Editor error:', error instanceof Error ? error.name : typeof error);
   }
 }
+
+const LEAVE_TEXTS = {
+  stillSaving: {
+    title: 'Still saving your changes',
+    body: 'Saving is taking longer than usual. If you leave, the latest change may or may not be saved.',
+  },
+  notSaved: {
+    title: "Your last change wasn't saved",
+    body: 'Leave anyway? The round keeps what was saved before it.',
+  },
+} as const;
 
 const TOOL_BADGE: Record<EditorTool, string> = {
   calibrate: 'Align mode',
@@ -287,9 +299,16 @@ export function HitEditor({
   const canvasHeight = Math.max(MIN_CANVAS_HEIGHT, windowHeight * CANVAS_SHARE);
   const aligned = calibration !== null && problem === null && outlines !== null;
 
-  const leave = async (next: () => void) => {
-    await writes.settled();
-    next();
+  // Every way back waits for the queued writes; a failed last write must be acknowledged.
+  const leave = useLeaveGuard(() => {
+    const current = writes.status();
+    if (current.pending > 0) return writes.settled();
+    return current.failed ? Promise.resolve('failed') : null;
+  }, LEAVE_TEXTS);
+  const goBack = () => router.back();
+  // Opening the review is not leaving, so it waits here for the writes it depends on.
+  const reviewRound = async () => {
+    if ((await writes.settled()) === 'saved') router.push(`${roundPath}/confirm`);
   };
 
   const zoomBy = (factor: number) => {
@@ -342,11 +361,7 @@ export function HitEditor({
         scrollEventThrottle={32}
         style={styles.fill}
       >
-        <ScreenHeader
-          onBack={() => void leave(() => router.back())}
-          subtitle={subtitle}
-          title={title}
-        />
+        <ScreenHeader onBack={goBack} subtitle={subtitle} title={title} />
         {after === null ? (
           <Banner body="Add an after photo on the round screen first." tone="error" />
         ) : (
@@ -577,7 +592,7 @@ export function HitEditor({
               disabled={!aligned}
               icon={ChevronRight}
               label="Use alignment"
-              onPress={() => void leave(() => router.back())}
+              onPress={goBack}
             />
           ) : (
             <>
@@ -585,7 +600,7 @@ export function HitEditor({
                 disabled={pending > 0}
                 icon={ChevronRight}
                 label="Review round"
-                onPress={() => void leave(() => router.push(`${roundPath}/confirm`))}
+                onPress={() => void reviewRound()}
               />
               <Text style={styles.caption}>
                 {pending > 0
@@ -596,6 +611,7 @@ export function HitEditor({
           )}
         </View>
       )}
+      {leave.dialog}
     </SafeAreaView>
   );
 }

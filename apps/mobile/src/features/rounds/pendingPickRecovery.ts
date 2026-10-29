@@ -1,5 +1,9 @@
 import type { PendingPhotoPick } from '../../persistence/pendingPhotoPick';
-import { RoundNotEditableError, RoundNotFoundError } from '../../persistence/roundRepository';
+import {
+  DraftChangedError,
+  RoundNotEditableError,
+  RoundNotFoundError,
+} from '../../persistence/roundRepository';
 import { type PickedPhoto, toPickOutcome } from '../../services/pickedPhoto';
 
 export type RecoveryDeps = {
@@ -17,7 +21,7 @@ export type RecoveryOutcome =
   | {
       readonly kind: 'notSaved';
       readonly pick: PendingPhotoPick;
-      readonly reason: 'noPhoto' | 'roundClosed' | 'saveFailed';
+      readonly reason: 'noPhoto' | 'roundClosed' | 'roundChanged' | 'saveFailed';
     };
 
 // Runs once after the database opens. A delivered photo is saved only to the round and role the
@@ -45,6 +49,10 @@ export async function recoverPendingPick(deps: RecoveryDeps): Promise<RecoveryOu
     } catch (error) {
       if (error instanceof RoundNotEditableError || error instanceof RoundNotFoundError) {
         return { kind: 'notSaved', pick, reason: 'roundClosed' };
+      }
+      // The round changed after the pick started; the photo must not replace that newer work.
+      if (error instanceof DraftChangedError) {
+        return { kind: 'notSaved', pick, reason: 'roundChanged' };
       }
       deps.reportError(error);
       return { kind: 'notSaved', pick, reason: 'saveFailed' };

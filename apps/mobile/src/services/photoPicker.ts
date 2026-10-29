@@ -1,4 +1,5 @@
 import {
+  getMediaLibraryPermissionsAsync,
   getPendingResultAsync,
   type ImagePickerOptions,
   launchImageLibraryAsync,
@@ -20,12 +21,22 @@ function reportDevError(error: unknown): void {
   }
 }
 
-// The system photo picker needs no library permission on current Android versions.
+// The system photo picker needs no library permission on current Android versions. Where the
+// library is protected by a permission (older Android, iOS) a refusal surfaces as a failed launch;
+// the stored permission then tells a denial apart from any other failure.
 export async function choosePhoto(): Promise<PickOutcome> {
   try {
     return toPickOutcome(await launchImageLibraryAsync(OPTIONS));
   } catch (error) {
     reportDevError(error);
+    try {
+      const permission = await getMediaLibraryPermissionsAsync();
+      if (!permission.granted && permission.status === 'denied') {
+        return { kind: 'permissionDenied', canAskAgain: permission.canAskAgain };
+      }
+    } catch (permissionError) {
+      reportDevError(permissionError);
+    }
     return { kind: 'failed' };
   }
 }

@@ -135,6 +135,7 @@ export function SessionDetail({ sessionId }: { sessionId: string }) {
   const [dialog, setDialog] = useState<Dialog>(null);
   // Stops a second tap in the same frame, before busy has re-rendered.
   const startGuard = useRef(createActionGuard());
+  const discardGuard = useRef(createActionGuard());
   useFocusEffect(
     useCallback(() => {
       startGuard.current.release();
@@ -244,7 +245,8 @@ export function SessionDetail({ sessionId }: { sessionId: string }) {
   // Removes only the draft and its photo copies; confirmed rounds are never touched.
   const discardDraft = async () => {
     setDialog(null);
-    if (busy || draft === null) return;
+    // Synchronous: a second tap in the same frame must not run a second discard.
+    if (busy || draft === null || !discardGuard.current.tryEnter()) return;
     setBusy(true);
     setActionError(null);
     try {
@@ -255,6 +257,7 @@ export function SessionDetail({ sessionId }: { sessionId: string }) {
       reportDevError(error);
       setActionError('discardFailed');
     } finally {
+      discardGuard.current.release();
       setBusy(false);
     }
   };
