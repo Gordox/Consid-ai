@@ -4,6 +4,7 @@ import { ActivityIndicator, StyleSheet, View } from 'react-native';
 
 import { Screen } from '../../components/Screen';
 import { colors } from '../../components/tokens';
+import { failInterruptedAttempts } from '../../persistence/analysisRepository';
 import { DATABASE_NAME } from '../../persistence/database';
 import { openSessionDatabase } from '../../persistence/openSessionDatabase';
 import { createPhotoStore, PHOTO_FOLDER } from '../../services/photoStorage';
@@ -29,6 +30,10 @@ function createAppDatabaseLifecycle() {
       }),
     photoFolder: PHOTO_FOLDER,
     createCoordinator: () => createSaveCoordinator(),
+    // No request of the new connection exists yet, so every pending attempt is interrupted.
+    afterOpen: async (db) => {
+      await failInterruptedAttempts(db, () => false);
+    },
     reportError: reportDevError,
   });
 }

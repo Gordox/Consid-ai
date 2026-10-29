@@ -297,6 +297,54 @@ describe('createDatabaseLifecycle: one database', () => {
   });
 });
 
+describe('createDatabaseLifecycle: analyses and housekeeping', () => {
+  it('runs afterOpen on the new connection before handing it out, once per open', async () => {
+    const harness = createHarness();
+    const seen: SessionDatabase[] = [];
+    const lifecycle = createDatabaseLifecycle({
+      ...harness.deps,
+      afterOpen: async (db) => {
+        seen.push(db);
+      },
+    });
+    lifecycle.activate();
+    const store = await openReady(harness, lifecycle, 0, new ClosableFakeDatabase());
+    expect(seen).toEqual([store.db]);
+  });
+
+  it('still opens when afterOpen fails, and reports the failure', async () => {
+    const harness = createHarness();
+    const failure = new Error('cleanup failed');
+    const lifecycle = createDatabaseLifecycle({
+      ...harness.deps,
+      afterOpen: async () => {
+        throw failure;
+      },
+    });
+    lifecycle.activate();
+    await openReady(harness, lifecycle, 0, new ClosableFakeDatabase());
+    expect(harness.reported).toEqual([failure]);
+  });
+
+  it('aborts running analyses and refuses new ones when the connection closes', async () => {
+    const harness = createHarness();
+    const lifecycle = createDatabaseLifecycle(harness.deps);
+    lifecycle.activate();
+    const store = await openReady(harness, lifecycle, 0, new ClosableFakeDatabase());
+    const seen: { signal: AbortSignal | null } = { signal: null };
+    store.analysisRuns.start('r1', 'a1', (signal) => {
+      seen.signal = signal;
+      return new Promise(() => undefined);
+    });
+
+    lifecycle.deactivate();
+
+    expect(seen.signal?.aborted).toBe(true);
+    expect(store.analysisRuns.isAttemptRunning('a1')).toBe(false);
+    expect(store.analysisRuns.start('r1', 'a2', () => new Promise(() => undefined))).toBe(false);
+  });
+});
+
 describe('classifyStartupError', () => {
   it('separates a newer database version from other failures', () => {
     expect(classifyStartupError(new DatabaseVersionTooNewError(2, 1))).toBe('newerVersion');

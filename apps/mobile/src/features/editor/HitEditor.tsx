@@ -10,7 +10,15 @@ import Undo2 from 'lucide-react-native/icons/undo-2';
 import ZoomIn from 'lucide-react-native/icons/zoom-in';
 import ZoomOut from 'lucide-react-native/icons/zoom-out';
 import { useRouter } from 'expo-router';
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react';
 import {
   type HostInstance,
   Image,
@@ -34,8 +42,9 @@ import type { DraftRound, HitMark } from '../../domain/round/round';
 import { evaluateDraft } from '../../domain/round/roundEvaluation';
 import { SHOTS_PER_HOLE_RANGE } from '../../domain/round/roundRules';
 import { findTarget } from '../../domain/target/targetDefinition';
-import { saveDraftAnnotations } from '../../persistence/roundRepository';
+import { DraftChangedError, saveDraftAnnotations } from '../../persistence/roundRepository';
 import { newId } from '../../services/deviceContext';
+import { createDraftWriteQueue } from '../rounds/draftWriteQueue';
 import { RoundProgress } from '../rounds/RoundProgress';
 import { roundStatusText } from '../rounds/roundText';
 import { formatShortScore } from '../sessions/sessionProgressText';
@@ -84,7 +93,24 @@ const TOOL_BADGE: Record<EditorTool, string> = {
 // Screens 07 (align target), 10 (review hits) and 11 (manual editor). Geometry stays in the
 // normalised photo's pixels; the view transform, previews, magnifier and touch areas are display
 // only. Edits are saved once per gesture, when the finger lifts.
-export function HitEditor({ draft }: { draft: DraftRound }) {
+export function HitEditor({
+  draft,
+  lostChanges,
+  onConflict,
+  analysisRunning,
+  cancellingAnalysis,
+  onCancelAnalysis,
+}: {
+  draft: DraftRound;
+  // Changes lost to the last conflict, shown once the editor has been reloaded.
+  lostChanges: number;
+  // The draft changed elsewhere; the screen reads it again and remounts the editor.
+  onConflict: (lostChanges: number) => void;
+  // While an analysis of this round runs the photo is read-only: its answer replaces suggestions.
+  analysisRunning: boolean;
+  cancellingAnalysis: boolean;
+  onCancelAnalysis: () => void;
+}) {
   const { db } = useSessionStore();
   const photos = usePhotoStore();
   const router = useRouter();
@@ -110,13 +136,32 @@ export function HitEditor({ draft }: { draft: DraftRound }) {
   const [preview, setPreview] = useState<DragPreview | null>(null);
   const [magnifier, setMagnifier] = useState<MagnifierFocus | null>(null);
   const [touching, setTouching] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState(false);
   const [sizeMismatch, setSizeMismatch] = useState(false);
 
   const canvasRef = useRef<HostInstance>(null);
   const [gestures] = useState(() => createGestureController(newId));
-  const writes = useRef<Promise<void>>(Promise.resolve());
+  // Each committed edit is one snapshot, written at the revision of the previous write. If the
+  // draft changed elsewhere the queue stops and the editor is reloaded (draftWriteQueue.ts).
+  const [writes] = useState(() =>
+    createDraftWriteQueue<Annotations>({
+      initialRevision: draft.revision,
+      write: (annotations, expectedRevision) =>
+        saveDraftAnnotations(
+          db,
+          draft.id,
+          expectedRevision,
+          calibrationOf(annotations),
+          annotations.marks,
+        ),
+      isConflict: (error) => error instanceof DraftChangedError,
+      reportError: reportDevError,
+    }),
+  );
+  const writeStatus = useSyncExternalStore(writes.subscribe, writes.status);
+  const saving = writeStatus.pending > 0;
+  const saveError = writeStatus.failed;
+  const conflicted = writeStatus.lostChanges > 0;
+  const editable = !analysisRunning && !conflicted;
   const savedAnnotations = useRef<Annotations>({
     calibrationPoints: state.calibrationPoints,
     marks: state.marks,
@@ -130,20 +175,39 @@ export function HitEditor({ draft }: { draft: DraftRound }) {
     );
   }, [gestures]);
 
+  // While the photo is read-only only selection reaches the reducer, as in the inspection.
+  const gestureDispatch = useCallback(
+    (action: EditorAction) => {
+      if (editable || action.type === 'select') dispatch(action);
+    },
+    [editable],
+  );
   useEffect(() => {
     gestures.update(
       {
         view,
         canvas,
         image,
-        tool,
+        tool: editable ? tool : 'pan',
         marks: state.marks,
         selectedId: state.selectedId,
         calibrationPoints: state.calibrationPoints,
+        readOnly: !editable,
       },
-      { dispatch, setView, setDragPreview: setPreview, setMagnifier },
+      { dispatch: gestureDispatch, setView, setDragPreview: setPreview, setMagnifier },
     );
-  }, [gestures, view, canvas, image, tool, state.marks, state.selectedId, state.calibrationPoints]);
+  }, [
+    gestures,
+    view,
+    canvas,
+    image,
+    tool,
+    editable,
+    gestureDispatch,
+    state.marks,
+    state.selectedId,
+    state.calibrationPoints,
+  ]);
 
   // Saves calibration and marks after every committed edit, in order. Selection, previews and
   // view changes are not saved.
@@ -159,18 +223,17 @@ export function HitEditor({ draft }: { draft: DraftRound }) {
       return;
     }
     savedAnnotations.current = annotations;
-    setSaving(true);
-    writes.current = writes.current
-      .then(() => saveDraftAnnotations(db, draft.id, calibrationOf(annotations), annotations.marks))
-      .then(
-        () => setSaveError(false),
-        (error: unknown) => {
-          reportDevError(error);
-          setSaveError(true);
-        },
-      )
-      .finally(() => setSaving(false));
-  }, [db, draft.id, state.calibrationPoints, state.marks]);
+    writes.enqueue(annotations);
+  }, [writes, state.calibrationPoints, state.marks]);
+
+  // Once every queued write has finished, a stopped queue hands over to the screen, which reads
+  // the draft again. The snapshots made from the outdated draft are never written.
+  const reportedConflict = useRef(false);
+  useEffect(() => {
+    if (!conflicted || reportedConflict.current) return;
+    reportedConflict.current = true;
+    void writes.settled().then(() => onConflict(writes.status().lostChanges));
+  }, [conflicted, writes, onConflict]);
 
   // Marks are stored in the pixels of the normalised photo, whose size was recorded when it was
   // written. If the decoded file has any other size the marks would not line up, so marking is
@@ -217,13 +280,15 @@ export function HitEditor({ draft }: { draft: DraftRound }) {
   const numbers = markerNumbers(state.marks);
   const selected = state.marks.find((mark) => mark.id === state.selectedId) ?? null;
   const pending = evaluation.pendingSuggestions;
-  const send = (action: EditorAction) => dispatch(action);
+  const send = (action: EditorAction) => {
+    if (editable || action.type === 'select') dispatch(action);
+  };
   const roundPath = `/sessions/${draft.sessionId}/rounds/${draft.id}`;
   const canvasHeight = Math.max(MIN_CANVAS_HEIGHT, windowHeight * CANVAS_SHARE);
   const aligned = calibration !== null && problem === null && outlines !== null;
 
   const leave = async (next: () => void) => {
-    await writes.current;
+    await writes.settled();
     next();
   };
 
@@ -299,6 +364,27 @@ export function HitEditor({ draft }: { draft: DraftRound }) {
                 title="Not saved"
                 tone="error"
               />
+            ) : null}
+            {lostChanges > 0 ? (
+              <Banner
+                body={`This round changed while you were editing, for example because new suggestions arrived. ${lostChanges === 1 ? 'Your last change was' : `Your last ${lostChanges} changes were`} not saved. The photo now shows the saved round; check it and redo what is missing.`}
+                title="Round changed"
+                tone="warning"
+              />
+            ) : null}
+            {analysisRunning ? (
+              <Banner
+                body="Editing is paused until the analysis finishes or you cancel it. You can still zoom, pan and select markers."
+                title="Analysis running"
+                tone="info"
+              >
+                <Button
+                  busy={cancellingAnalysis}
+                  label={cancellingAnalysis ? 'Cancelling…' : 'Cancel analysis'}
+                  onPress={onCancelAnalysis}
+                  variant="secondary"
+                />
+              </Banner>
             ) : null}
 
             <RoundProgress
@@ -392,13 +478,14 @@ export function HitEditor({ draft }: { draft: DraftRound }) {
 
             <View style={styles.toolbar}>
               <IconButton
+                disabled={!editable}
                 icon={Crosshair}
                 label="Align target"
                 onPress={() => setTool('calibrate')}
                 selected={tool === 'calibrate'}
               />
               <IconButton
-                disabled={!aligned}
+                disabled={!aligned || !editable}
                 icon={Plus}
                 label="Add hits"
                 onPress={() => setTool('add')}
@@ -429,6 +516,7 @@ export function HitEditor({ draft }: { draft: DraftRound }) {
               <>
                 {selected === null ? null : (
                   <Inspector
+                    disabled={!editable}
                     diameterAssumed={draft.hitDiameterSource === 'assumed'}
                     diameterMm={draft.hitDiameterMm}
                     mark={selected}
@@ -465,7 +553,7 @@ export function HitEditor({ draft }: { draft: DraftRound }) {
           <View style={styles.secondaryRow}>
             <View style={styles.secondaryAction}>
               <Button
-                disabled={state.history.length === 0}
+                disabled={state.history.length === 0 || !editable}
                 icon={Undo2}
                 label="Undo"
                 onPress={() => send({ type: 'undo' })}
@@ -475,7 +563,7 @@ export function HitEditor({ draft }: { draft: DraftRound }) {
             {tool === 'calibrate' ? (
               <View style={styles.secondaryAction}>
                 <Button
-                  disabled={placed === 0}
+                  disabled={placed === 0 || !editable}
                   icon={RotateCcw}
                   label="Reset"
                   onPress={() => send({ type: 'restartCalibration' })}
@@ -517,12 +605,14 @@ export function HitEditor({ draft }: { draft: DraftRound }) {
 function Inspector({
   mark,
   name,
+  disabled,
   diameterMm,
   diameterAssumed,
   onAccept,
   onDelete,
   onShots,
 }: {
+  disabled: boolean;
   mark: HitMark;
   name: string;
   diameterMm: number;
@@ -551,6 +641,7 @@ function Inspector({
       )}
       {mark.accepted ? (
         <Stepper
+          disabled={disabled}
           label="Shots in this hole"
           max={SHOTS_PER_HOLE_RANGE.max}
           min={SHOTS_PER_HOLE_RANGE.min}
@@ -565,11 +656,12 @@ function Inspector({
       <View style={styles.secondaryRow}>
         {mark.accepted ? null : (
           <View style={styles.secondaryAction}>
-            <Button icon={Check} label="Accept" onPress={onAccept} />
+            <Button disabled={disabled} icon={Check} label="Accept" onPress={onAccept} />
           </View>
         )}
         <View style={styles.secondaryAction}>
           <Button
+            disabled={disabled}
             icon={Trash2}
             label={mark.accepted ? 'Delete hit' : 'Remove'}
             onPress={onDelete}

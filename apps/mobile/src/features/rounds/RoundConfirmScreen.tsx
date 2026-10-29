@@ -11,11 +11,12 @@ import { ScreenHeader } from '../../components/ScreenHeader';
 import { ScoreSummary } from '../../components/ScoreSummary';
 import { colors, radius, spacing, typography } from '../../components/tokens';
 import type { ConfirmedResult, DraftRound } from '../../domain/round/round';
-import { buildConfirmedResult, evaluateDraft } from '../../domain/round/roundEvaluation';
+import { evaluateDraft } from '../../domain/round/roundEvaluation';
 import { DEMO_TARGET, findTarget } from '../../domain/target/targetDefinition';
 import { confirmRound, getRound } from '../../persistence/roundRepository';
 import { getSession } from '../../persistence/sessionRepository';
 import { newId, nowUtcIso } from '../../services/deviceContext';
+import { useRoundAnalysis } from '../analysis/useRoundAnalysis';
 import { useSessionStore } from '../startup/sessionStoreContext';
 import { useFocusLoad } from '../useFocusLoad';
 import { createActionGuard, startNextRound } from './nextRound';
@@ -32,6 +33,20 @@ function reportDevError(error: unknown): void {
 function plural(count: number, one: string, many: string): string {
   return count === 1 ? `1 ${one}` : `${count} ${many}`;
 }
+
+type ConfirmProblem = 'countsNotSaved' | 'changed' | 'analysisRunning' | 'blocked' | 'failed';
+
+// The round always stays a draft in these cases; nothing of it was lost.
+const CONFIRM_PROBLEM_TEXT: Record<ConfirmProblem, string> = {
+  countsNotSaved:
+    "The shot counts couldn't be saved, so the round wasn't confirmed. Change a value to save it again, then confirm.",
+  changed:
+    "The round changed after this screen showed it, so it wasn't confirmed. Check the values shown now, then confirm.",
+  analysisRunning: "An analysis of this round is still running, so it wasn't confirmed.",
+  blocked:
+    "The saved round doesn't add up or still has suggestions to review, so it wasn't confirmed. Check it, then try again.",
+  failed: 'The round is still a draft. Your marks and counts are kept. Try again.',
+};
 
 type Loaded =
   | { readonly kind: 'draft'; readonly draft: DraftRound; readonly plannedShots: number }
@@ -162,41 +177,72 @@ function ReviewDraft({
   onConfirmed: (result: ConfirmedResult) => void;
   onChanged: () => void;
 }) {
-  const { db } = useSessionStore();
+  const { db, analysisRuns } = useSessionStore();
   const router = useRouter();
   const target = findTarget(draft.targetId);
-  const { counts, change, written, saveFailed } = useDraftCounts(db, draft, reportDevError);
+  const { counts, change, written, revision, saveFailed, lostChanges } = useDraftCounts(
+    db,
+    draft,
+    reportDevError,
+    onChanged,
+  );
+  const { runningAttempt } = useRoundAnalysis(analysisRuns, draft.id);
   const [busy, setBusy] = useState(false);
-  const [confirmFailed, setConfirmFailed] = useState(false);
+  const [confirmFailed, setConfirmFailed] = useState<ConfirmProblem | null>(null);
   const confirmGuard = useRef(createActionGuard());
   const current: DraftRound = { ...draft, ...counts };
+  const analysisRunning = runningAttempt !== null;
   const evaluation = evaluateDraft(current, target);
   const incomplete = evaluation.status === 'incomplete';
   const accounted = evaluation.hitShots + counts.declaredMisses;
   const editorPath = `/sessions/${draft.sessionId}/rounds/${draft.id}/editor` as const;
 
   const confirm = async () => {
-    if (evaluation.blockReason !== null || !confirmGuard.current.tryEnter()) return;
+    if (evaluation.blockReason !== null || analysisRunning) return;
+    if (!confirmGuard.current.tryEnter()) return;
     setBusy(true);
-    setConfirmFailed(false);
+    setConfirmFailed(null);
+    const reopen = (problem: ConfirmProblem) => {
+      setConfirmFailed(problem);
+      confirmGuard.current.release();
+      onChanged();
+    };
     try {
-      await written();
-      // Built by the domain from the same counts the screen shows; it refuses a round that
-      // cannot be confirmed.
-      const result = buildConfirmedResult(current, target);
-      const outcome = await confirmRound(db, draft.id, result, nowUtcIso());
-      // A confirmed round is never confirmed again, so the guard stays closed on success.
-      if (outcome === 'confirmed') {
-        onConfirmed(result);
-      } else {
-        // Confirmed earlier: show the stored round, not this result.
-        onChanged();
+      // Nothing is confirmed while a count change is unsaved or was refused: the result must be
+      // the one this screen shows.
+      const counted = await written();
+      if (counted !== 'saved') {
+        reopen(counted === 'failed' ? 'countsNotSaved' : 'changed');
+        return;
+      }
+      // The repository builds the result from the stored draft in the same transaction, at the
+      // revision this screen showed after its own writes.
+      const outcome = await confirmRound(db, draft.id, {
+        expectedRevision: revision(),
+        confirmedAtUtc: nowUtcIso(),
+        findTarget,
+        isAttemptRunning: analysisRuns.isAttemptRunning,
+      });
+      switch (outcome.kind) {
+        case 'confirmed':
+        case 'alreadyConfirmed':
+          // A confirmed round is never confirmed again, so the guard stays closed. A repeated
+          // confirmation shows the result stored the first time.
+          onConfirmed(outcome.result);
+          return;
+        case 'changed':
+          reopen('changed');
+          return;
+        case 'analysisRunning':
+          reopen('analysisRunning');
+          return;
+        case 'blocked':
+          reopen('blocked');
+          return;
       }
     } catch (error) {
       reportDevError(error);
-      setConfirmFailed(true);
-      confirmGuard.current.release();
-      onChanged();
+      reopen('failed');
     } finally {
       setBusy(false);
     }
@@ -217,6 +263,20 @@ function ReviewDraft({
       )}
       {saveFailed ? (
         <Banner body="Couldn't save the shot counts. Change a value to try again." tone="error" />
+      ) : null}
+      {lostChanges > 0 ? (
+        <Banner
+          body={`The round changed elsewhere, so ${lostChanges === 1 ? 'your last change' : `your last ${lostChanges} changes`} to the counts weren't saved. The values shown are the saved ones; check them again.`}
+          title="Round changed"
+          tone="warning"
+        />
+      ) : null}
+      {analysisRunning ? (
+        <Banner
+          body="An analysis of this round is still running. Wait for it to finish, or cancel it on the round screen, before confirming."
+          title="Analysis running"
+          tone="info"
+        />
       ) : null}
       <ShotAccounting counts={counts} disabled={busy} evaluation={evaluation} onChange={change} />
 
@@ -253,19 +313,19 @@ function ReviewDraft({
           {roundStatusText(evaluation, counts.actualShots)}
         </Text>
       )}
-      {confirmFailed ? (
+      {confirmFailed === null ? null : (
         <Banner
-          body="The round is still a draft. Your marks and counts are kept. Try again."
+          body={CONFIRM_PROBLEM_TEXT[confirmFailed]}
           title="Couldn't confirm the round"
           tone="error"
         />
-      ) : null}
+      )}
       <Text style={styles.secondary}>
         Confirmed rounds cannot be edited. Check your markers and shot count first.
       </Text>
       <Button
         busy={busy}
-        disabled={evaluation.blockReason !== null}
+        disabled={evaluation.blockReason !== null || analysisRunning}
         label={busy ? 'Confirming…' : incomplete ? 'Confirm incomplete round' : 'Confirm round'}
         onPress={() => void confirm()}
       />

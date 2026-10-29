@@ -106,10 +106,13 @@ const STORED_ERROR_TEXT: Record<string, string> = {
   ...ANALYSIS_ERROR_TEXT,
   stale: 'The last answer arrived after the photos or the request changed, and was ignored.',
   calibrationNeeded: 'The last demo run needed a calibration.',
+  interrupted:
+    "The last analysis didn't finish because the app was closed or restarted. Your photos and marks are kept. Try again.",
+  oldPhotoCopy: ANALYSIS_BLOCK_TEXT.oldPhotoCopy,
 };
 
-// One line about the newest stored attempt. A pending attempt that is not running in this
-// screen was interrupted (the app closed or the request never finished).
+// One line about the newest stored attempt. A pending attempt without a running request in this
+// app has no outcome and never will (its result could not be recorded).
 export function latestAttemptText(
   attempt: {
     readonly status: 'pending' | 'succeeded' | 'failed';
@@ -123,7 +126,7 @@ export function latestAttemptText(
       ? { tone: 'info', text: 'Analysing…' }
       : {
           tone: 'error',
-          text: "The last analysis didn't finish (the app closed or the connection dropped). Your photos and marks are kept. Try again.",
+          text: "The last analysis didn't finish and has no result. Your photos and marks are kept. Try again.",
         };
   }
   if (attempt.status === 'succeeded') {

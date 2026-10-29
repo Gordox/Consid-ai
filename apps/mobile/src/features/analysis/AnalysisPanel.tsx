@@ -1,6 +1,6 @@
 import Plus from 'lucide-react-native/icons/plus';
 import Target from 'lucide-react-native/icons/target';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { AccessibilityInfo, ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 
 import { Banner } from '../../components/Banner';
@@ -10,24 +10,14 @@ import { colors, radius, spacing, typography } from '../../components/tokens';
 import { calibrationProblem } from '../../domain/round/calibrationCheck';
 import type { DraftRound } from '../../domain/round/round';
 import { findTarget } from '../../domain/target/targetDefinition';
-import {
-  applyAnalysisResult,
-  createAnalysisAttempt,
-  failAnalysisAttempt,
-  getLatestAttempt,
-  type LatestAttempt,
-} from '../../persistence/analysisRepository';
-import {
-  ANALYSIS_TIMEOUT_MS,
-  requestAnalysis,
-  UPLOAD_CHECK_BYTES,
-} from '../../services/analysis/analysisClient';
+import { getLatestAttempt, type LatestAttempt } from '../../persistence/analysisRepository';
+import { ANALYSIS_TIMEOUT_MS } from '../../services/analysis/analysisClient';
 import { readAnalysisConfig } from '../../services/analysis/analysisConfig';
 import { newId, nowUtcIso } from '../../services/deviceContext';
 import { formatCreatedAt } from '../sessions/formatSession';
 import { usePhotoStore } from '../startup/photoStoreContext';
 import { useSessionStore } from '../startup/sessionStoreContext';
-import { uploadablePhoto } from './analysisPhotos';
+import { type AnalysisRunResult, runAnalysisAttempt } from './analysisRun';
 import {
   ANALYSIS_BLOCK_TEXT,
   ANALYSIS_ERROR_TEXT,
@@ -37,7 +27,7 @@ import {
   modeText,
   suggestionSummary,
 } from './analysisText';
-import { candidatesToMarks, duplicateRadiusPx } from './suggestions';
+import { useRoundAnalysis } from './useRoundAnalysis';
 
 function reportDevError(error: unknown): void {
   if (__DEV__) {
@@ -58,37 +48,55 @@ function failure(code: string, text: string): Message {
   return { tone: 'error', code, title: analysisErrorTitle(code), text };
 }
 
+function messageFor(result: AnalysisRunResult): Message {
+  switch (result.kind) {
+    case 'applied':
+      return { tone: 'success', text: suggestionSummary(result.added, result.warnings) };
+    case 'stale':
+      return failure('stale', ANALYSIS_ERROR_TEXT.stale);
+    case 'cancelled':
+      return { tone: 'info', text: ANALYSIS_ERROR_TEXT.cancelled };
+    case 'failed':
+      return failure(
+        result.code,
+        result.code === 'oldPhotoCopy'
+          ? ANALYSIS_BLOCK_TEXT.oldPhotoCopy
+          : ANALYSIS_ERROR_TEXT[result.code],
+      );
+    case 'saveFailed':
+      return failure(
+        'save',
+        "Couldn't save the analysis. Your photos and marks are kept. Try again.",
+      );
+  }
+}
+
 // Screens 08 (analyse or mark manually), 09 (analysing) and 15 (analysis unavailable). Nothing
-// is sent until the user chooses Analyse; the manual path is always available.
+// is sent until the user chooses Analyse; the manual path is always available. The analysis
+// keeps running when the user leaves the round; Cancel only stops the app waiting for it.
 export function AnalysisPanel({
   draft,
   photosMissing,
-  running,
-  onRunningChange,
-  onChanged,
   onOpenEditor,
 }: {
   draft: DraftRound;
   photosMissing: boolean;
-  running: boolean;
-  onRunningChange: (running: boolean) => void;
-  onChanged: () => void;
   onOpenEditor: () => void;
 }) {
-  const { db } = useSessionStore();
+  const { db, analysisRuns } = useSessionStore();
   const photos = usePhotoStore();
   const [config] = useState(readAnalysisConfig);
-  const [message, setMessage] = useState<Message | null>(null);
   const [latest, setLatest] = useState<LatestAttempt | null>(null);
   const [confirmReplace, setConfirmReplace] = useState(false);
-  // The running request's cancel switch; null when nothing can be cancelled.
-  const cancelRef = useRef<AbortController | null>(null);
-  const [cancelling, setCancelling] = useState(false);
+  const { runningAttempt, cancelling, lastFinished } = useRoundAnalysis(analysisRuns, draft.id);
+  const running = runningAttempt !== null;
   const target = findTarget(draft.targetId);
   const { after, before } = draft.photos;
   const pending = draft.marks.filter((mark) => !mark.accepted).length;
+  const message = running || lastFinished === null ? null : messageFor(lastFinished.outcome.result);
 
-  // The stored attempt survives leaving the screen and restarts; reread when the round changes.
+  // The stored attempt survives leaving the screen and restarts; reread when the round or the
+  // running attempt changes.
   useEffect(() => {
     let active = true;
     getLatestAttempt(db, draft.id).then(
@@ -100,7 +108,7 @@ export function AnalysisPanel({
     return () => {
       active = false;
     };
-  }, [db, draft]);
+  }, [db, draft, runningAttempt]);
 
   useEffect(() => {
     if (running) {
@@ -123,96 +131,38 @@ export function AnalysisPanel({
 
   // afterOnly sends only the after photo even when a before photo exists: the user's explicit
   // choice after the photos could not be aligned.
-  async function run(afterOnly = false): Promise<void> {
+  function run(afterOnly = false): void {
     setConfirmReplace(false);
+    const calibration = draft.calibration;
     if (running || config === null || after === null || target === null) return;
-    if (draft.calibration === null || block !== null) return;
-    onRunningChange(true);
-    setMessage(null);
-    setCancelling(false);
+    if (calibration === null || block !== null) return;
     const attemptId = newId();
-    const sentBefore = afterOnly ? null : before;
-    const cancel = new AbortController();
-    cancelRef.current = cancel;
-    try {
-      await createAnalysisAttempt(db, {
-        attemptId,
-        roundId: draft.id,
-        source: 'service',
-        createdAtUtc: nowUtcIso(),
-        afterFileName: after.fileName,
-        beforeFileName: sentBefore?.fileName ?? null,
-      });
-      const afterUpload = uploadablePhoto(after, photos.uri);
-      const beforeUpload = sentBefore === null ? null : uploadablePhoto(sentBefore, photos.uri);
-      if (afterUpload === null || (sentBefore !== null && beforeUpload === null)) {
-        await failAnalysisAttempt(db, attemptId, 'oldPhotoCopy');
-        setMessage(failure('oldPhotoCopy', ANALYSIS_BLOCK_TEXT.oldPhotoCopy));
-        return;
-      }
-      const result = await requestAnalysis(
-        config,
+    analysisRuns.start(draft.id, attemptId, (signal) =>
+      runAnalysisAttempt(
         {
-          roundId: draft.id,
-          attemptId,
-          targetId: draft.targetId,
-          calibration: draft.calibration,
-          after: afterUpload,
-          before: beforeUpload,
-        },
-        {
+          db,
+          config,
+          photos,
           fetch: (url, init) => fetch(url, init),
-          fileSize: (photo) => photos.size(photo.fileName),
-          readHead: (photo) => photos.readHead(photo.fileName, UPLOAD_CHECK_BYTES),
           timeoutMs: ANALYSIS_TIMEOUT_MS,
-          signal: cancel.signal,
+          now: nowUtcIso,
+          newId,
+          reportError: reportDevError,
         },
-      );
-      // From here on the answer is only written locally; cancelling no longer applies.
-      cancelRef.current = null;
-      if (!result.ok && result.error === 'cancelled') {
-        await failAnalysisAttempt(db, attemptId, 'cancelled');
-        setMessage({ tone: 'info', text: ANALYSIS_ERROR_TEXT.cancelled });
-        return;
-      }
-      if (!result.ok) {
-        await failAnalysisAttempt(db, attemptId, result.error);
-        setMessage(failure(result.error, ANALYSIS_ERROR_TEXT[result.error]));
-        return;
-      }
-      if (result.value.status !== 'succeeded') {
-        await failAnalysisAttempt(db, attemptId, result.value.status);
-        setMessage(failure(result.value.status, ANALYSIS_ERROR_TEXT[result.value.status]));
-        return;
-      }
-      const outcome = await applyAnalysisResult(db, {
-        attemptId,
-        roundId: draft.id,
-        algorithmVersion: result.value.algorithmVersion,
-        resultJson: JSON.stringify(result.value),
-        suggestions: candidatesToMarks(result.value.candidates, newId, attemptId),
-        duplicateRadiusPx: duplicateRadiusPx(result.value.candidates, after),
-        calibration: draft.calibration,
-      });
-      setMessage(
-        outcome.kind === 'stale'
-          ? failure('stale', ANALYSIS_ERROR_TEXT.stale)
-          : { tone: 'success', text: suggestionSummary(outcome.added, result.value.warnings) },
-      );
-    } catch (error) {
-      reportDevError(error);
-      setMessage(
-        failure('save', "Couldn't save the analysis. Your photos and marks are kept. Try again."),
-      );
-    } finally {
-      cancelRef.current = null;
-      setCancelling(false);
-      onRunningChange(false);
-      onChanged();
-    }
+        {
+          attemptId,
+          roundId: draft.id,
+          targetId: draft.targetId,
+          calibration,
+          after,
+          before: afterOnly ? null : before,
+        },
+        signal,
+      ),
+    );
   }
 
-  const start = () => (pending > 0 ? setConfirmReplace(true) : void run());
+  const start = () => (pending > 0 ? setConfirmReplace(true) : run());
   const stored =
     latest === null || running || message !== null ? null : latestAttemptText(latest, false);
   const lastFailed =
@@ -236,15 +186,12 @@ export function AnalysisPanel({
         </View>
         <Text style={styles.body}>
           This can take up to a minute. Photos and marks are locked until it finishes. Your draft is
-          saved; leaving this screen does not delete the round.
+          saved, and the analysis keeps running if you leave this screen.
         </Text>
         <Button
           busy={cancelling}
           label={cancelling ? 'Cancelling…' : 'Cancel analysis'}
-          onPress={() => {
-            setCancelling(true);
-            cancelRef.current?.abort();
-          }}
+          onPress={() => analysisRuns.cancel(draft.id)}
           variant="secondary"
         />
         <Text style={styles.caption}>

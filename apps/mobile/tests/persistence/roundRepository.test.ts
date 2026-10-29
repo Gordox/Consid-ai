@@ -28,6 +28,7 @@ type Answers = {
   draftId?: string | null;
   nextSequence?: number;
   state?: string | null;
+  revision?: number;
   runChanges?: number;
   roundRow?: Record<string, unknown> | null;
   photoRows?: unknown[];
@@ -47,6 +48,11 @@ function fake(answers: Answers): FakeDatabase {
       return answers.draftId ? { id: answers.draftId } : null;
     }
     if (sql.startsWith('SELECT COALESCE(MAX(sequence)')) return { next: answers.nextSequence ?? 1 };
+    if (sql.startsWith('SELECT state, draft_revision FROM rounds')) {
+      return answers.state === null
+        ? null
+        : { state: answers.state ?? 'draft', draft_revision: answers.revision ?? 0 };
+    }
     if (sql.startsWith('SELECT state FROM rounds')) {
       return answers.state === null ? null : { state: answers.state ?? 'draft' };
     }
@@ -258,7 +264,7 @@ describe('draft writes', () => {
   it('refuses to change a confirmed round', async () => {
     const db = fake({ runChanges: 0, state: 'confirmed' });
     await expect(
-      updateDraftCounts(db, ROUND_ID, {
+      updateDraftCounts(db, ROUND_ID, 0, {
         actualShots: 5,
         declaredMisses: 0,
         unresolvedShots: 0,
@@ -268,7 +274,7 @@ describe('draft writes', () => {
     ).rejects.toBeInstanceOf(RoundNotEditableError);
 
     const txDb = fake({ state: 'confirmed' });
-    await expect(saveDraftAnnotations(txDb, ROUND_ID, null, [])).rejects.toBeInstanceOf(
+    await expect(saveDraftAnnotations(txDb, ROUND_ID, 0, null, [])).rejects.toBeInstanceOf(
       RoundNotEditableError,
     );
     expect(writes(txDb)).toEqual([]);
@@ -299,13 +305,14 @@ describe('draft writes', () => {
       },
     ];
 
-    await saveDraftAnnotations(db, ROUND_ID, null, marks);
+    await expect(saveDraftAnnotations(db, ROUND_ID, 0, null, marks)).resolves.toBe(1);
 
     expect(writes(db)).toEqual([
       'UPDATE rounds SET',
       'DELETE FROM round_marks',
       'INSERT INTO round_marks',
       'INSERT INTO round_marks',
+      'UPDATE rounds SET',
     ]);
     const inserts = db.calls.filter(
       (call) => 'sql' in call && call.sql.startsWith('INSERT INTO round_marks'),
@@ -333,6 +340,7 @@ describe('draft writes', () => {
       'INSERT INTO round_photos',
       'UPDATE rounds SET',
       'DELETE FROM round_marks',
+      'UPDATE rounds SET',
     ]);
   });
 
@@ -346,25 +354,13 @@ describe('draft writes', () => {
       height: 1,
       addedAtUtc: 't',
     });
-    expect(writes(db)).toEqual(['INSERT INTO round_photos']);
+    expect(writes(db)).toEqual(['INSERT INTO round_photos', 'UPDATE rounds SET']);
   });
 });
 
 describe('confirmRound', () => {
-  it('confirms a draft once and reports a repeat without overwriting', async () => {
-    await expect(confirmRound(fake({ runChanges: 1 }), ROUND_ID, RESULT, 't')).resolves.toBe(
-      'confirmed',
-    );
-
-    const again = fake({ runChanges: 0, state: 'confirmed' });
-    await expect(confirmRound(again, ROUND_ID, RESULT, 't')).resolves.toBe('alreadyConfirmed');
-    expect(writes(again)).toEqual(['UPDATE rounds SET']);
-    const update = again.calls[0];
-    expect(update && 'sql' in update ? update.sql : '').toContain(
-      "WHERE id = ? AND state = 'draft'",
-    );
-  });
-
+  // Confirmation itself (revision, pending analysis, idempotency) runs on real SQLite in
+  // sqliteRounds.test.ts; here only the stored result format is checked.
   it('round-trips the confirmed result and rejects a tampered one', () => {
     expect(parseConfirmedResult(serializeConfirmedResult(RESULT))).toEqual(RESULT);
     const tampered = JSON.stringify({ ...RESULT, status: 'unknown' });

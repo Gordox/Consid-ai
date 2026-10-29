@@ -21,6 +21,7 @@ import { nowUtcIso } from '../../services/deviceContext';
 import { choosePhoto } from '../../services/photoPicker';
 import type { PickOutcome } from '../../services/pickedPhoto';
 import { AnalysisPanel } from '../analysis/AnalysisPanel';
+import { useRoundAnalysis } from '../analysis/useRoundAnalysis';
 import { usePhotoStore } from '../startup/photoStoreContext';
 import { useSessionStore } from '../startup/sessionStoreContext';
 import { useFocusLoad } from '../useFocusLoad';
@@ -112,17 +113,31 @@ function DraftRoundView({
   onChanged: () => void;
   onInspect: (showHits: boolean) => void;
 }) {
-  const { db } = useSessionStore();
+  const { db, analysisRuns } = useSessionStore();
   const photos = usePhotoStore();
   const router = useRouter();
   const target = findTarget(draft.targetId);
-  const { counts, change, saveFailed } = useDraftCounts(db, draft, reportDevError);
+  const { counts, change, saveFailed, lostChanges } = useDraftCounts(
+    db,
+    draft,
+    reportDevError,
+    onChanged,
+  );
   const [step, setStep] = useState<RoundStep>(() => initialRoundStep(draft));
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  // While analysis runs, photos and marks stay as the request saw them.
-  const [analysisRunning, setAnalysisRunning] = useState(false);
+  // While analysis runs, photos and marks stay as the request saw them. The state comes from the
+  // app's analysis registry, so it is the same after leaving the round and opening it again.
+  const { runningAttempt } = useRoundAnalysis(analysisRuns, draft.id);
+  const analysisRunning = runningAttempt !== null;
   const locked = busy || analysisRunning;
+  // When a run ends (here or while the user was elsewhere) its suggestions or status are stored;
+  // read the draft again.
+  const wasRunning = useRef(analysisRunning);
+  useEffect(() => {
+    if (wasRunning.current && !analysisRunning) onChanged();
+    wasRunning.current = analysisRunning;
+  }, [analysisRunning, onChanged]);
   const [beforeOpen, setBeforeOpen] = useState(false);
   const showBefore = beforeOpen || draft.photos.before !== null;
   const [replaceAfter, setReplaceAfter] = useState<{ pick: PendingPick | null } | null>(null);
@@ -224,6 +239,13 @@ function DraftRoundView({
         <Banner
           body="Couldn't save the shot counts or diameter. Change a value to try again."
           tone="error"
+        />
+      ) : null}
+      {lostChanges > 0 ? (
+        <Banner
+          body={`The round changed elsewhere, so ${lostChanges === 1 ? 'your last change' : `your last ${lostChanges} changes`} to the shots or diameter weren't saved. Check the values shown and change them again if needed.`}
+          title="Round changed"
+          tone="warning"
         />
       ) : null}
       {message === null ? null : <Banner body={message} tone="error" />}
@@ -393,11 +415,8 @@ function DraftRoundView({
           ) : null}
           <AnalysisPanel
             draft={draft}
-            onChanged={onChanged}
             onOpenEditor={openEditor}
-            onRunningChange={setAnalysisRunning}
             photosMissing={missing.after || missing.before}
-            running={analysisRunning}
           />
           <Button
             disabled={locked}

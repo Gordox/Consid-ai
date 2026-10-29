@@ -1,7 +1,7 @@
 import type { Calibration, HitMark } from '../domain/round/round';
 import type { SessionDatabase } from './database';
 import { RoundNotEditableError, RoundNotFoundError } from './roundRepository';
-import { readNullableString, readString, serializeCalibration } from './roundRow';
+import { parseCalibration, readNullableString, readString, serializeCalibration } from './roundRow';
 
 export type AttemptSource = 'service' | 'demo';
 
@@ -16,17 +16,21 @@ export async function createAnalysisAttempt(
     createdAtUtc: string;
     afterFileName: string;
     beforeFileName: string | null;
+    // The calibration sent with the request, so its suggestions can later be told apart from
+    // those of another alignment.
+    calibration: Calibration;
   },
 ): Promise<void> {
   const { changes } = await db.runAsync(
-    `INSERT INTO analysis_attempts (id, round_id, created_at_utc, source, status, after_file_name, before_file_name)
-     SELECT ?, id, ?, ?, 'pending', ?, ? FROM rounds WHERE id = ? AND state = 'draft'`,
+    `INSERT INTO analysis_attempts (id, round_id, created_at_utc, source, status, after_file_name, before_file_name, calibration_json)
+     SELECT ?, id, ?, ?, 'pending', ?, ?, ? FROM rounds WHERE id = ? AND state = 'draft'`,
     [
       input.attemptId,
       input.createdAtUtc,
       input.source,
       input.afterFileName,
       input.beforeFileName,
+      serializeCalibration(input.calibration),
       input.roundId,
     ],
   );
@@ -44,6 +48,30 @@ export async function failAnalysisAttempt(
     "UPDATE analysis_attempts SET status = 'failed', error_code = ? WHERE id = ? AND status = 'pending'",
     [errorCode, attemptId],
   );
+}
+
+// Pending attempts whose request cannot be running any more: when a database opens, no request
+// of this connection exists yet, and requests of an earlier connection can no longer write
+// (it refuses operations once closing). Those attempts would otherwise look busy forever.
+export async function failInterruptedAttempts(
+  db: SessionDatabase,
+  isAttemptRunning: (attemptId: string) => boolean,
+): Promise<number> {
+  const rows = await db.getAllAsync(
+    "SELECT id FROM analysis_attempts WHERE status = 'pending'",
+    [],
+  );
+  let failed = 0;
+  for (const row of rows) {
+    const attemptId = readString(row, 'id');
+    if (isAttemptRunning(attemptId)) continue;
+    const { changes } = await db.runAsync(
+      "UPDATE analysis_attempts SET status = 'failed', error_code = 'interrupted' WHERE id = ? AND status = 'pending'",
+      [attemptId],
+    );
+    failed += changes;
+  }
+  return failed;
 }
 
 export type ApplyOutcome =
@@ -168,6 +196,11 @@ export async function applyAnalysisResult(
       ordinal += 1;
       added += 1;
     }
+    // New suggestions are a change to the draft: a screen still holding the earlier marks must
+    // not write them back over these.
+    await txn.runAsync('UPDATE rounds SET draft_revision = draft_revision + 1 WHERE id = ?', [
+      input.roundId,
+    ]);
     outcome = { kind: 'applied', added, duplicates: input.suggestions.length - added };
   });
   return outcome;
@@ -182,6 +215,8 @@ export type LatestAttempt = {
   readonly errorCode: string | null;
   readonly createdAtUtc: string;
   readonly algorithmVersion: string | null;
+  // The calibration the attempt was sent with; null for attempts saved before it was recorded.
+  readonly calibration: Calibration | null;
 };
 
 // The newest attempt of a round, so the screen can show what happened even after a restart.
@@ -190,7 +225,7 @@ export async function getLatestAttempt(
   roundId: string,
 ): Promise<LatestAttempt | null> {
   const row = await db.getFirstAsync(
-    `SELECT id, source, status, error_code, created_at_utc, algorithm_version FROM analysis_attempts
+    `SELECT id, source, status, error_code, created_at_utc, algorithm_version, calibration_json FROM analysis_attempts
      WHERE round_id = ? ORDER BY created_at_utc DESC, rowid DESC LIMIT 1`,
     [roundId],
   );
@@ -212,5 +247,6 @@ export async function getLatestAttempt(
     errorCode: readNullableString(row, 'error_code'),
     createdAtUtc: readString(row, 'created_at_utc'),
     algorithmVersion: readNullableString(row, 'algorithm_version'),
+    calibration: parseCalibration(readNullableString(row, 'calibration_json')),
   };
 }

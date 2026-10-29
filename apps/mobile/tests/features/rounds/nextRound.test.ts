@@ -1,11 +1,12 @@
 import { createActionGuard, startNextRound } from '../../../src/features/rounds/nextRound';
-import {
-  confirmRound,
-  getSessionProgress,
-  finishSession,
-} from '../../../src/persistence/roundRepository';
+import { getSessionProgress, finishSession } from '../../../src/persistence/roundRepository';
 import type { ConfirmedResult } from '../../../src/domain/round/round';
-import { databaseWithDraft, ROUND_ID, SESSION_ID } from '../../support/sqliteFixtures';
+import {
+  databaseWithDraft,
+  ROUND_ID,
+  SESSION_ID,
+  storeConfirmedRound,
+} from '../../support/sqliteFixtures';
 
 const RESULT: ConfirmedResult = {
   targetId: 'demo-synthetic-v1',
@@ -32,7 +33,7 @@ const input = {
 
 async function confirmedSession() {
   const db = await databaseWithDraft();
-  await confirmRound(db, ROUND_ID, RESULT, '2026-10-28T11:00:00.000Z');
+  storeConfirmedRound(db, ROUND_ID, RESULT, '2026-10-28T11:00:00.000Z');
   return db;
 }
 

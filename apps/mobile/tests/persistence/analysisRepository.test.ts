@@ -11,7 +11,12 @@ import {
   saveDraftAnnotations,
   setDraftPhoto,
 } from '../../src/persistence/roundRepository';
-import { databaseWithDraft, ROUND_ID } from '../support/sqliteFixtures';
+import {
+  databaseWithDraft,
+  ROUND_ID,
+  draftRevision,
+  TEST_CALIBRATION,
+} from '../support/sqliteFixtures';
 
 // Runs on real SQLite (node:sqlite): the statements, constraints and transaction are the app's.
 
@@ -55,6 +60,7 @@ async function startAttempt(
     createdAtUtc,
     afterFileName: 'a.jpg',
     beforeFileName: null,
+    calibration: TEST_CALIBRATION,
   });
 }
 
@@ -105,7 +111,7 @@ describe('analysis attempts on SQLite', () => {
 
   it('replaces only pending suggestions; manual, edited and accepted marks stay', async () => {
     const db = await draftWithAfter();
-    await saveDraftAnnotations(db, ROUND_ID, null, [
+    await saveDraftAnnotations(db, ROUND_ID, await draftRevision(db), null, [
       { ...suggestion('pending', 10, 10) },
       { ...suggestion('accepted', 500, 500), accepted: true },
       { ...suggestion('edited', 900, 900), source: 'suggestedEdited', accepted: true },
@@ -181,9 +187,9 @@ describe('applyAnalysisResult: calibration changed meanwhile', () => {
 
   it('ignores an answer for an earlier calibration and keeps the marks', async () => {
     const db = await draftWithAfter();
-    await saveDraftAnnotations(db, ROUND_ID, sent, [hit]);
+    await saveDraftAnnotations(db, ROUND_ID, await draftRevision(db), sent, [hit]);
     await startAttempt(db, 'a1', '2026-10-28T10:00:00.000Z');
-    await saveDraftAnnotations(db, ROUND_ID, adjusted, [hit]);
+    await saveDraftAnnotations(db, ROUND_ID, await draftRevision(db), adjusted, [hit]);
 
     await expect(apply(db, 'a1', [suggestion('s', 100, 100)], sent)).resolves.toEqual({
       kind: 'stale',
@@ -194,7 +200,7 @@ describe('applyAnalysisResult: calibration changed meanwhile', () => {
 
   it('applies an answer for the calibration still in place', async () => {
     const db = await draftWithAfter();
-    await saveDraftAnnotations(db, ROUND_ID, sent, [hit]);
+    await saveDraftAnnotations(db, ROUND_ID, await draftRevision(db), sent, [hit]);
     await startAttempt(db, 'a1', '2026-10-28T10:00:00.000Z');
     const outcome = await apply(db, 'a1', [suggestion('s', 100, 100)], sent);
     expect(outcome.kind).toBe('applied');
@@ -226,6 +232,7 @@ describe('applyAnalysisResult: after photo only by choice', () => {
       createdAtUtc: '2026-10-28T10:00:00.000Z',
       afterFileName: 'a.jpg',
       beforeFileName: 'before.jpg',
+      calibration: TEST_CALIBRATION,
     });
     await setDraftPhoto(db, ROUND_ID, before('before-2.jpg'));
     await expect(apply(db, 'a2', [suggestion('s', 100, 100)])).resolves.toEqual({ kind: 'stale' });

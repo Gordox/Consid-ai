@@ -1,12 +1,14 @@
 import type { Calibration, ConfirmedResult, HitMark } from '../../../src/domain/round/round';
 import { loadInspection } from '../../../src/features/inspection/inspection';
 import type { SessionDatabase } from '../../../src/persistence/database';
+import { saveDraftAnnotations, setDraftPhoto } from '../../../src/persistence/roundRepository';
 import {
-  confirmRound,
-  saveDraftAnnotations,
-  setDraftPhoto,
-} from '../../../src/persistence/roundRepository';
-import { databaseWithDraft, ROUND_ID, SESSION_ID } from '../../support/sqliteFixtures';
+  databaseWithDraft,
+  draftRevision,
+  ROUND_ID,
+  SESSION_ID,
+  storeConfirmedRound,
+} from '../../support/sqliteFixtures';
 
 // Photo where the demo target's outer ring (100 mm) spans 400 px, centre (500, 500).
 const CALIBRATION: Calibration = [
@@ -64,7 +66,7 @@ async function draftWithMarks() {
     height: 1000,
     addedAtUtc: 't',
   });
-  await saveDraftAnnotations(db, ROUND_ID, CALIBRATION, [
+  await saveDraftAnnotations(db, ROUND_ID, await draftRevision(db), CALIBRATION, [
     mark('centre', 500, 500),
     mark('pending', 700, 700, false),
   ]);
@@ -83,7 +85,9 @@ describe('loadInspection', () => {
 
   it('shows the values fixed at confirmation, not a recalculation', async () => {
     const base = await draftWithMarks();
-    await saveDraftAnnotations(base, ROUND_ID, CALIBRATION, [mark('centre', 500, 500)]);
+    await saveDraftAnnotations(base, ROUND_ID, await draftRevision(base), CALIBRATION, [
+      mark('centre', 500, 500),
+    ]);
     const result: ConfirmedResult = {
       targetId: 'demo-synthetic-v1',
       scoringRule: 'contact-highest-v1',
@@ -98,7 +102,8 @@ describe('loadInspection', () => {
       // Deliberately not what the current geometry would give (10), to prove nothing rescored.
       shots: [{ markId: 'centre', shots: 1, centreMm: { x: 0, y: 0 }, value: 7 }],
     };
-    await confirmRound(base, ROUND_ID, result, 't2');
+    // Stored as an earlier rule could have scored it.
+    storeConfirmedRound(base, ROUND_ID, result, 't2');
     const { db, writes } = watchWrites(base);
     const inspection = await loadInspection(db, SESSION_ID, ROUND_ID);
     expect(writes).toEqual([]);

@@ -14,6 +14,12 @@ import {
   isHitDiameterMm,
   isHitDiameterSource,
 } from '../domain/round/roundRules';
+import {
+  type BlockReason,
+  buildConfirmedResult,
+  RoundNotConfirmableError,
+} from '../domain/round/roundEvaluation';
+import type { TargetDefinition } from '../domain/target/targetDefinition';
 import type { SessionDatabase } from './database';
 import {
   InvalidRoundDataError,
@@ -66,6 +72,15 @@ export class RoundNotEditableError extends Error {
   }
 }
 
+// The draft was changed after the revision the write was based on. Nothing was written; the
+// caller must read the draft again instead of retrying the same, outdated values.
+export class DraftChangedError extends Error {
+  constructor() {
+    super('The draft changed since it was read');
+    this.name = 'DraftChangedError';
+  }
+}
+
 const isCount = (value: number): boolean => isActualShots(value);
 const isPositiveInteger = (value: number): boolean => Number.isInteger(value) && value > 0;
 const isRevision = (value: number): boolean => Number.isInteger(value) && value >= 0;
@@ -103,6 +118,36 @@ async function requireDraft(db: SessionDatabase, roundId: string): Promise<void>
   if (readString(row, 'state') !== 'draft') {
     throw new RoundNotEditableError();
   }
+}
+
+// A draft at exactly this revision, or the reason it is not: missing, confirmed or changed.
+// Null for expectedRevision skips only the revision check (see setDraftPhoto).
+async function requireDraftAt(
+  db: SessionDatabase,
+  roundId: string,
+  expectedRevision: number | null,
+): Promise<void> {
+  const row = await db.getFirstAsync('SELECT state, draft_revision FROM rounds WHERE id = ?', [
+    roundId,
+  ]);
+  if (row === null || row === undefined) {
+    throw new RoundNotFoundError();
+  }
+  if (readString(row, 'state') !== 'draft') {
+    throw new RoundNotEditableError();
+  }
+  if (
+    expectedRevision !== null &&
+    readNumber(row, 'draft_revision', isRevision) !== expectedRevision
+  ) {
+    throw new DraftChangedError();
+  }
+}
+
+async function bumpRevision(db: SessionDatabase, roundId: string): Promise<void> {
+  await db.runAsync('UPDATE rounds SET draft_revision = draft_revision + 1 WHERE id = ?', [
+    roundId,
+  ]);
 }
 
 export type StartRoundInput = {
@@ -258,11 +303,13 @@ export type DraftCounts = {
   readonly hitDiameterSource: HitDiameterSource;
 };
 
+// Writes the counts only if the draft is still at expectedRevision; returns the new revision.
 export async function updateDraftCounts(
   db: SessionDatabase,
   roundId: string,
+  expectedRevision: number,
   counts: DraftCounts,
-): Promise<void> {
+): Promise<number> {
   if (
     !isCount(counts.actualShots) ||
     !isCount(counts.declaredMisses) ||
@@ -272,10 +319,11 @@ export async function updateDraftCounts(
   ) {
     throw new RangeError('Round counts are out of range');
   }
+  // One statement: the revision check and the write cannot be separated by another write.
   const { changes } = await db.runAsync(
     `UPDATE rounds SET actual_shots = ?, declared_misses = ?, unresolved_shots = ?,
-       hit_diameter_mm = ?, hit_diameter_source = ?
-     WHERE id = ? AND state = 'draft'`,
+       hit_diameter_mm = ?, hit_diameter_source = ?, draft_revision = draft_revision + 1
+     WHERE id = ? AND state = 'draft' AND draft_revision = ?`,
     [
       counts.actualShots,
       counts.declaredMisses,
@@ -283,22 +331,28 @@ export async function updateDraftCounts(
       counts.hitDiameterMm,
       counts.hitDiameterSource,
       roundId,
+      expectedRevision,
     ],
   );
   if (changes !== 1) {
-    await requireDraft(db, roundId);
+    await requireDraftAt(db, roundId, expectedRevision);
+    throw new DraftChangedError();
   }
+  return expectedRevision + 1;
 }
 
 // Calibration and marks are saved together so a mark never refers to an outdated calibration.
+// The whole set replaces the stored one, so it is written only if nothing else changed the draft
+// since expectedRevision (for example suggestions from an analysis); returns the new revision.
 export async function saveDraftAnnotations(
   db: SessionDatabase,
   roundId: string,
+  expectedRevision: number,
   calibration: Calibration | null,
   marks: readonly HitMark[],
-): Promise<void> {
+): Promise<number> {
   await db.withExclusiveTransactionAsync(async (txn) => {
-    await requireDraft(txn, roundId);
+    await requireDraftAt(txn, roundId, expectedRevision);
     await txn.runAsync('UPDATE rounds SET calibration_json = ? WHERE id = ?', [
       calibration === null ? null : serializeCalibration(calibration),
       roundId,
@@ -323,7 +377,9 @@ export async function saveDraftAnnotations(
         ],
       );
     }
+    await bumpRevision(txn, roundId);
   });
+  return expectedRevision + 1;
 }
 
 // Marks and calibration are in after-photo pixels, so replacing the after photo clears them.
@@ -361,6 +417,7 @@ export async function setDraftPhoto(
       await txn.runAsync('UPDATE rounds SET calibration_json = NULL WHERE id = ?', [roundId]);
       await txn.runAsync('DELETE FROM round_marks WHERE round_id = ?', [roundId]);
     }
+    await bumpRevision(txn, roundId);
   });
   return replaced;
 }
@@ -383,40 +440,99 @@ export async function removeDraftPhoto(
       await txn.runAsync('UPDATE rounds SET calibration_json = NULL WHERE id = ?', [roundId]);
       await txn.runAsync('DELETE FROM round_marks WHERE round_id = ?', [roundId]);
     }
+    await bumpRevision(txn, roundId);
   });
   return removed;
 }
 
-export type ConfirmOutcome = 'confirmed' | 'alreadyConfirmed';
+export type ConfirmOutcome =
+  | { readonly kind: 'confirmed'; readonly result: ConfirmedResult }
+  // Confirmed earlier (double tap, retry after an unclear failure): the stored result, unchanged.
+  | { readonly kind: 'alreadyConfirmed'; readonly result: ConfirmedResult }
+  // The draft changed after the revision the screen showed; nothing was confirmed.
+  | { readonly kind: 'changed' }
+  // An analysis of this round is still running in this app; nothing was confirmed.
+  | { readonly kind: 'analysisRunning' }
+  | { readonly kind: 'blocked'; readonly reason: BlockReason };
 
-// A repeated confirmation (double tap, retry after an unclear failure) reports
-// alreadyConfirmed and never overwrites the stored result.
+export type ConfirmInput = {
+  // The revision of the draft the user reviewed.
+  readonly expectedRevision: number;
+  readonly confirmedAtUtc: string;
+  readonly findTarget: (targetId: string) => TargetDefinition | null;
+  // Whether an attempt still has a running request in this app (the analysis registry).
+  readonly isAttemptRunning: (attemptId: string) => boolean;
+};
+
+// Builds the result from the stored draft inside the same transaction that confirms it, so the
+// counts, marks, calibration and suggestions are exactly the ones confirmed. A pending attempt
+// without a running request can never answer again (its request ended without recording an
+// outcome), so it is recorded as interrupted here instead of blocking confirmation for good.
 export async function confirmRound(
   db: SessionDatabase,
   roundId: string,
-  result: ConfirmedResult,
-  confirmedAtUtc: string,
+  input: ConfirmInput,
 ): Promise<ConfirmOutcome> {
-  const { changes } = await db.runAsync(
-    `UPDATE rounds SET state = 'confirmed', confirmed_at_utc = ?, confirmed_json = ?,
-       confirmed_subtotal = ?, confirmed_complete = ?
-     WHERE id = ? AND state = 'draft'`,
-    [
-      confirmedAtUtc,
-      serializeConfirmedResult(result),
-      result.subtotal,
-      result.status === 'complete' ? 1 : 0,
-      roundId,
-    ],
-  );
-  if (changes === 1) {
-    return 'confirmed';
-  }
-  const row = await db.getFirstAsync('SELECT state FROM rounds WHERE id = ?', [roundId]);
-  if (row === null || row === undefined) {
-    throw new RoundNotFoundError();
-  }
-  return 'alreadyConfirmed';
+  let outcome: ConfirmOutcome = { kind: 'changed' };
+  await db.withExclusiveTransactionAsync(async (txn) => {
+    const round = await getRound(txn, roundId);
+    if (round === null) {
+      throw new RoundNotFoundError();
+    }
+    if (round.state === 'confirmed') {
+      outcome = { kind: 'alreadyConfirmed', result: round.result };
+      return;
+    }
+    if (round.revision !== input.expectedRevision) {
+      outcome = { kind: 'changed' };
+      return;
+    }
+    const pending = await txn.getAllAsync(
+      "SELECT id FROM analysis_attempts WHERE round_id = ? AND status = 'pending'",
+      [roundId],
+    );
+    for (const row of pending) {
+      const attemptId = readString(row, 'id');
+      if (input.isAttemptRunning(attemptId)) {
+        outcome = { kind: 'analysisRunning' };
+        return;
+      }
+      await txn.runAsync(
+        "UPDATE analysis_attempts SET status = 'failed', error_code = 'interrupted' WHERE id = ? AND status = 'pending'",
+        [attemptId],
+      );
+    }
+    let result: ConfirmedResult;
+    try {
+      result = buildConfirmedResult(round, input.findTarget(round.targetId));
+    } catch (error) {
+      if (error instanceof RoundNotConfirmableError) {
+        outcome = { kind: 'blocked', reason: error.reason };
+        return;
+      }
+      throw error;
+    }
+    // The count columns are written from the same result as confirmed_json, so lists and the
+    // stored result can never disagree.
+    await txn.runAsync(
+      `UPDATE rounds SET state = 'confirmed', confirmed_at_utc = ?, confirmed_json = ?,
+         confirmed_subtotal = ?, confirmed_complete = ?, actual_shots = ?, declared_misses = ?,
+         unresolved_shots = ?, draft_revision = draft_revision + 1
+       WHERE id = ? AND state = 'draft'`,
+      [
+        input.confirmedAtUtc,
+        serializeConfirmedResult(result),
+        result.subtotal,
+        result.status === 'complete' ? 1 : 0,
+        result.actualShots,
+        result.declaredMisses,
+        result.unresolvedShots,
+        roundId,
+      ],
+    );
+    outcome = { kind: 'confirmed', result };
+  });
+  return outcome;
 }
 
 // Removes a draft and its rows. Returns photo files for the caller to delete after commit.
