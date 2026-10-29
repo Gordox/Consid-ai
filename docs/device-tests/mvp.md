@@ -12,6 +12,11 @@ Checklista för hela flödet efter omdesignen UI/UX v2.1 (`implementation/ui-ux-
 - Servern och bildanalysen provades inte.
 - Det är en helhetsbedömning, inte resultat per kontroll. S-1–S-10 och raderna nedan står kvar som Ej genomförd tills enskilda resultat rapporteras.
 
+**Analysintegration 2026-10-29** (`main` på `72cd692`):
+- Före rättningen nådde inget analysanrop servern. Expo SDK 58:s `fetch` vägrar React Natives `{ uri }`-bilagor, och appen visade `Couldn't reach the analysis service`.
+- Efter rättningen nådde ett anrop med en efterbild servern över Wi-Fi och fick `200 OK`. Ägaren bedömer att analysflödet fungerar.
+- Det visar att integrationen fungerar, inte att detektionen är korrekt. Ingen jämförelse mot facit är gjord, och parläget, Cancel och avbrutna anrop är inte rapporterade var för sig.
+
 **Regler:**
 - Fyll i resultat först när de har körts.
 - Skriv inga sessionsuppgifter eller bilder i rapporten.
