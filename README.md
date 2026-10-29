@@ -1,90 +1,162 @@
 # Target Practice
 
-A mobile app for logging recreational target-practice sessions, built with React Native, Expo
-(SDK 58) and TypeScript. The app lives in [`apps/mobile`](apps/mobile).
+[![CI](https://github.com/Gordox/Consid-ai/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Gordox/Consid-ai/actions/workflows/ci.yml)
 
-> **Status: partial MVP with a working manual flow and a local, heuristic analysis service.**
-> You can create a session, run rounds with before and after photos, calibrate, get hit
-> suggestions from the local analysis service (or mark hits yourself), accept or correct them,
-> confirm rounds, finish the session and see the results in the list. What is **not** real yet:
->
-> - **Scores use a synthetic demo target** and are labelled as demo everywhere, including the
->   summaries. The real target looks like an ISSF 25/50 m pistol target, but its dimensions are
->   not verified (see [docs/target-calibration.md](docs/target-calibration.md)).
-> - **Hit suggestions are tested on synthetic images only.** No real photo has been analysed
->   ([docs/evaluation.md](docs/evaluation.md)). Every suggestion must be accepted by you before it
->   counts.
->
-> Automated checks pass (app: format, lint, types, Jest; service: ruff, mypy, pytest). The basic
-> flow was tried on the Galaxy S20 before the v2.1 redesign; the redesigned interface has not
-> been run on any phone yet ([S20 checklist](docs/device-tests/mvp.md)). iOS is untested. See
-> [implementation/mvp-plan.md](implementation/mvp-plan.md).
+En Android-app (React Native/Expo) för att logga skjutträning mot papperstavla: du fotograferar tavlan, markerar eller får förslag på träffar och sparar bekräftade rundor, så att du slipper föra poäng för hand.
 
-## Prerequisites
+**Nedladdning:** [GitHub Releases](https://github.com/Gordox/Consid-ai/releases) (personlig alfa, prerelease)
+**Källkod:** <https://github.com/Gordox/Consid-ai>
 
-- **Node.js 26** (pinned in [`apps/mobile/.nvmrc`](apps/mobile/.nvmrc)) and npm.
-- **Expo Go** for Expo SDK 58 on the phone you test with, from Google Play (Android) or the
-  App Store (iOS). The app currently runs in Expo Go, so no development build is needed.
-- The phone and the development computer on the same network, or a USB connection (Android).
+> **Personlig alfa.** Poängen är **demopoäng** tills tavlans mått är verifierade. Bildanalysen är bara mätt på syntetiska bilder; dess precision på riktiga foton är inte känd. Anteckningar ingår inte i alfan ([beslut](docs/decisions/2026-10-29-notes-deferred.md)).
 
-Optional, only for emulators and simulators:
+## Vad det gör
 
-- **Android emulator:** Android Studio with an Android Virtual Device.
-- **iOS Simulator:** macOS with Xcode.
+Du skapar en session med vapen, kaliber, avstånd och planerat antal skott, och tar sedan runda för runda ett foto av tavlan (gärna också ett före skjutningen). Du justerar fyra punkter på ytterringen, markerar träffarna själv eller låter en lokal analysserver föreslå dem, och granskar varje förslag innan något räknas. Bekräftade rundor sparas lokalt på telefonen med foton och resultat, och sessionen visar summeringen.
 
-## Install
+## Kom igång
+
+### Installera Android-APK
+
+För testare, utan Expo Go, Node eller Metro:
+
+1. Ladda ned `target-practice-alpha-<version>.apk` från den senaste prereleasen under [Releases](https://github.com/Gordox/Consid-ai/releases) direkt i telefonen, eller för över filen med USB.
+2. Öppna filen. Om Android frågar, tillåt installation från appen du öppnade den med (webbläsaren eller filhanteraren).
+3. Kamera och bilder efterfrågas först när du använder dem.
+
+Allt om installation, uppdatering, behörigheter och felsökning för testare står i [installationsguiden](Assigments/Assigment%204/README.md).
+
+**Uppdatering:** installera en nyare APK från samma releaser ovanpå den gamla. Det fungerar bara med samma applikations-id (`com.gordox.targetpractice`) och samma signering, och då behålls dina data. **Avinstallation raderar appens lokala data** (sessioner, rundor och foton).
+
+### Krav
+
+**Mobilappen (utveckling):**
+- Node.js 26 (`apps/mobile/.nvmrc`, `engines` i `apps/mobile/package.json`) och npm.
+- Expo SDK 58 (React Native 0.88). Appen körs i **Expo Go** för SDK 58 på telefonen; ingen development build behövs.
+- Telefon och dator på samma betrodda nätverk.
+- Bara för att bygga en APK lokalt: JDK 17 och Android SDK. Releasebygget görs annars i GitHub Actions.
+
+**Analysservern:**
+- Python 3.14 (`services/analysis/pyproject.toml` kräver `>=3.14,<3.15`; verifierat med 3.14.2).
+- Inga systempaket; OpenCV installeras som wheel.
+
+### Installation
+
+```bash
+git clone https://github.com/Gordox/Consid-ai.git
+cd Consid-ai
+```
+
+Mobilappen, från `apps/mobile`:
 
 ```bash
 cd apps/mobile
 npm ci
 ```
 
-## Start the development server
+Analysservern, från `services/analysis` (första gången):
+
+```bash
+cd services/analysis
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -c requirements-lock.txt -e '.[dev]'
+```
+
+### Konfiguration
+
+| Variabel | Fil | Används av | Behövs |
+| --- | --- | --- | --- |
+| `EXPO_PUBLIC_ANALYSIS_URL` | `apps/mobile/.env.local` (mall: `apps/mobile/.env.example`, ignoreras av Git) | Mobilappen, när JS-bundlen byggs | Nej. Utan den är analysen avstängd och du markerar träffar själv. |
+| `ANALYSIS_LOG_LEVEL` | Miljön där servern startas | Analysservern | Nej. `DEBUG`, `INFO` (standard), `WARNING` eller `ERROR`. |
+
+Skapa appens fil från mallen och skriv in din dators adress:
+
+```bash
+cd apps/mobile
+cp .env.example .env.local
+# Redigera .env.local:
+# EXPO_PUBLIC_ANALYSIS_URL=http://<datorns-LAN-adress>:8000
+```
+
+- Analysadressen är **ingen hemlighet** och får inte innehålla någon. Allt med prefixet `EXPO_PUBLIC_` byggs in i appen och kan läsas av alla som har den.
+- Appen godtar HTTPS överallt. **Vanlig HTTP godtas bara i utvecklingsläge** (Expo Go) och bara till `localhost`, `127.0.0.1` eller en privat nätverksadress (10.x, 172.16–31.x, 192.168.x). En adress som inte godtas stänger av analysen, och appen säger varför.
+- Adressen läses när JS-bundlen byggs. Starta om `npx expo start` efter en ändring, och använd `npx expo start --clear` om appen fortfarande visar den gamla.
+
+**Release-APK:n** byggs i CI utan `.env.local` och har **ingen analysadress**: analysen är avstängd och appen visar "Analysis unavailable". En ändring i `.env.local` på datorn påverkar aldrig en redan installerad APK, eftersom adressen byggs in vid byggtillfället. En annan adress kräver ett nytt APK-bygge, och eftersom releasebyggen kräver HTTPS och Android blockerar klartext-HTTP i release kan en release-APK inte nå den lokala HTTP-servern. Analys mot den lokala servern görs i utvecklingsläge.
+
+### Kör projektet
+
+**Analysservern** (en egen terminal, från `services/analysis`):
+
+```bash
+cd services/analysis
+source .venv/bin/activate
+python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
+```
+
+`--host 0.0.0.0` gör servern nåbar för telefonen. Servern har ingen inloggning: kör den bara på ett betrott nätverk.
+
+1. Hitta datorns LAN-adress, på macOS till exempel `ipconfig getifaddr en0`.
+2. Öppna `http://<datorns-LAN-adress>:8000/health` i telefonens webbläsare. Den ska visa `{"status":"ok"}`.
+3. Svara ja om macOS frågar om Python får ta emot inkommande anslutningar.
+
+**Mobilappen** (en annan terminal, från `apps/mobile`):
 
 ```bash
 cd apps/mobile
 npx expo start
 ```
 
-The terminal shows a QR code and a menu of keyboard shortcuts.
+Skanna QR-koden med Expo Go på telefonen. Ändringar i koden laddas om automatiskt; tryck `r` i terminalen för att ladda om helt. Ändringar i `.env.local` kräver omstart av `npx expo start`, och ändringar i `app.json`, `app.config.js` eller `plugins/` kräver ett nytt APK-bygge för att nå en installerad APK.
 
-## Run on Android
+> **Bildanalysen körs för närvarande endast via en lokalt startad server på en dator.** Den körs inte på telefonen och någon publik analystjänst ingår inte. Telefonen måste kunna nå datorns server på det betrodda lokala nätverket. Utan servern fungerar det manuella flödet fortfarande.
 
-**Physical device (primary test device: Samsung Galaxy S20):**
+## Arkitektur
 
-1. Install Expo Go from Google Play.
-2. Run `npx expo start` in `apps/mobile`.
-3. Open Expo Go and scan the QR code from the terminal.
+Mobilappen är en Expo Router-app där skärmarna i `app/` är tunna och delegerar till `src/features`. Poäng, skottredovisning, kalibrering och validering ligger som rena funktioner i `src/domain`, utan beroende till React Native, databas eller nätverk. `src/persistence` lagrar sessioner, rundor och resultat i SQLite med versionerade migrationer och transaktioner, medan fotona kopieras till appens egen mapp och normaliseras (rättvända, utan platsdata) innan de visas eller analyseras. Analysservern är en separat FastAPI-tjänst som tar emot den normaliserade bilden och kalibreringen enligt `contracts/analysis.openapi.yaml` och returnerar förslag som appen alltid låter användaren granska.
 
-If the phone cannot reach the computer over the network, connect it with USB (USB debugging
-enabled) and forward the Metro port:
-
-```bash
-adb reverse tcp:8081 tcp:8081
-npx expo start --localhost
+```text
+apps/mobile/
+  app/                  # Expo Router-skärmar
+  src/domain/           # poäng, kalibrering, regler
+  src/persistence/      # SQLite, migrationer, repositories
+  src/features/         # skärmar och flöden (sessioner, rundor, editor, analys, kamera)
+  src/services/         # fotolagring, bildväljare, analysklient
+  plugins/              # config plugin för release-signering
+  tests/
+services/analysis/
+  app/                  # FastAPI: api, imaging, detection, schemas, config
+  tests/
+contracts/              # OpenAPI för analysen
+docs/                   # beslut, design, telefonchecklistor, utvärdering
+.github/workflows/      # CI och APK-release
 ```
 
-Then open the app from Expo Go, or press `a` in the terminal.
+## Teknisk stack
 
-**Emulator:** start an Android Virtual Device, then run `npm run android` in `apps/mobile`
-(or press `a` in a running `npx expo start`).
+| Komponent | Teknik | Anledning |
+| --- | --- | --- |
+| Mobilapp | React Native 0.88, Expo SDK 58, TypeScript (strict) | En kodbas för Android och iOS; Expo Go för snabb test på S20 |
+| Navigering | Expo Router | Filbaserade rutter, standard i Expo |
+| Kamera och bilder | expo-camera, expo-image-picker, expo-image-manipulator | Egen kameravy och bibliotek; rättvända kopior utan platsdata |
+| Lokal lagring | expo-sqlite, expo-file-system | Hållbara utkast och resultat över omstarter; foton utanför databasen |
+| Bildanalys | Python 3.14, FastAPI, OpenCV | Registrering och hålsökning i en liten, typad HTTP-tjänst |
+| Tester | Jest (jest-expo), `node:sqlite`, pytest | Domän, SQL och kontrakt testas utan telefon |
+| Kodkvalitet | ESLint, Prettier, TypeScript; ruff, mypy | Samma kontroller lokalt och i CI |
+| CI/CD | GitHub Actions, GitHub Releases | Kontroller på PR och `main`; signerad APK publiceras som prerelease |
 
-## Run on iOS
+## Begränsningar
 
-iOS compatibility is kept in the code, but iOS has not been tested yet.
+- **Demopoäng.** Appen har bara den syntetiska tavlan `demo-synthetic-v1`. Den riktiga tavlans mått är inte verifierade ([docs/target-calibration.md](docs/target-calibration.md)), så poängen är märkta som demo och är inga riktiga resultat.
+- **Omätt precision.** Analysen är heuristisk bildbehandling (OpenCV), bara mätt på syntetiska bilder ([docs/evaluation.md](docs/evaluation.md)). Ett lyckat anrop säger ingenting om hur rätt förslagen är på riktiga foton. Varje förslag måste godkännas.
+- **Lokal server.** Analysen kräver den lokala servern och utvecklingsläge; release-APK:n har ingen analys. Servern saknar inloggning och får inte exponeras utanför ett betrott nätverk.
+- **Enhetsverifiering.** Ägaren har provat det manuella flödet och analysintegrationen på Galaxy S20 som helhet; de enskilda kontrollerna i [docs/device-tests/mvp.md](docs/device-tests/mvp.md) är inte rapporterade var för sig. iOS är inte testat.
+- **Anteckningar** ingår inte i alfan.
+- En fristående APK har **separat appdata** från Expo Go. Sessioner från Expo Go flyttas inte över.
 
-**Physical device:**
+## Tester och CI/CD
 
-1. Install Expo Go from the App Store.
-2. Run `npx expo start` in `apps/mobile`.
-3. Scan the QR code with the Camera app and open the link in Expo Go.
-
-**Simulator (macOS with Xcode):** run `npm run ios` in `apps/mobile` (or press `i` in a running
-`npx expo start`).
-
-## Checks
-
-Run from `apps/mobile`:
+Från `apps/mobile`:
 
 ```bash
 npm run format:check
@@ -93,10 +165,7 @@ npm run typecheck
 npm test -- --runInBand
 ```
 
-Some persistence tests run the app's SQL on Node's built-in SQLite (`node:sqlite`): a different
-SQLite build from the phone's, so they do not replace device checks.
-
-Run from `services/analysis` (see its [README](services/analysis/README.md) for setup):
+Från `services/analysis`, med miljön aktiverad:
 
 ```bash
 ruff format --check app tests
@@ -105,132 +174,41 @@ mypy
 python -m pytest -q
 ```
 
-**CI:** [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs both sets of checks on every pull request to `main` and every push to `main`. It has no builds, deployment or device tests, so a green run does not mean the app has been checked on a phone. The last run in GitHub Actions was for pull request #2 and the push to `main` (`d802586`), with the app job green. Everything after that, including the analysis job, has only been checked locally: none of it has been pushed.
+Vissa persistenstester kör appens SQL på Nodes inbyggda SQLite (`node:sqlite`), inte telefonens. De ersätter inte kontroller på telefon.
 
-**Run manually when dependencies change** (not part of CI, because they depend on Expo's online services and can fail when Expo publishes a new patch):
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml):
 
-```bash
-npx expo install --check
-npx expo-doctor
-```
+| Jobb | När | Vad |
+| --- | --- | --- |
+| `checks` | PR mot `main` och push till `main` | Appens formatering, lint, typer, tester och en Android-export av JS-bundlen. Inga hemligheter. |
+| `analysis` | PR mot `main` och push till `main` | Serverns ruff, mypy och pytest. |
+| `apk` | Push till `main` när appen eller arbetsflödet ändrats | Genererar Android-projektet, bygger en signerad release-APK, kontrollerar certifikat, paket-id och version. Läsrätt. |
+| `release` | Efter `apk` | Publicerar samma filer som prerelease (`v<version>`), skriver aldrig över en befintlig release och kontrollerar nedladdningen utan inloggning. Enda jobbet med skrivrätt. |
 
-## Using the app
+Versionen är `<version i app.json>-alpha.<körningsnummer>` och `versionCode` är körningsnumret. Signeringen kräver repository-hemligheterna `TP_UPLOAD_KEYSTORE_BASE64`, `TP_UPLOAD_STORE_PASSWORD`, `TP_UPLOAD_KEY_ALIAS` och `TP_UPLOAD_KEY_PASSWORD`, och variabeln `TP_SIGNING_CERT_SHA256` (certifikatets offentliga fingeravtryck). Nyckeln finns inte i repot.
 
-The interface follows [docs/design/ui-ux.md](docs/design/ui-ux.md) (v2.1). The app always opens
-your normal database; there is no developer or test mode in the app.
+Kör manuellt när beroenden ändras (beror på Expos onlinetjänster): `npx expo install --check` och `npx expo-doctor`.
 
-1. **Sessions** lists your sessions with **All / In progress / Finished** filters. Tap
-   **New session**: firearm name, firearm type (chosen in a sheet, nothing preselected), calibre
-   (searchable list or Custom), distance and planned shots/rounds. **Profiles and templates**
-   saves firearm profiles (name, type, calibre) and training templates (distance, shots per
-   round, optional rounds); the form starts from the last used ones, every value can be changed
-   for one session, and saved sessions never change when a profile or template does.
-2. Open a session and tap **Start round**. The round starts with **Actual shots** set to the
-   planned number; change it if the round was interrupted.
-3. **Hole diameter** starts as an *assumed* 9.0 mm, labelled **Assumed** next to your calibre.
-   Type another value (1–30 mm, up to two decimals, with a point or a comma), or tap
-   **Use this diameter** to confirm it. **Add photos** saves a typed value first and stops if it
-   is not valid. Your choice carries over to the next round. A hole touching a ring line gets the
-   higher score, so the diameter matters near lines.
-4. **Add photos:** the **After photo** is the main one; take it with the app's **Camera**, whose
-   circle and frame are only a guide (not detection, alignment or scoring), or choose it from the
-   **Library**. A **Before photo** is optional, under **Improve detection**, and helps when you
-   reuse a target. The app keeps an unchanged copy and an upright copy without location data;
-   marks and analysis use the upright copy. Tap a photo, or **Inspect hits**, to view it full
-   screen, read-only.
-5. **Align target:** in the editor, place the four points where the outer ring crosses the line
-   of numbers: top, right, bottom, left. Drag before lifting to fine-position a point under the
-   magnifier; afterwards drag any point again and the rings follow. Points in the wrong order or
-   on top of each other are explained and cannot be used. Hits keep their place on the photo
-   when you adjust the points; their scores are recalculated. Suggestions found with an earlier
-   alignment are struck through and labelled, and the analysis offers **Analyse again**.
-6. **Analyse photos** (when the service is set up, below) or **Mark hits manually**. With a
-   before photo the two are compared; without one only the after photo is used, which is less
-   reliable. If the two photos cannot be aligned, you can choose **Analyse after photo only**.
-   Suggestions are **dashed with ?** and **not counted** until you accept them.
-7. **Review hits:** the editor has explicit tools: **Add hits** (touch to add), **Select and
-   pan** (nothing is added), **Align**, plus undo, zoom and fit. Accepted hits are numbered.
-   Select a marker to accept or remove it, move it, or set several shots for one hole. Every
-   marker is also listed below the photo. There is no "accept all": each suggestion is reviewed.
-8. **Review round:** declare known **misses** and **unresolved** shots. Missing marks are never
-   counted as misses, and unresolved shots make the result a subtotal that names them.
-9. **Confirm round** when the shots add up and no suggestion is left. The app confirms exactly
-   the round as saved: if it changed after you opened the review (new suggestions, counts that
-   could not be saved), nothing is confirmed and you are asked to check it again. Confirmed
-   rounds are read-only and shown from their stored result. Then **Start next round** or go
-   **Back to session**.
-10. **Finish session** (a draft round must be continued or discarded first). Demo scores are
-    always labelled and kept apart from any verified ones.
+## Felsökning
 
-If Android closes the app while the **photo library** is open (from the round screen or the
-camera screen), the app tries to save the photo on the next start and otherwise tells you the
-pick was interrupted. The in-app camera cannot be recovered that way: a photo taken just before
-the app was closed is lost, and the draft keeps its earlier photo. Leaving the camera while a
-photo is being saved does not cancel the save; after eight seconds you can choose to stay or
-leave. Which cases work, and that none is verified on a phone yet, is in
-[docs/photo-recovery.md](docs/photo-recovery.md).
+| Problem | Åtgärd |
+| --- | --- |
+| Telefonen når inte `/health` | Samma Wi-Fi som datorn? Rätt adress (`ipconfig getifaddr en0`) och port `8000`? Startade du servern med `--host 0.0.0.0`? Tillåt Python i macOS brandvägg. |
+| "Analysis unavailable" i Expo Go | `.env.local` saknas eller är tom. Skapa den och starta om `npx expo start --clear`. |
+| "This build's analysis address isn't allowed" | Adressen bryter mot reglerna ovan, till exempel HTTP i ett releasebygge eller en publik HTTP-adress. |
+| "Couldn't reach the analysis service" | Servern körs inte eller nås inte. Kontrollera `/health` från telefonen; foton och markeringar finns kvar, tryck **Try again**. |
+| Demopoäng visas | Avsiktligt tills tavlan är verifierad. |
 
-## Target and scoring
+## Data och integritet
 
-The owner's target is an X-Targets precision target whose layout matches the ISSF 25 m precision
-and 50 m pistol target (rule 6.3.4.5: ring 10 is 50 mm, ring 1 is 500 mm, black area 200 mm).
-The manufacturer does not state its dimensions, so the match is **not verified**; the app ships
-only `demo-synthetic-v1`, the same ten-ring structure with invented radii (10 mm per ring). Every
-score is labelled as demo and kept apart from verified scores. A hole touching the boundary
-between two zones scores the higher value (the printed line counts as the boundary), and the
-inner ten gives no extra points ([decision](docs/decisions/2026-10-28-scoring-and-hole-diameter.md)). What is needed to enable the real
-target, and a measuring template, are in
-[docs/target-calibration.md](docs/target-calibration.md).
+- Sessioner, rundor, markeringar och resultat sparas lokalt i SQLite. Fotona kopieras till appens egen mapp: en oförändrad kopia (kan innehålla plats, lämnar aldrig telefonen) och en rättvänd JPEG utan metadata. Originalen i telefonens bibliotek ändras aldrig.
+- Inget skickas någonstans om ingen analysadress är satt **och** du trycker **Analyse photos**. Bara den rättvända kopian skickas.
+- Avbrott och återställning: [docs/photo-recovery.md](docs/photo-recovery.md).
 
-## Analysis service
+## Utvecklat med
 
-[`services/analysis`](services/analysis) is a local Python service (FastAPI, OpenCV) that
-implements [`contracts/analysis.openapi.yaml`](contracts/analysis.openapi.yaml). It runs on your
-computer, stores nothing and sends photos nowhere else. Its suggestions are heuristic image
-processing, tested on synthetic images only. Setup, how to reach it from the S20 over Wi-Fi or
-USB, and its limits are in its [README](services/analysis/README.md).
+Claude Code (agentdriven utveckling) som del av kursen Next-Generation Software Development with AI.
 
-The app sends photos only after you tap **Analyse photos**, and only when an address is set:
+## Licens
 
-```bash
-# apps/mobile/.env.local (ignored by Git); see apps/mobile/.env.example
-EXPO_PUBLIC_ANALYSIS_URL=http://192.168.1.23:8000
-```
-
-HTTPS is required in release builds. Development builds also accept plain HTTP to `localhost`,
-`127.0.0.1` and private network addresses (10.x, 172.16–31.x, 192.168.x). Restart
-`npx expo start` after changing the file. Without an address, analysis is off and you mark hits
-yourself.
-
-An analysis keeps running when you leave the round; opening it again shows it still running,
-with **Cancel analysis**, and the editor stays read-only until it ends. Cancelling only makes the
-app stop waiting and ignore any late answer; the service may still finish its work on the photos
-it has received. If the app is closed during an analysis, the next start records it as
-interrupted and you can try again.
-
-## Data and privacy
-
-- Sessions, rounds, marks and results are stored locally in SQLite (`target-practice.db`).
-- Photos are **copied** into the app's own document folder under generated names: an unchanged
-  copy and an upright JPEG without metadata. The originals in the phone's library are never
-  changed or deleted. Discarding a round or replacing a photo deletes only the app's copies.
-- The unchanged copy keeps the photo's metadata, which can include the location. It never
-  leaves the phone.
-- The camera's own temporary file is deleted once its copies are saved, or once the round
-  refused the photo; after any other failure it is left for the system to clear. Only files in
-  the app's cache outside its photo folder are ever deleted this way.
-- Every copy is recorded in the database before it is written. At start, the app deletes only
-  recorded copies that no round refers to and that are more than ten minutes old (left behind
-  if the app stopped mid-save), checking each one just before deleting it. Files it did not
-  record are never touched. The app uses one database and the `photos` folder. Earlier
-  development builds could also create test databases (`target-practice-ui-check.db`,
-  `target-practice-device-check.db`) and a `photos-ui-check` folder; this version never opens,
-  moves or deletes them, so they stay on the device until the app is
-  uninstalled.
-- Nothing is sent anywhere unless an analysis address is configured **and** you tap
-  **Analyse photos**. Only the upright copies are sent, and only after the app has checked that
-  they carry no location data.
-
-## License
-
-No license has been chosen yet.
+Ingen licens är vald ännu.
