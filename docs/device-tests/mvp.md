@@ -7,6 +7,11 @@ Checklista för hela flödet efter omdesignen UI/UX v2.1 (`implementation/ui-ux-
 - Ingen punkt nedan är genomförd eller godkänd. Den nya UI:n har inte körts på någon telefon.
 - Automatiska tester och Android-exporten verifierar inte UI på telefonen.
 
+**Övergripande användarkontroll 2026-10-29** (efter stabiliseringen, `main` på `0b00062`):
+- Ägaren provade det manuella flödet på S20 och bedömde att det fungerar bra.
+- Servern och bildanalysen provades inte.
+- Det är en helhetsbedömning, inte resultat per kontroll. S-1–S-10 och raderna nedan står kvar som Ej genomförd tills enskilda resultat rapporteras.
+
 **Regler:**
 - Fyll i resultat först när de har körts.
 - Skriv inga sessionsuppgifter eller bilder i rapporten.
