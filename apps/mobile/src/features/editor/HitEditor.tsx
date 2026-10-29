@@ -20,6 +20,7 @@ import {
   useSyncExternalStore,
 } from 'react';
 import {
+  AppState,
   type HostInstance,
   Image,
   ScrollView,
@@ -59,7 +60,7 @@ import {
   editorReducer,
   initialEditorState,
 } from './annotationEditor';
-import { type EditorTool, markerNumbers } from './editorInteraction';
+import { type EditorTool, markerNumbers, scrollLockAfter } from './editorInteraction';
 import {
   createGestureController,
   type DragPreview,
@@ -160,6 +161,14 @@ export function HitEditor({
   const [preview, setPreview] = useState<DragPreview | null>(null);
   const [magnifier, setMagnifier] = useState<MagnifierFocus | null>(null);
   const [touching, setTouching] = useState(false);
+  // A touch can end without an end event when the app leaves the foreground; never keep the
+  // page locked after that.
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (next) => {
+      if (next !== 'active') setTouching(false);
+    });
+    return () => subscription.remove();
+  }, []);
   const [sizeMismatch, setSizeMismatch] = useState(false);
 
   const canvasRef = useRef<HostInstance>(null);
@@ -482,9 +491,13 @@ export function HitEditor({
                 measureCanvas();
               }}
               // The page must not scroll while a finger is on the photo.
-              onTouchCancel={() => setTouching(false)}
-              onTouchEnd={() => setTouching(false)}
-              onTouchStart={() => setTouching(true)}
+              onTouchCancel={() => setTouching(scrollLockAfter('cancel', 0))}
+              onTouchEnd={(event) =>
+                setTouching(scrollLockAfter('end', event.nativeEvent.touches.length))
+              }
+              onTouchStart={(event) =>
+                setTouching(scrollLockAfter('start', event.nativeEvent.touches.length))
+              }
               style={[styles.canvas, { height: canvasHeight }]}
               {...gestures.panHandlers}
             >

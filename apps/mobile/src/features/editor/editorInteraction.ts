@@ -130,3 +130,13 @@ export function magnifiedView(
   const scale = scaleOf(view) * factor;
   return { scale, offset: { x: size / 2 - focus.x * scale, y: size / 2 - focus.y * scale } };
 }
+
+// Whether the page must stay still after a touch event on the photo. The lock follows the
+// fingers still on the photo: lifting one finger of a pinch keeps it, the last one releases it,
+// and a cancelled gesture (system interruption, app going to the background) always releases it.
+export function scrollLockAfter(
+  event: 'start' | 'end' | 'cancel',
+  touchesRemaining: number,
+): boolean {
+  return event !== 'cancel' && touchesRemaining > 0;
+}

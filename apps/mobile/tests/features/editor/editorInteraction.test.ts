@@ -10,6 +10,7 @@ import {
   pointNear,
   releaseAction,
   type Release,
+  scrollLockAfter,
 } from '../../../src/features/editor/editorInteraction';
 import {
   fitView,
@@ -229,5 +230,21 @@ describe('calibration points after zoom and pan', () => {
     const drop = screenToImage(view, { x: right.x + 30, y: right.y });
     expect(drop.x).toBeCloseTo(900 + 30 / scaleOf(view));
     expect(drop.y).toBeCloseTo(500);
+  });
+});
+
+describe('scrollLockAfter', () => {
+  // Logic only: whether Android's scroll view honours the lock in time needs the S20.
+  it('keeps the page locked while any finger remains on the photo', () => {
+    expect(scrollLockAfter('start', 1)).toBe(true);
+    expect(scrollLockAfter('start', 2)).toBe(true);
+    // Pinch, then one finger lifts: the other is still there.
+    expect(scrollLockAfter('end', 1)).toBe(true);
+    expect(scrollLockAfter('end', 0)).toBe(false);
+  });
+
+  it('always releases the lock when the gesture is cancelled', () => {
+    expect(scrollLockAfter('cancel', 2)).toBe(false);
+    expect(scrollLockAfter('cancel', 0)).toBe(false);
   });
 });
