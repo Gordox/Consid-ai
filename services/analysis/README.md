@@ -75,6 +75,16 @@ It keeps nothing, and it limits size and concurrency, but it must not be exposed
 trusted network or deployed as it is. Public hosting, authentication and HTTPS are outside the
 personal MVP.
 
+## Configuration
+
+The service needs no configuration. One optional environment variable:
+
+| Variable | Values | Default |
+| --- | --- | --- |
+| `ANALYSIS_LOG_LEVEL` | `DEBUG`, `INFO`, `WARNING`, `ERROR` (any case) | `INFO` |
+
+An unknown value stops the start with a message naming the variable.
+
 ## Checks
 
 With the environment active:
