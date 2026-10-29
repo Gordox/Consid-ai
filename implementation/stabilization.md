@@ -88,7 +88,7 @@ Serverkontrollerna kördes inte: varken `services/analysis` eller `contracts/` h
 - En konflikt i editorn kräver att användaren gör om ändringen. Ingen sammanslagning görs, med avsikt.
 - När användaren lämnar kameran under sparning och väljer Leave kan bilden ändå läggas till senare. Dialogen säger det.
 - Poängen är fortfarande demo. Detektionen är bara prövad på syntetiska bilder.
-- Sessionsanteckningar (G-02) är ett öppet scopebeslut och är inte implementerade.
+- Sessionsanteckningar (G-02) är inte implementerade. Ägaren har 2026-10-29 skjutit upp dem till efter alfan (`docs/decisions/2026-10-29-notes-deferred.md`).
 
 ## Externa förutsättningar (oförändrade)
 

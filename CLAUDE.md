@@ -22,7 +22,7 @@ The first release is a personal alpha, with potential commercialization later. P
 - A hit touching the boundary between two scores receives the higher score: touching the boundary between 6 and 7 scores 7.
 - Users must be able to inspect and correct detection results before confirmation.
 - Support misses, overlapping hits, and unresolved shots without fabricating detections.
-- Save confirmed results, photos, settings, and notes in a practice log.
+- Save confirmed results, photos, settings, and notes in a practice log. Notes are deferred until after the personal alpha (owner decision, `docs/decisions/2026-10-29-notes-deferred.md`); they remain a planned feature.
 - Primary physical test device: Samsung Galaxy S20. Keep the mobile architecture compatible with iOS, but prioritize Android validation.
 
 ### Product Boundaries
@@ -164,7 +164,7 @@ infra/
 5. Capture/import the post-round photo.
 6. Save the draft and photo copies locally before requesting analysis.
 7. Analyze the images and open the review editor.
-8. Let the user correct hit positions, hole sizes, shot accounting, and notes.
+8. Let the user correct hit positions, hole sizes, shot accounting, and notes (notes deferred until after the alpha).
 9. Confirm and save the round atomically.
 10. Repeat or finish the session and show the practice log entry.
 
@@ -227,7 +227,7 @@ Persist edits locally. Changing photos or rerunning analysis must prompt before 
 | --- | --- |
 | Firearm profile | ID, display name, type, calibre label; optional verified scoring diameter |
 | Target definition | ID/version, verified dimensions, geometry, scoring rules, calibration provenance |
-| Session | ID, timestamps, status, firearm/settings snapshot, target version, planned shots/rounds, notes |
+| Session | ID, timestamps, status, firearm/settings snapshot, target version, planned shots/rounds, notes (deferred until after the alpha) |
 | Round | ID, session ID, sequence, actual shots, analysis mode, state, confirmed revision, completeness |
 | Photo | ID, role, private local path, dimensions, orientation normalization, capture/import timestamp |
 | Analysis attempt | ID, input photo IDs, algorithm version, status, warnings, immutable candidates |

@@ -22,6 +22,8 @@ Kamera, bildanalys, poängberäkning, mål, backend, autentisering, synk, redige
 | UI v2.1 | Omdesign av hela MVP:n och borttagning av Developer checks | **Implementerat och enhetstestat 2026-10-28** (`implementation/ui-ux-v2.md`). Android-exporten fungerar. Ingen skärm är körd på S20 eller iOS; telefonchecklistan finns i `docs/device-tests/mvp.md`. |
 | Förbättring 2 | Redigerbar kalibrering, inspektion, profiler och mallar, kaliberväljare, kameravy | **Implementerat och enhetstestat 2026-10-28** (`implementation/improvements-2.md`). Android- och iOS-export fungerar. Inget är provat på telefon. |
 | Stabilisering | Samtidighet mellan analys, editor och bekräftelse; navigering och bilder; förslag efter omkalibrering; diameter; historisk visning | **Implementerat och automatiskt testat 2026-10-29** (`implementation/stabilization.md`). Migration 8 lägger bara till kolumner. Inget är provat på telefon; checklistan S-1–S-10 finns i `docs/device-tests/mvp.md`. Inget är pushat. |
+| Anteckningar | Sessions- och rundanteckningar (CLAUDE.md) | **Uppskjutet till efter alfan** (ägarbeslut 2026-10-29, `docs/decisions/2026-10-29-notes-deferred.md`). Kvar som planerad funktion. |
+| Hemuppgift 4 | Leverans av den personliga alfan: signerad APK, CI/CD, dokumentation | Pågår, se `implementation/assignment-4-delivery.md`. |
 | MVP | Rundor, foton, editor, poäng, lokal analys | **Delvis klar MVP** med fungerande manuellt flöde och lokal, heuristisk analysserver (`implementation/mvp-plan.md` §9–10). Demotavla. Analysen är bara testad på syntetiska bilder. Grundflödet från före fas 2 fungerar på S20. Fas 2 är **inte testad på S20** (`docs/device-tests/mvp.md`). |
 
 ## Verifierade versioner (npm-registret och Expo-dokumentationen för SDK 58, 2026-10-27)
