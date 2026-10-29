@@ -8,6 +8,7 @@ import { Screen } from '../../components/Screen';
 import { ScreenHeader } from '../../components/ScreenHeader';
 import { colors, spacing, typography } from '../../components/tokens';
 import type { DraftRound } from '../../domain/round/round';
+import { listAttemptCalibrations } from '../../persistence/analysisRepository';
 import { getRound } from '../../persistence/roundRepository';
 import { useRoundAnalysis } from '../analysis/useRoundAnalysis';
 import { useSessionStore } from '../startup/sessionStoreContext';
@@ -20,9 +21,11 @@ export function EditorScreen({ sessionId, roundId }: { sessionId: string; roundI
   const [lostChanges, setLostChanges] = useState(0);
   const { runningAttempt, cancelling } = useRoundAnalysis(analysisRuns, roundId);
   const analysisRunning = runningAttempt !== null;
-  const load = useCallback(async (): Promise<DraftRound | null> => {
+  const load = useCallback(async () => {
     const round = await getRound(db, roundId);
-    return round?.state === 'draft' && round.sessionId === sessionId ? round : null;
+    if (round?.state !== 'draft' || round.sessionId !== sessionId) return null;
+    const draft: DraftRound = round;
+    return { draft, attemptCalibrations: await listAttemptCalibrations(db, roundId) };
   }, [db, roundId, sessionId]);
   const { state, reload } = useFocusLoad(load);
 
@@ -47,9 +50,10 @@ export function EditorScreen({ sessionId, roundId }: { sessionId: string; roundI
     return (
       <HitEditor
         analysisRunning={analysisRunning}
+        attemptCalibrations={state.data.attemptCalibrations}
         cancellingAnalysis={cancelling}
-        draft={state.data}
-        key={`${state.data.id}:${state.data.revision}`}
+        draft={state.data.draft}
+        key={`${state.data.draft.id}:${state.data.draft.revision}`}
         lostChanges={lostChanges}
         onCancelAnalysis={() => analysisRuns.cancel(roundId)}
         onConflict={onConflict}

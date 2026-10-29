@@ -11,6 +11,21 @@ import { imageToScreen, scaleOf, type Size, type ViewTransform } from './viewTra
 // calibration points and hit markers, all mapped from photo pixels through the view transform.
 // Nothing here writes; callers decide what a touch does.
 
+// How a marker is drawn and named. Each kind differs by more than colour: a number, a dashed
+// ring with '?', a struck-through dashed ring, or a neutral ring with '–'.
+export type MarkerAppearance =
+  // Counted: accepted in a draft, or part of a confirmed result.
+  | 'counted'
+  // A suggestion waiting for review.
+  | 'suggestion'
+  // A suggestion found with an alignment that has since been changed.
+  | 'earlierSuggestion'
+  // A mark of a confirmed round that is not in its stored result.
+  | 'notInResult';
+
+export const draftAppearance = (mark: HitMark): MarkerAppearance =>
+  mark.accepted ? 'counted' : 'suggestion';
+
 export function markName(mark: HitMark, numbers: ReadonlyMap<string, number>): string {
   const number = numbers.get(mark.id);
   return number === undefined ? 'Suggestion' : `Hit ${number}`;
@@ -62,6 +77,7 @@ type OverlayProps = {
   selectedId: string | null;
   // Screen radius of a hole at a photo position, or null when it cannot be computed.
   holeRadius: (position: Point) => number | null;
+  appearance?: (mark: HitMark) => MarkerAppearance;
 };
 
 export function MarkerOverlay({
@@ -73,6 +89,7 @@ export function MarkerOverlay({
   numbers,
   selectedId,
   holeRadius,
+  appearance = draftAppearance,
 }: OverlayProps) {
   return (
     <Svg height="100%" pointerEvents="none" style={StyleSheet.absoluteFill} width="100%">
@@ -157,9 +174,17 @@ export function MarkerOverlay({
         // The drawn ring is the hole at its diameter; touch reach is separate.
         const r = Math.max(6, holeRadius(mark.position) ?? 0);
         const number = numbers.get(mark.id);
-        const ringColor = mark.accepted ? colors.accent : colors.warning;
+        const kind = appearance(mark);
+        const counted = kind === 'counted';
+        const ringColor = counted
+          ? colors.accent
+          : kind === 'notInResult'
+            ? colors.secondary
+            : colors.warning;
+        const dash = counted ? undefined : kind === 'notInResult' ? '1 3' : '4 3';
         const badgeX = screen.x + r * 0.7 + 9;
         const badgeY = screen.y - r * 0.7 - 9;
+        const symbol = counted ? `${number ?? ''}` : kind === 'notInResult' ? '–' : '?';
         return (
           <G key={mark.id}>
             {mark.id === selectedId ? (
@@ -186,27 +211,38 @@ export function MarkerOverlay({
               fill="none"
               r={r}
               stroke={ringColor}
-              strokeDasharray={mark.accepted ? undefined : '4 3'}
+              strokeDasharray={dash}
               strokeWidth={2}
             />
+            {kind === 'earlierSuggestion' ? (
+              // Struck through: found with an alignment that has since changed.
+              <Line
+                stroke={colors.warning}
+                strokeWidth={2}
+                x1={screen.x - r * 0.75}
+                x2={screen.x + r * 0.75}
+                y1={screen.y + r * 0.75}
+                y2={screen.y - r * 0.75}
+              />
+            ) : null}
             <Circle
               cx={badgeX}
               cy={badgeY}
-              fill={mark.accepted ? colors.accent : colors.warningSurface}
+              fill={counted ? colors.accent : colors.surface}
               r={10}
-              stroke={mark.accepted ? colors.background : colors.warning}
-              strokeDasharray={mark.accepted ? undefined : '3 2'}
+              stroke={counted ? colors.background : ringColor}
+              strokeDasharray={counted ? undefined : '3 2'}
               strokeWidth={1.5}
             />
             <SvgText
-              fill={mark.accepted ? colors.onAccent : colors.warning}
+              fill={counted ? colors.onAccent : ringColor}
               fontSize={12}
               fontWeight="bold"
               textAnchor="middle"
               x={badgeX}
               y={badgeY + 4}
             >
-              {number === undefined ? '?' : `${number}`}
+              {symbol}
             </SvgText>
             {mark.shots > 1 ? (
               <SvgText
@@ -311,6 +347,8 @@ export function MarkerList({
   selectedId,
   onSelect,
   detail,
+  status: statusOf = markStatus,
+  appearance = draftAppearance,
 }: {
   marks: readonly HitMark[];
   numbers: ReadonlyMap<string, number>;
@@ -318,6 +356,9 @@ export function MarkerList({
   onSelect: (id: string) => void;
   // Extra text per marker, e.g. its score in the inspection view.
   detail?: (mark: HitMark) => string | null;
+  // Replaces the default status line, e.g. for confirmed rounds or older suggestions.
+  status?: (mark: HitMark) => string;
+  appearance?: (mark: HitMark) => MarkerAppearance;
 }) {
   if (marks.length === 0) {
     return <Text style={styles.secondary}>No markers yet.</Text>;
@@ -330,7 +371,13 @@ export function MarkerList({
       {marks.map((mark) => {
         const isSelected = mark.id === selectedId;
         const name = markName(mark, numbers);
-        const status = markStatus(mark);
+        const status = statusOf(mark);
+        const counted = appearance(mark) === 'counted';
+        const symbol = counted
+          ? `${numbers.get(mark.id) ?? ''}`
+          : appearance(mark) === 'notInResult'
+            ? '–'
+            : '?';
         const extra = detail?.(mark) ?? null;
         return (
           <Pressable
@@ -348,12 +395,10 @@ export function MarkerList({
             <View
               style={[
                 styles.listMarker,
-                mark.accepted ? styles.listMarkerAccepted : styles.listMarkerPending,
+                counted ? styles.listMarkerAccepted : styles.listMarkerPending,
               ]}
             >
-              <Text style={mark.accepted ? styles.listNumber : styles.listQuestion}>
-                {numbers.get(mark.id) ?? '?'}
-              </Text>
+              <Text style={counted ? styles.listNumber : styles.listQuestion}>{symbol}</Text>
             </View>
             <View style={styles.fill}>
               <Text style={styles.body}>{name}</Text>

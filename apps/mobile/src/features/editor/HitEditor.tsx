@@ -38,7 +38,8 @@ import { StatusBadge } from '../../components/StatusBadge';
 import { Stepper } from '../../components/Stepper';
 import { colors, radius, spacing, typography } from '../../components/tokens';
 import { calibrationProblem } from '../../domain/round/calibrationCheck';
-import type { DraftRound, HitMark } from '../../domain/round/round';
+import type { Calibration, DraftRound, HitMark } from '../../domain/round/round';
+import { type SuggestionBasis, suggestionBasis } from '../../domain/round/suggestionBasis';
 import { evaluateDraft } from '../../domain/round/roundEvaluation';
 import { SHOTS_PER_HOLE_RANGE } from '../../domain/round/roundRules';
 import { findTarget } from '../../domain/target/targetDefinition';
@@ -64,7 +65,15 @@ import {
   type DragPreview,
   type MagnifierFocus,
 } from './gestureController';
-import { Magnifier, MarkerList, MarkerOverlay, markName, PhotoLayer } from './PhotoMarkers';
+import {
+  Magnifier,
+  type MarkerAppearance,
+  MarkerList,
+  MarkerOverlay,
+  markName,
+  markStatus,
+  PhotoLayer,
+} from './PhotoMarkers';
 import { holeRadiusInPhoto, ringOutlines } from './targetOverlay';
 import { fitView, scaleOf, type Size, type ViewTransform, zoomAround } from './viewTransform';
 
@@ -107,6 +116,7 @@ const TOOL_BADGE: Record<EditorTool, string> = {
 // only. Edits are saved once per gesture, when the finger lifts.
 export function HitEditor({
   draft,
+  attemptCalibrations,
   lostChanges,
   onConflict,
   analysisRunning,
@@ -114,6 +124,8 @@ export function HitEditor({
   onCancelAnalysis,
 }: {
   draft: DraftRound;
+  // The calibration each analysis attempt of the round was sent with.
+  attemptCalibrations: ReadonlyMap<string, Calibration | null>;
   // Changes lost to the last conflict, shown once the editor has been reloaded.
   lostChanges: number;
   // The draft changed elsewhere; the screen reads it again and remounts the editor.
@@ -288,6 +300,27 @@ export function HitEditor({
 
   const calibration = calibrationOf(state);
   const problem = calibrationProblem(state.calibrationPoints, image);
+  // Pending suggestions keep their photo positions when the alignment changes, but the search
+  // that found them used the earlier alignment; they are marked and the user can analyse again.
+  const basisOf = (mark: HitMark) =>
+    suggestionBasis(mark, (id) => attemptCalibrations.get(id), calibration);
+  const appearance = (mark: HitMark): MarkerAppearance =>
+    mark.accepted
+      ? 'counted'
+      : basisOf(mark) === 'earlierAlignment'
+        ? 'earlierSuggestion'
+        : 'suggestion';
+  const statusOf = (mark: HitMark): string =>
+    mark.accepted
+      ? markStatus(mark)
+      : basisOf(mark) === 'earlierAlignment'
+        ? 'suggestion from an earlier alignment, not counted'
+        : basisOf(mark) === 'unrecorded'
+          ? `${markStatus(mark)}; alignment used not recorded`
+          : markStatus(mark);
+  const earlierSuggestions = state.marks.filter(
+    (mark) => !mark.accepted && basisOf(mark) === 'earlierAlignment',
+  ).length;
   const evaluation = evaluateDraft({ ...draft, calibration, marks: state.marks }, target);
   const numbers = markerNumbers(state.marks);
   const selected = state.marks.find((mark) => mark.id === state.selectedId) ?? null;
@@ -470,6 +503,7 @@ export function HitEditor({
                             draft.hitDiameterMm,
                           ) ?? 0) * scaleOf(view)
                     }
+                    appearance={appearance}
                     marks={liveMarks}
                     numbers={numbers}
                     outlines={outlines}
@@ -531,6 +565,7 @@ export function HitEditor({
               <>
                 {selected === null ? null : (
                   <Inspector
+                    basis={selected.accepted ? 'current' : basisOf(selected)}
                     disabled={!editable}
                     diameterAssumed={draft.hitDiameterSource === 'assumed'}
                     diameterMm={draft.hitDiameterMm}
@@ -541,7 +576,16 @@ export function HitEditor({
                     onShots={(shots) => send({ type: 'setShots', id: selected.id, shots })}
                   />
                 )}
+                {earlierSuggestions > 0 ? (
+                  <Banner
+                    body={`${earlierSuggestions === 1 ? '1 suggestion was' : `${earlierSuggestions} suggestions were`} found with an earlier alignment (struck through). Their place on the photo is unchanged, but the search they came from no longer matches the target. Analyse again from the round screen, or review them yourself.`}
+                    title="Alignment changed"
+                    tone="warning"
+                  />
+                ) : null}
                 <MarkerList
+                  appearance={appearance}
+                  status={statusOf}
                   marks={state.marks}
                   numbers={numbers}
                   onSelect={(id) => send({ type: 'select', id })}
@@ -619,6 +663,7 @@ export function HitEditor({
 // components/19-hit-inspector.png, outside the photo. Removing a suggestion never records a
 // miss; the shot accounting asks for misses and unresolved shots explicitly.
 function Inspector({
+  basis,
   mark,
   name,
   disabled,
@@ -628,6 +673,7 @@ function Inspector({
   onDelete,
   onShots,
 }: {
+  basis: SuggestionBasis;
   disabled: boolean;
   mark: HitMark;
   name: string;
@@ -655,6 +701,17 @@ function Inspector({
             : 'Check the mark on your photo. Accept it only if it is a new hole.'}
         </Text>
       )}
+      {basis === 'earlierAlignment' ? (
+        <Text style={styles.secondary}>
+          Based on an earlier alignment. Its place on the photo is unchanged, but the search that
+          found it used the old alignment. Analyse again to search with the new one.
+        </Text>
+      ) : null}
+      {basis === 'unrecorded' && !mark.accepted ? (
+        <Text style={styles.secondary}>
+          The alignment this suggestion was found with isn&apos;t recorded.
+        </Text>
+      ) : null}
       {mark.accepted ? (
         <Stepper
           disabled={disabled}

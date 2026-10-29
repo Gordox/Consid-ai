@@ -8,6 +8,7 @@ import { Button } from '../../components/Button';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { colors, radius, spacing, typography } from '../../components/tokens';
 import { calibrationProblem } from '../../domain/round/calibrationCheck';
+import { sameCalibration } from '../../domain/round/suggestionBasis';
 import type { DraftRound } from '../../domain/round/round';
 import { findTarget } from '../../domain/target/targetDefinition';
 import { getLatestAttempt, type LatestAttempt } from '../../persistence/analysisRepository';
@@ -93,7 +94,20 @@ export function AnalysisPanel({
   const target = findTarget(draft.targetId);
   const { after, before } = draft.photos;
   const pending = draft.marks.filter((mark) => !mark.accepted).length;
-  const message = running || lastFinished === null ? null : messageFor(lastFinished.outcome.result);
+  // A run's summary (found holes, searched areas, photo warnings) describes the alignment it was
+  // sent with; after the alignment changed it is not shown as if it applied to the new one.
+  const finishedForThisAlignment =
+    lastFinished !== null && sameCalibration(lastFinished.outcome.calibration, draft.calibration);
+  const message =
+    running || lastFinished === null || !finishedForThisAlignment
+      ? null
+      : messageFor(lastFinished.outcome.result);
+  const alignmentChanged =
+    !running &&
+    latest !== null &&
+    latest.status === 'succeeded' &&
+    latest.calibration !== null &&
+    !sameCalibration(latest.calibration, draft.calibration);
 
   // The stored attempt survives leaving the screen and restarts; reread when the round or the
   // running attempt changes.
@@ -164,7 +178,9 @@ export function AnalysisPanel({
 
   const start = () => (pending > 0 ? setConfirmReplace(true) : run());
   const stored =
-    latest === null || running || message !== null ? null : latestAttemptText(latest, false);
+    latest === null || running || message !== null || alignmentChanged
+      ? null
+      : latestAttemptText(latest, false);
   const lastFailed =
     (latest !== null && latest.status !== 'succeeded' && !running) || message?.tone === 'error';
   const canAnalyse = config !== null && block === null;
@@ -248,6 +264,13 @@ export function AnalysisPanel({
         <Banner body={message.text} tone={message.tone} />
       )}
 
+      {alignmentChanged ? (
+        <Banner
+          body="The alignment changed after the last analysis, so the area it searched and any areas it left out no longer match the target. Analyse again to search with the new alignment."
+          title="Alignment changed"
+          tone="warning"
+        />
+      ) : null}
       {pending > 0 ? (
         <>
           <Banner
@@ -263,7 +286,9 @@ export function AnalysisPanel({
           {canAnalyse ? (
             <Button
               icon={Target}
-              label={lastFailed ? 'Try again' : 'Analyse photos'}
+              label={
+                lastFailed ? 'Try again' : alignmentChanged ? 'Analyse again' : 'Analyse photos'
+              }
               onPress={start}
             />
           ) : null}

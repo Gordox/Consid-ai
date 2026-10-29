@@ -206,6 +206,24 @@ export async function applyAnalysisResult(
   return outcome;
 }
 
+// The calibration each attempt of a round was sent with (null when not recorded), so pending
+// suggestions can be marked when the alignment has changed since.
+export async function listAttemptCalibrations(
+  db: SessionDatabase,
+  roundId: string,
+): Promise<ReadonlyMap<string, Calibration | null>> {
+  const rows = await db.getAllAsync(
+    'SELECT id, calibration_json FROM analysis_attempts WHERE round_id = ?',
+    [roundId],
+  );
+  return new Map(
+    rows.map((row) => [
+      readString(row, 'id'),
+      parseCalibration(readNullableString(row, 'calibration_json')),
+    ]),
+  );
+}
+
 export type AttemptStatus = 'pending' | 'succeeded' | 'failed';
 
 export type LatestAttempt = {
