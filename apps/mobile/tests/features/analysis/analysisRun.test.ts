@@ -82,9 +82,9 @@ function start(
         db,
         config: { baseUrl: 'http://127.0.0.1:8000', host: '127.0.0.1:8000' },
         photos: {
-          uri: (name) => `file:///photos/${name}`,
           size: () => 1000,
           readHead: () => CLEAN_JPEG,
+          uploadFile: () => new Blob([CLEAN_JPEG], { type: 'image/jpeg' }),
         },
         fetch,
         timeoutMs: 60_000,

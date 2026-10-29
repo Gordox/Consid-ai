@@ -49,6 +49,7 @@ function folder(hold?: Deferred<void>): PhotoStore & { readonly files: Set<strin
       files.delete(name);
     },
     readHead: () => new Uint8Array(),
+    uploadFile: () => new Blob(),
     deleteCameraTemporary: () => false,
   };
 }

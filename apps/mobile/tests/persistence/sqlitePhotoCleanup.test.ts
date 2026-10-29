@@ -20,6 +20,7 @@ function folder(names: string[]): PhotoStore & { readonly files: Set<string> } {
       files.delete(name);
     },
     readHead: () => new Uint8Array(),
+    uploadFile: () => new Blob(),
     deleteCameraTemporary: () => false,
   };
 }

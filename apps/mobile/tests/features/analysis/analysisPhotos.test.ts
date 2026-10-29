@@ -12,9 +12,8 @@ const PHOTO: RoundPhoto = {
 
 describe('uploadablePhoto', () => {
   it('uploads the normalised copy and never the original', () => {
-    const upload = uploadablePhoto(PHOTO, (name) => `file:///photos/${name}`);
+    const upload = uploadablePhoto(PHOTO);
     expect(upload).toEqual({
-      uri: 'file:///photos/normalised.jpg',
       fileName: 'normalised.jpg',
       width: 3024,
       height: 4032,
@@ -23,6 +22,6 @@ describe('uploadablePhoto', () => {
   });
 
   it('uploads nothing for a photo saved before normalisation', () => {
-    expect(uploadablePhoto({ ...PHOTO, originalFileName: null }, (name) => name)).toBeNull();
+    expect(uploadablePhoto({ ...PHOTO, originalFileName: null })).toBeNull();
   });
 });

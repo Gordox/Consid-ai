@@ -14,7 +14,6 @@ export type AnalysisRequest = {
 };
 
 export type AnalysisPhoto = {
-  readonly uri: string;
   readonly fileName: string;
   readonly width: number;
   readonly height: number;
@@ -42,6 +41,9 @@ export type AnalysisClientDeps = {
   readonly fileSize: (photo: AnalysisPhoto) => number | null;
   // The first bytes of an app photo file, enough to reach the start of the image data.
   readonly readHead: (photo: AnalysisPhoto) => Uint8Array;
+  // The app photo file as a Blob to attach. Expo's fetch, which replaces the global fetch, reads
+  // the bytes of a Blob such as an expo-file-system File; it refuses React Native's { uri } parts.
+  readonly photoFile: (photo: AnalysisPhoto) => Blob;
   readonly timeoutMs: number;
   // Aborted when the user cancels. Optional so callers that cannot cancel need not pass one.
   readonly signal?: AbortSignal;
@@ -53,36 +55,6 @@ export const UPLOAD_CHECK_BYTES = 256 * 1024;
 // Matches the service limit in contracts/analysis.openapi.yaml.
 export const MAX_PHOTO_BYTES = 15 * 1024 * 1024;
 export const ANALYSIS_TIMEOUT_MS = 60_000;
-
-function mimeType(fileName: string): string {
-  const extension = fileName.split('.').pop()?.toLowerCase();
-  switch (extension) {
-    case 'png':
-      return 'image/png';
-    case 'heic':
-      return 'image/heic';
-    case 'webp':
-      return 'image/webp';
-    default:
-      return 'image/jpeg';
-  }
-}
-
-// React Native's FormData uploads a local file from { uri, name, type } without reading it into
-// JS, but its TypeScript types only describe the web Blob overload. This is the one place that
-// bridges the two; the object is built here from validated app values only.
-type NativeFormFile = { readonly uri: string; readonly name: string; readonly type: string };
-
-function asFormValue(file: NativeFormFile): Blob {
-  return file as unknown as Blob;
-}
-
-function appendPhoto(form: FormData, field: string, photo: AnalysisPhoto): void {
-  form.append(
-    field,
-    asFormValue({ uri: photo.uri, name: photo.fileName, type: mimeType(photo.fileName) }),
-  );
-}
 
 // The stable code of a structured error body, or null. Never shown to the user as is.
 async function errorCode(response: Response): Promise<string | null> {
@@ -130,9 +102,9 @@ export async function requestAnalysis(
     'calibration',
     JSON.stringify({ points: request.calibration.map((point) => ({ x: point.x, y: point.y })) }),
   );
-  appendPhoto(form, 'after', request.after);
+  form.append('after', deps.photoFile(request.after), request.after.fileName);
   if (request.before !== null) {
-    appendPhoto(form, 'before', request.before);
+    form.append('before', deps.photoFile(request.before), request.before.fileName);
   }
 
   // One controller ends the request on either the timeout or the user's cancel.

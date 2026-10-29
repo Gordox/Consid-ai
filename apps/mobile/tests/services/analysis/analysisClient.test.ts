@@ -6,7 +6,7 @@ import {
 import { parseAnalysisConfig } from '../../../src/services/analysis/analysisConfig';
 
 const CONFIG = { baseUrl: 'https://analysis.example', host: 'analysis.example' };
-const PHOTO = { uri: 'file:///doc/photos/a.jpg', fileName: 'a.jpg', width: 400, height: 300 };
+const PHOTO = { fileName: 'a.jpg', width: 400, height: 300 };
 const REQUEST: AnalysisRequest = {
   roundId: 'r1',
   attemptId: 'a1',
@@ -46,7 +46,13 @@ function deps(
   size: number | null = 1000,
   head: Uint8Array = CLEAN_JPEG,
 ) {
-  return { fetch, fileSize: () => size, readHead: () => head, timeoutMs: 1000 };
+  return {
+    fetch,
+    fileSize: () => size,
+    readHead: () => head,
+    photoFile: (photo: { fileName: string }) => new Blob([photo.fileName], { type: 'image/jpeg' }),
+    timeoutMs: 1000,
+  };
 }
 
 describe('requestAnalysis', () => {
@@ -54,7 +60,7 @@ describe('requestAnalysis', () => {
     const calls: { url: string; init: RequestInit }[] = [];
     const result = await requestAnalysis(
       CONFIG,
-      { ...REQUEST, before: { ...PHOTO, fileName: 'b.png', uri: 'file:///doc/photos/b.png' } },
+      { ...REQUEST, before: { ...PHOTO, fileName: 'b.jpg' } },
       deps(async (url, init) => {
         calls.push({ url, init });
         return jsonResponse(200, GOOD);
@@ -71,6 +77,31 @@ describe('requestAnalysis', () => {
       expect(JSON.parse(String(form.get('calibration')))).toEqual({
         points: REQUEST.calibration,
       });
+    }
+  });
+
+  // Expo's fetch replaces the global fetch and refuses React Native's { uri, name, type } file
+  // parts before anything is sent, so every photo must be attached as a Blob with its bytes.
+  it('attaches each photo as a Blob named after its file', async () => {
+    let form: unknown = null;
+    await requestAnalysis(
+      CONFIG,
+      { ...REQUEST, before: { ...PHOTO, fileName: 'b.jpg' } },
+      deps(async (_url, init) => {
+        form = init.body;
+        return jsonResponse(200, GOOD);
+      }),
+    );
+    expect(form).toBeInstanceOf(FormData);
+    if (!(form instanceof FormData)) return;
+    for (const [field, fileName] of [
+      ['after', 'a.jpg'],
+      ['before', 'b.jpg'],
+    ] as const) {
+      const part = form.get(field);
+      expect(part).toBeInstanceOf(Blob);
+      if (part instanceof File) expect(part.name).toBe(fileName);
+      if (part instanceof Blob) await expect(part.text()).resolves.toBe(fileName);
     }
   });
 

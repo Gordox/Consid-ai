@@ -34,7 +34,7 @@ export type AnalysisRunInput = {
 export type AnalysisRunDeps = {
   readonly db: SessionDatabase;
   readonly config: AnalysisConfig;
-  readonly photos: Pick<PhotoStore, 'uri' | 'size' | 'readHead'>;
+  readonly photos: Pick<PhotoStore, 'size' | 'readHead' | 'uploadFile'>;
   readonly fetch: AnalysisClientDeps['fetch'];
   readonly timeoutMs: number;
   readonly now: () => string;
@@ -98,9 +98,8 @@ export async function runAnalysisAttempt(
     return done({ kind: 'saveFailed' });
   }
 
-  const afterUpload = uploadablePhoto(input.after, deps.photos.uri);
-  const beforeUpload =
-    input.before === null ? null : uploadablePhoto(input.before, deps.photos.uri);
+  const afterUpload = uploadablePhoto(input.after);
+  const beforeUpload = input.before === null ? null : uploadablePhoto(input.before);
   if (afterUpload === null || (input.before !== null && beforeUpload === null)) {
     await fail('oldPhotoCopy');
     return done({ kind: 'failed', code: 'oldPhotoCopy' });
@@ -120,6 +119,7 @@ export async function runAnalysisAttempt(
       fetch: deps.fetch,
       fileSize: (photo) => deps.photos.size(photo.fileName),
       readHead: (photo) => deps.photos.readHead(photo.fileName, UPLOAD_CHECK_BYTES),
+      photoFile: (photo) => deps.photos.uploadFile(photo.fileName),
       timeoutMs: deps.timeoutMs,
       signal,
     },
