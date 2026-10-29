@@ -1,0 +1,7 @@
+# Release files are distributed through GitHub Releases, not Git.
+/Assigments/Assigment 4/*.apk
+/Assigments/Assigment 4/SHA256SUMS
+
+# Signing material never belongs in the repository.
+*.jks
+*.keystore
