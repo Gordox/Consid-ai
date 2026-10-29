@@ -50,4 +50,38 @@ Fristående, signerad APK byggd i GitHub Actions, utan betald tjänst:
 | # | Status |
 | --- | --- |
 | 1 | Klart |
-| 2–8 | Pågår |
+| 2 | Klart: tre nya åtgärder (`a1a21be`, `cbd5b47`, `3395096`), säkerhetsgranskning utan fynd |
+| 3 | Klart (`a3e716d`) |
+| 4 | Klart, med två rättningar av certifikatkontrollen (PR #4 `fac71c2`, PR #5 `12ccf21`) |
+| 5 | Verifierat: körning 40922300945 på `9465390` publicerade `v0.1.0-alpha.8`; nedladdning utan inloggning stämmer med `SHA256SUMS` |
+| 6 | Klart (`80a6bfb`) |
+| 7 | Klart: `Assigments/Assigment 4/` |
+| 8 | Guiden nedan. **Inget är provat på telefon med release-APK:n.** |
+
+## Telefonguide (S20)
+
+Markera bara det du faktiskt har gjort. Svarsmall per kontroll: `OK / Fel / Ej testat`, plus en kort anteckning.
+
+**Vad du kan observera och vad testerna bevisar:** samtidighetsfallen (sena svar, Cancel mitt i ett svar, revisionskonflikter) bevisas av automatiska tester mot riktig SQLite (`apps/mobile/tests/features/analysis/analysisRun.test.ts`, `tests/persistence/sqliteRounds.test.ts`). På telefonen ser du bara utfallet. Exakt när ett svar kommer i förhållande till Cancel går inte att styra för hand.
+
+### R: release-APK:n (`v0.1.0-alpha.8`)
+
+Ladda ned APK:n från releasen i telefonen. Detta är skilt från Expo Go och från lokala byggen; appen har egen data och visar inga sessioner från Expo Go.
+
+| # | Gör | Förväntat |
+| --- | --- | --- |
+| R1 | Stäng av Metro på datorn och avsluta Expo Go. Installera APK:n enligt `Assigments/Assigment 4/README.md` och starta appen. | Appen startar utan dator, med tom sessionslista. |
+| R2 | Slå på flygplansläge. Ny session → runda → **Camera** (tillåt kameran) → efterbild. Prova också **Library**. | Kamera och bibliotek fungerar offline. |
+| R3 | **Align target**, **Mark hits manually** med zoom och dragning, sedan sessionsformuläret med tangentbordet öppet. | Gester och tangentbord fungerar som i Expo Go; fälten döljs inte. |
+| R4 | Med ett utkast med bild, justering och markeringar: svep bort appen ur senaste-listan och starta den igen. | Utkastet finns kvar med bild, justering och markeringar. |
+| R5 | Öppna analyssteget i rundan. | "Analysis unavailable" och **Mark hits manually**; inget anrop görs. |
+| R6 | Granska, bekräfta och öppna sessionen igen. | Bekräftad runda med demopoäng. |
+
+### U: analys i utvecklingsläge (Expo Go mot lokal server)
+
+Release-APK:n har ingen analys, så dessa görs i Expo Go med servern igång.
+
+| # | Gör | Förväntat | Vad som kan observeras |
+| --- | --- | --- | --- |
+| U1 | Med markeringar i rundan: stoppa servern (Ctrl+C) och tryck **Analyse photos**. | "Couldn't reach the analysis service…"; markeringar och foton finns kvar. Starta servern, tryck **Try again**: förslag eller tydligt besked. | Helt observerbart |
+| U2 | Tryck **Analyse photos** och genast **Ctrl+Z** i serverterminalen. Tryck **Cancel analysis**. Kör `fg`. Analysera igen. | Efter Cancel är flödet fritt; det nya försöket fungerar. Svaret från det pausade försöket ändrar inget. | Att det sena svaret ignoreras ser du bara som att inga förslag från det dyker upp; själva regeln bevisas av testerna |
