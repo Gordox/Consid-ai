@@ -52,6 +52,7 @@ function deps(
     readHead: () => head,
     photoFile: (photo: { fileName: string }) => new Blob([photo.fileName], { type: 'image/jpeg' }),
     timeoutMs: 1000,
+    reportError: () => undefined,
   };
 }
 
@@ -162,6 +163,19 @@ describe('requestAnalysis', () => {
         deps(async () => jsonResponse(status, {})),
       ),
     ).toEqual({ ok: false, error });
+  });
+
+  it('passes the cause of a request that fails before any answer to the error report', async () => {
+    const cause = new Error('Unsupported FormDataPart implementation');
+    const reported: unknown[] = [];
+    const result = await requestAnalysis(CONFIG, REQUEST, {
+      ...deps(async () => {
+        throw cause;
+      }),
+      reportError: (error) => reported.push(error),
+    });
+    expect(result).toEqual({ ok: false, error: 'network' });
+    expect(reported).toEqual([cause]);
   });
 
   it('separates network failures, timeouts and unreadable bodies', async () => {

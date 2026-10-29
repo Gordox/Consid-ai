@@ -45,6 +45,10 @@ export type AnalysisClientDeps = {
   // the bytes of a Blob such as an expo-file-system File; it refuses React Native's { uri } parts.
   readonly photoFile: (photo: AnalysisPhoto) => Blob;
   readonly timeoutMs: number;
+  // Receives the cause when the request fails before any answer. The user is told the service
+  // could not be reached; the cause tells a refused connection from a request the platform
+  // could not build (as when a fetch implementation rejects a FormData part).
+  readonly reportError: (error: unknown) => void;
   // Aborted when the user cancels. Optional so callers that cannot cancel need not pass one.
   readonly signal?: AbortSignal;
 };
@@ -120,9 +124,11 @@ export async function requestAnalysis(
       signal: controller.signal,
       headers: { Accept: 'application/json' },
     });
-  } catch {
+  } catch (error) {
     if (cancelled()) return { ok: false, error: 'cancelled' };
-    return { ok: false, error: controller.signal.aborted ? 'timeout' : 'network' };
+    if (controller.signal.aborted) return { ok: false, error: 'timeout' };
+    deps.reportError(error);
+    return { ok: false, error: 'network' };
   } finally {
     clearTimeout(timer);
     deps.signal?.removeEventListener('abort', forwardCancel);

@@ -121,6 +121,7 @@ export async function runAnalysisAttempt(
       readHead: (photo) => deps.photos.readHead(photo.fileName, UPLOAD_CHECK_BYTES),
       photoFile: (photo) => deps.photos.uploadFile(photo.fileName),
       timeoutMs: deps.timeoutMs,
+      reportError: deps.reportError,
       signal,
     },
   );
