@@ -204,7 +204,14 @@ jobs:
           apk=android/app/build/outputs/apk/release/app-release.apk
           tools="$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)"
           certs=$("$tools/apksigner" verify --print-certs "$apk")
-          actual=$(printf '%s\n' "$certs" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')
+          printf '%s\n' "$certs"
+          # apksigner names the signer "#1" or by SDK range depending on version and scheme; every
+          # signer line must carry the same certificate.
+          actual=$(printf '%s\n' "$certs" | sed -n 's/^Signer.*certificate SHA-256 digest: //p' | sort -u)
+          if [ "$(printf '%s\n' "$actual" | grep -c .)" != 1 ]; then
+            echo "::error::Expected exactly one signing certificate."
+            exit 1
+          fi
           expected=$(printf '%s' "$EXPECTED_CERT_SHA256" | tr -d ': ' | tr 'A-F' 'a-f')
           echo "Signing certificate SHA-256: $actual"
           if [ -z "$expected" ] || [ "$actual" != "$expected" ]; then
