@@ -4,7 +4,7 @@
 
 En Android-app (React Native/Expo) för att logga skjutträning mot papperstavla: du fotograferar tavlan, markerar eller får förslag på träffar och sparar bekräftade rundor, så att du slipper föra poäng för hand.
 
-**Nedladdning:** [GitHub Releases](https://github.com/Gordox/Consid-ai/releases) (personlig alfa, prerelease)
+**Nedladdning:** [Target Practice 0.1.0-alpha.8](https://github.com/Gordox/Consid-ai/releases/tag/v0.1.0-alpha.8) (personlig alfa, prerelease; nyare byggen under [Releases](https://github.com/Gordox/Consid-ai/releases))
 **Källkod:** <https://github.com/Gordox/Consid-ai>
 
 > **Personlig alfa.** Poängen är **demopoäng** tills tavlans mått är verifierade. Bildanalysen är bara mätt på syntetiska bilder; dess precision på riktiga foton är inte känd. Anteckningar ingår inte i alfan ([beslut](docs/decisions/2026-10-29-notes-deferred.md)).
