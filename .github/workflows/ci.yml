@@ -205,9 +205,9 @@ jobs:
           tools="$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)"
           certs=$("$tools/apksigner" verify --print-certs "$apk")
           printf '%s\n' "$certs"
-          # apksigner names the signer "#1" or by SDK range depending on version and scheme; every
-          # signer line must carry the same certificate.
-          actual=$(printf '%s\n' "$certs" | sed -n 's/^Signer.*certificate SHA-256 digest: //p' | sort -u)
+          # The signer label varies with apksigner version and scheme ("Signer #1", "V2 Signer");
+          # every signer line must carry the same certificate.
+          actual=$(printf '%s\n' "$certs" | sed -n 's/^.*certificate SHA-256 digest: //p' | sort -u)
           if [ "$(printf '%s\n' "$actual" | grep -c .)" != 1 ]; then
             echo "::error::Expected exactly one signing certificate."
             exit 1
