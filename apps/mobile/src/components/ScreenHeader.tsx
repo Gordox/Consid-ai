@@ -7,13 +7,15 @@ import { colors, sizes, spacing, typography } from './tokens';
 
 type ScreenHeaderProps = {
   title: string;
+  // One line of context below the title, e.g. "Round 3 · Draft saved".
+  subtitle?: string;
   onBack: () => void;
   backRef?: Ref<HostInstance>;
 };
 
 // Replaces the platform back arrow so the app uses one icon family. Android back and the iOS
 // back gesture are handled by the screen with usePreventRemove.
-export function ScreenHeader({ title, onBack, backRef }: ScreenHeaderProps) {
+export function ScreenHeader({ title, subtitle, onBack, backRef }: ScreenHeaderProps) {
   return (
     <View style={styles.header}>
       <Pressable
@@ -24,12 +26,15 @@ export function ScreenHeader({ title, onBack, backRef }: ScreenHeaderProps) {
         onPress={onBack}
         style={styles.back}
       >
-        <Icon icon={ChevronLeft} size="action" color={colors.text} />
+        <Icon icon={ChevronLeft} size="feature" color={colors.secondary} />
         <Text style={styles.backLabel}>Back</Text>
       </Pressable>
-      <Text accessibilityRole="header" style={styles.title}>
-        {title}
-      </Text>
+      <View style={styles.titleGroup}>
+        <Text accessibilityRole="header" style={styles.title}>
+          {title}
+        </Text>
+        {subtitle === undefined ? null : <Text style={styles.subtitle}>{subtitle}</Text>}
+      </View>
     </View>
   );
 }
@@ -47,11 +52,18 @@ const styles = StyleSheet.create({
     gap: spacing.fine,
   },
   backLabel: {
-    ...typography.label,
-    color: colors.text,
+    ...typography.body,
+    color: colors.secondary,
+  },
+  titleGroup: {
+    gap: spacing.fine,
   },
   title: {
-    ...typography.pageTitle,
+    ...typography.title,
     color: colors.text,
+  },
+  subtitle: {
+    ...typography.body,
+    color: colors.secondary,
   },
 });

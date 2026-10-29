@@ -1,5 +1,7 @@
 # Enhetskontroller: sessioner (steg 3–7)
 
+> **Developer checks borttaget (2026-10-28).** Ägaren har beslutat att ta bort Developer checks, testläget och testdatabasverktygen ur appen. Instruktioner nedan som använder `Developer checks`, `Use UI check database` eller testdatabaserna kan inte längre följas. Resultat och observationer som redan är rapporterade står kvar som historik. Gamla testdatabaser och bildmappar på telefonen raderas inte av borttagningen. Aktuell checklista: [`mvp.md`](mvp.md).
+
 Checklista för manuella kontroller och integrationstester på enhet.
 
 > **Paus (2026-10-27):** Utbyggnaden av testverktyget (7c–7f) är pausad. Del B1, B2 och de rader i B0 som kräver 7e kan inte köras förrän arbetet återupptas. Del A kan köras i den vanliga appen. Inget som inte har körts är markerat som klart. Planen och besluten finns i [`implementation/step-7-verification.md`](../../implementation/step-7-verification.md).

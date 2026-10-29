@@ -31,10 +31,25 @@ type SaveHarness = {
   save: (session: Session) => Promise<SaveSessionResult>;
 };
 
+// Every harness made by a test, so saves a test leaves in flight can be settled afterwards.
+const harnesses: SaveHarness[] = [];
+
+// A save that never settles keeps the coordinator's slow-save timer running after the test, and
+// Jest then cannot exit. Settling it is what the app's database eventually does too; resolving
+// an already settled save has no effect.
+afterEach(async () => {
+  for (const harness of harnesses.splice(0)) {
+    for (const save of harness.pending) {
+      save.resolve('saved');
+    }
+  }
+  await flushPromises();
+});
+
 function createSaveHarness(): SaveHarness {
   const calls: Session[] = [];
   const pending: Deferred<SaveSessionResult>[] = [];
-  return {
+  const harness: SaveHarness = {
     calls,
     pending,
     save: (session) => {
@@ -44,6 +59,8 @@ function createSaveHarness(): SaveHarness {
       return result.promise;
     },
   };
+  harnesses.push(harness);
+  return harness;
 }
 
 let idCounter = 0;

@@ -3,20 +3,21 @@ import type { SaveCoordinator } from './saveCoordinator';
 
 // State behind the session list (implementation/step-6-session-list.md §4–5). A failed read is
 // never shown as an empty list: "loaded" is only reached through a successful read.
-export type SessionListView =
+// L lets the screen read extra data (round summaries) together with the listing.
+export type SessionListView<L extends SessionListing = SessionListing> =
   | { readonly status: 'initialLoading' }
   | { readonly status: 'initialFailed' }
   | {
       readonly status: 'loaded';
-      readonly listing: SessionListing;
+      readonly listing: L;
       // A reload is running; the earlier listing stays visible meanwhile.
       readonly refreshing: boolean;
       // The latest reload failed; the earlier listing is still shown (Ö2).
       readonly refreshFailed: boolean;
     };
 
-export type SessionListController = {
-  getView(): SessionListView;
+export type SessionListController<L extends SessionListing = SessionListing> = {
+  getView(): SessionListView<L>;
   subscribe(listener: () => void): () => void;
   // Called from focus effects. Becoming active reads the list; inactive lists never read.
   setActive(active: boolean): void;
@@ -26,16 +27,16 @@ export type SessionListController = {
   dispose(): void;
 };
 
-export type SessionListControllerDeps = {
+export type SessionListControllerDeps<L extends SessionListing = SessionListing> = {
   // Bound to listSessions(db) by the screen; the shared connection is never closed here.
-  loadSessions: () => Promise<SessionListing>;
+  loadSessions: () => Promise<L>;
   coordinator: SaveCoordinator;
 };
 
-export function createSessionListController(
-  deps: SessionListControllerDeps,
-): SessionListController {
-  let view: SessionListView = { status: 'initialLoading' };
+export function createSessionListController<L extends SessionListing = SessionListing>(
+  deps: SessionListControllerDeps<L>,
+): SessionListController<L> {
+  let view: SessionListView<L> = { status: 'initialLoading' };
   let active = false;
   let disposed = false;
   // At most one read runs; requests during it collapse into one pending reload.
@@ -47,7 +48,7 @@ export function createSessionListController(
   let unsubscribeCoordinator: (() => void) | null = null;
   const listeners = new Set<() => void>();
 
-  function publish(next: SessionListView): void {
+  function publish(next: SessionListView<L>): void {
     view = next;
     for (const listener of [...listeners]) {
       listener();
@@ -71,7 +72,7 @@ export function createSessionListController(
 
   function finishRead(
     readGeneration: number,
-    result: { ok: true; listing: SessionListing } | { ok: false },
+    result: { ok: true; listing: L } | { ok: false },
   ): void {
     readInFlight = false;
     if (!disposed && readGeneration === generation) {

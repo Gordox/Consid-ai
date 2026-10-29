@@ -1,0 +1,47 @@
+[project]
+name = "target-practice-analysis"
+version = "0.1.0"
+description = "Local analysis service that suggests new hit locations on target photos."
+# Verified with Python 3.14.2 only.
+requires-python = ">=3.14,<3.15"
+dependencies = [
+  "fastapi==0.162.0",
+  "numpy==2.5.4",
+  "opencv-python-headless==5.0.0.93",
+  "python-multipart==0.0.32",
+  "uvicorn==0.54.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "httpx==0.28.1",
+  "mypy==2.4.0",
+  "pytest==9.2.0",
+  "ruff==0.17.3",
+]
+
+[build-system]
+requires = ["setuptools>=80"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py314"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "N", "SIM", "RUF"]
+
+[tool.ruff.lint.per-file-ignores]
+# Field names follow the camelCase JSON contract.
+"app/schemas/*" = ["N815"]
+
+[tool.mypy]
+strict = true
+files = ["app", "tests"]
+
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

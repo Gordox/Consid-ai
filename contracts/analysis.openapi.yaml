@@ -1,0 +1,243 @@
+openapi: 3.1.0
+info:
+  title: Target Practice analysis
+  version: 1.2.0
+  description: >
+    Suggests hit locations on the after photo of one round. Suggestions are untrusted: the app
+    validates every field, the user confirms or corrects each hit, and scores are calculated in
+    the app from confirmed geometry. The service never returns scores. The local implementation
+    is services/analysis (Python, FastAPI, OpenCV); it stores nothing and calls no other
+    service. Version 1.1 adds the required calibration field, the registration object and a
+    nullable image size, and limits formats to those the service decodes (JPEG, PNG, WebP).
+    Version 1.2 adds the warning numberColumnsSkipped.
+servers:
+  - url: http://127.0.0.1:8000
+    description: Local development on this computer, or on a phone via adb reverse tcp:8000 tcp:8000.
+  - url: http://{lanAddress}:8000
+    description: >
+      Development only, from a phone on the same trusted network. The app allows plain HTTP to
+      private network addresses only in development builds. HTTPS is required elsewhere.
+    variables:
+      lanAddress:
+        default: 192.168.1.10
+paths:
+  /v1/analyses:
+    post:
+      operationId: analyzeRound
+      summary: Suggest hits for one analysis attempt of a round.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [roundId, attemptId, mode, targetId, calibration, after]
+              properties:
+                roundId:
+                  type: string
+                  format: uuid
+                attemptId:
+                  type: string
+                  format: uuid
+                  description: New for every attempt; echoed so late answers can be discarded.
+                mode:
+                  type: string
+                  enum: [paired, single]
+                  description: paired requires before; single must not include before.
+                targetId:
+                  type: string
+                  example: demo-synthetic-v1
+                  description: Must be a target id the service knows, otherwise 422 unknownTarget.
+                calibration:
+                  type: string
+                  description: >
+                    JSON {"points": [{"x": number, "y": number} x 4]} in after-photo pixels:
+                    where the outer scoring ring crosses the vertical and horizontal axes, in the
+                    order top, right, bottom, left. Analysis is limited to the calibrated target.
+                    Points outside the photo, or not forming a convex outline, give 422
+                    invalidCalibration.
+                  example: '{"points":[{"x":1500,"y":960},{"x":2480,"y":2140},{"x":1520,"y":3120},{"x":520,"y":1990}]}'
+                after:
+                  type: string
+                  format: binary
+                  description: >
+                    JPEG, PNG or WebP, decided by the file content; at most 15 MB, 50 megapixels
+                    and at least 640 px on the short side. EXIF orientation is applied, so
+                    coordinates refer to the upright photo. The app sends its normalised copy
+                    without metadata.
+                before:
+                  type: string
+                  format: binary
+                  description: Same limits. Taken after covering old holes, before shooting.
+      responses:
+        "200":
+          description: >
+            Analysis finished. A status other than succeeded carries no candidates and tells the
+            app to offer a retake or manual marking; an empty candidate list with status
+            succeeded means no new holes were found, never a hidden failure.
+            unusableImage: a photo could not be decoded or is too small or too large in pixels.
+            registrationFailed: the before photo could not be aligned to the after photo, or so
+            much changed between them that differences cannot be read as holes.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalysisResult"
+        "400":
+          $ref: "#/components/responses/Error"
+          description: invalidRequest, with fieldErrors per form field.
+        "401":
+          $ref: "#/components/responses/Error"
+        "413":
+          $ref: "#/components/responses/Error"
+        "415":
+          $ref: "#/components/responses/Error"
+        "422":
+          $ref: "#/components/responses/Error"
+        "429":
+          $ref: "#/components/responses/Error"
+        "500":
+          $ref: "#/components/responses/Error"
+        "502":
+          $ref: "#/components/responses/Error"
+        "504":
+          $ref: "#/components/responses/Error"
+components:
+  responses:
+    Error:
+      description: >
+        Structured error without stack traces or credentials. Codes: invalidRequest (400),
+        fileTooLarge or payloadTooLarge (413), unsupportedFormat (415), unknownTarget or
+        invalidCalibration (422), busy (429), internalError (500), timeout (504). 401 is
+        reserved for when the service gets authentication. Every response carries the
+        X-Request-ID header, equal to requestId.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+  schemas:
+    AnalysisResult:
+      type: object
+      additionalProperties: false
+      required:
+        [
+          roundId,
+          attemptId,
+          status,
+          algorithmVersion,
+          image,
+          candidates,
+          warnings,
+          registration,
+        ]
+      properties:
+        roundId:
+          type: string
+          format: uuid
+        attemptId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [succeeded, unusableImage, registrationFailed]
+        algorithmVersion:
+          type: string
+          minLength: 1
+          maxLength: 100
+        image:
+          type: [object, "null"]
+          description: >
+            Size of the after photo after orientation, in pixels. Must equal the size the app
+            recorded, otherwise the result is rejected. Null only with status unusableImage when
+            the after photo could not be decoded.
+          required: [width, height]
+          properties:
+            width:
+              type: integer
+              minimum: 1
+            height:
+              type: integer
+              minimum: 1
+        candidates:
+          type: array
+          maxItems: 100
+          items:
+            $ref: "#/components/schemas/Candidate"
+        warnings:
+          type: array
+          maxItems: 20
+          items:
+            $ref: "#/components/schemas/Warning"
+        registration:
+          type: object
+          required: [method, inliers]
+          description: How the before photo was aligned. method none in single mode.
+          properties:
+            method:
+              type: string
+              enum: [features+ecc, features, none]
+            inliers:
+              type: [integer, "null"]
+              minimum: 0
+    Candidate:
+      type: object
+      required: [id, x, y, confidence, uncertain]
+      properties:
+        id:
+          type: string
+          minLength: 1
+          maxLength: 64
+        x:
+          type: number
+          description: Hole centre in after-photo pixels; origin top left, x to the right.
+        y:
+          type: number
+          description: Hole centre in after-photo pixels; y downwards.
+        diameterPx:
+          type: [number, "null"]
+          description: Estimated hole diameter in pixels. Informational; the app scores with its own diameter.
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+          description: Heuristic score from contrast and shape, not a calibrated probability.
+        uncertain:
+          type: boolean
+          description: >
+            True when the service wants the user to check this hole: possibly several
+            overlapping holes, an irregular shape, weak contrast or near the edge of the
+            analysed area.
+    Warning:
+      type: object
+      required: [code]
+      properties:
+        code:
+          type: string
+          description: >
+            numberColumnsSkipped is not a photo problem: single-photo analysis did not search
+            the columns of printed numbers on the axes, so holes there are never suggested. The
+            app must say so, and an unsuggested hole is never counted as a miss.
+          enum:
+            [
+              blur,
+              glare,
+              shadow,
+              clipping,
+              partialTarget,
+              stickerEdges,
+              numberColumnsSkipped,
+              other,
+            ]
+    Error:
+      type: object
+      required: [code, message, requestId]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        requestId:
+          type: string
+        fieldErrors:
+          type: object
+          additionalProperties:
+            type: string

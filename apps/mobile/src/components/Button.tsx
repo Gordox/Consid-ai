@@ -1,5 +1,6 @@
 import type { LucideIcon } from 'lucide-react-native';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useState } from 'react';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Icon } from './Icon';
 import { colors, radius, sizes, spacing, typography } from './tokens';
@@ -11,10 +12,12 @@ type ButtonProps = {
   onPress: () => void;
   variant?: ButtonVariant;
   disabled?: boolean;
-  // Work in progress: keeps the variant's look but does not respond to presses.
+  // Work in progress: keeps the label (the caller words it, e.g. "Saving…"), shows a small
+  // spinner next to it and rejects further presses.
   busy?: boolean;
   // Decorative leading icon; the label carries the meaning.
   icon?: LucideIcon;
+  accessibilityHint?: string;
 };
 
 const LABEL_COLOR: Record<ButtonVariant, string> = {
@@ -23,6 +26,8 @@ const LABEL_COLOR: Record<ButtonVariant, string> = {
   destructive: colors.error,
 };
 
+// Buttons from docs/design/images/components/03-buttons.png: default, pressed, focus, disabled
+// and busy. Disabled uses explicit colours, never opacity on the whole control.
 export function Button({
   label,
   onPress,
@@ -30,23 +35,34 @@ export function Button({
   disabled = false,
   busy = false,
   icon,
+  accessibilityHint,
 }: ButtonProps) {
+  const [focused, setFocused] = useState(false);
   const inactive = disabled || busy;
-  const labelColor = disabled ? colors.disabled : LABEL_COLOR[variant];
+  const labelColor = disabled ? colors.disabledText : LABEL_COLOR[variant];
   return (
     <Pressable
+      accessibilityHint={accessibilityHint}
+      accessibilityLabel={label}
       accessibilityRole="button"
       accessibilityState={{ disabled: inactive, busy }}
       disabled={inactive}
+      onBlur={() => setFocused(false)}
+      onFocus={() => setFocused(true)}
       onPress={onPress}
       style={({ pressed }) => [
         styles.button,
         disabled ? styles.disabled : styles[variant],
-        pressed && !inactive ? styles.pressed : null,
+        pressed && !inactive ? PRESSED[variant] : null,
+        focused ? styles.focused : null,
       ]}
     >
       <View style={styles.content}>
-        {icon === undefined ? null : <Icon icon={icon} size="action" color={labelColor} />}
+        {busy ? (
+          <ActivityIndicator color={labelColor} size="small" />
+        ) : icon === undefined ? null : (
+          <Icon icon={icon} size="action" color={labelColor} />
+        )}
         <Text style={[styles.label, { color: labelColor }]}>{label}</Text>
       </View>
     </Pressable>
@@ -57,6 +73,7 @@ const styles = StyleSheet.create({
   button: {
     minHeight: sizes.primaryButtonHeight,
     borderRadius: radius.control,
+    borderWidth: 1,
     paddingHorizontal: spacing.field,
     paddingVertical: spacing.small,
     alignItems: 'center',
@@ -64,20 +81,23 @@ const styles = StyleSheet.create({
   },
   primary: {
     backgroundColor: colors.accent,
+    borderColor: colors.accent,
   },
   secondary: {
-    backgroundColor: colors.elevated,
-    borderWidth: 1,
+    backgroundColor: colors.surface,
     borderColor: colors.inputBorder,
   },
   destructive: {
-    backgroundColor: colors.elevated,
+    backgroundColor: colors.errorSurface,
+    borderColor: colors.error,
   },
   disabled: {
-    backgroundColor: colors.elevated,
+    backgroundColor: colors.disabledSurface,
+    borderColor: colors.disabledSurface,
   },
-  pressed: {
-    opacity: 0.85,
+  focused: {
+    borderWidth: 2,
+    borderColor: colors.focus,
   },
   content: {
     flexDirection: 'row',
@@ -87,7 +107,14 @@ const styles = StyleSheet.create({
     gap: spacing.label,
   },
   label: {
-    ...typography.label,
+    ...typography.button,
     textAlign: 'center',
+    flexShrink: 1,
   },
+});
+
+const PRESSED = StyleSheet.create({
+  primary: { backgroundColor: colors.accentPressed, borderColor: colors.accentPressed },
+  secondary: { backgroundColor: colors.elevated },
+  destructive: { backgroundColor: colors.elevated },
 });

@@ -1,4 +1,4 @@
-import type { Session, SessionField } from '../../domain/session/session';
+import type { Session, SessionField, SessionFormInput } from '../../domain/session/session';
 import {
   InvalidSessionError,
   type SaveSessionResult,
@@ -37,6 +37,8 @@ export type SessionFormController = {
   getView(): SessionFormView;
   subscribe(listener: () => void): () => void;
   changeField(field: SessionField, value: string | null): void;
+  // Fills an untouched form without marking it changed; ignored once the user has edited.
+  prefill(values: Partial<SessionFormInput>): void;
   submit(): void;
   retry(): void;
   // Undoes dispose() for the same form instance, e.g. when Fast Refresh re-runs effects.
@@ -167,6 +169,13 @@ export function createSessionFormController(
         return;
       }
       dispatch({ type: 'fieldChanged', field, value });
+    },
+
+    prefill(values) {
+      if (disposed) {
+        return;
+      }
+      dispatch({ type: 'prefilled', values });
     },
 
     submit() {

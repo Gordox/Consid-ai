@@ -4,7 +4,6 @@ import {
   createDatabaseLifecycle,
   type DatabaseLifecycle,
   type DatabaseLifecycleDeps,
-  type DatabaseMode,
   type SessionStore,
 } from '../../../src/features/startup/databaseLifecycle';
 import { ConnectionClosingError } from '../../../src/features/startup/trackedConnection';
@@ -28,7 +27,7 @@ class ClosableFakeDatabase extends FakeDatabase {
     super(() => undefined);
   }
 
-  // Reads wait for the test, so one can be in flight during a mode switch.
+  // Reads wait for the test, so one can be in flight while the connection closes.
   getAllAsync(): Promise<unknown[]> {
     const read = deferred<unknown[]>();
     this.reads.push(read);
@@ -46,26 +45,23 @@ class ClosableFakeDatabase extends FakeDatabase {
 type Harness = {
   deps: DatabaseLifecycleDeps;
   opens: Deferred<ClosableSessionDatabase>[];
-  openedModes: DatabaseMode[];
   reported: unknown[];
 };
 
 // Every call to openAndMigrate waits for a deferred that the test settles.
 function createHarness(): Harness {
   const opens: Deferred<ClosableSessionDatabase>[] = [];
-  const openedModes: DatabaseMode[] = [];
   const reported: unknown[] = [];
   return {
     opens,
-    openedModes,
     reported,
     deps: {
-      openAndMigrate: (mode) => {
+      openAndMigrate: () => {
         const open = deferred<ClosableSessionDatabase>();
         opens.push(open);
-        openedModes.push(mode);
         return open.promise;
       },
+      photoFolder: 'photos',
       createCoordinator: () => createSaveCoordinator(),
       reportError: (error) => {
         reported.push(error);
@@ -253,150 +249,99 @@ describe('createDatabaseLifecycle', () => {
   });
 });
 
-describe('createDatabaseLifecycle: mode switches', () => {
-  it('starts in normal mode, as after every full restart', async () => {
+describe('createDatabaseLifecycle: one database', () => {
+  it('hands out the photo folder together with the connection', async () => {
     const harness = createHarness();
     const lifecycle = createDatabaseLifecycle(harness.deps);
-
-    expect(lifecycle.getMode()).toBe('normal');
     lifecycle.activate();
-    await flushPromises();
 
-    expect(harness.openedModes).toEqual(['normal']);
-  });
+    const store = await openReady(harness, lifecycle, 0, new ClosableFakeDatabase());
 
-  it('closes the current connection before opening the other database', async () => {
-    const harness = createHarness();
-    const lifecycle = createDatabaseLifecycle(harness.deps);
-    const normal = new ClosableFakeDatabase();
-    const test = new ClosableFakeDatabase();
-    lifecycle.activate();
-    await openReady(harness, lifecycle, 0, normal);
-
-    lifecycle.switchMode('test');
-    expect(lifecycle.getMode()).toBe('test');
-    expect(lifecycle.getState()).toEqual({ status: 'loading' });
-    await flushPromises();
-    expect(normal.closeCalls).toBe(1);
-    expect(harness.openedModes).toEqual(['normal', 'test']);
-
-    const store = await openReady(harness, lifecycle, 1, test);
-    await expectStoreUses(store.db, test);
-
-    lifecycle.switchMode('normal');
-    await flushPromises();
-    expect(test.closeCalls).toBe(1);
-    expect(harness.openedModes).toEqual(['normal', 'test', 'normal']);
-  });
-
-  it('ignores a switch to the mode that is already open', async () => {
-    const harness = createHarness();
-    const lifecycle = createDatabaseLifecycle(harness.deps);
-    const normal = new ClosableFakeDatabase();
-    lifecycle.activate();
-    await openReady(harness, lifecycle, 0, normal);
-
-    lifecycle.switchMode('normal');
-    await flushPromises();
-
-    expect(normal.closeCalls).toBe(0);
+    expect(store.photoFolder).toBe('photos');
     expect(harness.opens).toHaveLength(1);
-  });
-
-  it('lets an in-flight save finish on the old connection before it closes', async () => {
-    const harness = createHarness();
-    const lifecycle = createDatabaseLifecycle(harness.deps);
-    const normal = new ClosableFakeDatabase();
-    lifecycle.activate();
-    const store = await openReady(harness, lifecycle, 0, normal);
-    const save = deferred<string>();
-    store.coordinator.run(() => save.promise);
-
-    lifecycle.switchMode('test');
-    await flushPromises();
-    expect(normal.closeCalls).toBe(0);
-    expect(harness.opens).toHaveLength(1);
-
-    save.resolve('saved');
-    await flushPromises();
-    expect(normal.closeCalls).toBe(1);
-    expect(harness.openedModes).toEqual(['normal', 'test']);
   });
 
   it('lets an in-flight read finish before closing, and refuses new operations', async () => {
     const harness = createHarness();
     const lifecycle = createDatabaseLifecycle(harness.deps);
-    const normal = new ClosableFakeDatabase();
+    const db = new ClosableFakeDatabase();
     lifecycle.activate();
-    const store = await openReady(harness, lifecycle, 0, normal);
+    const store = await openReady(harness, lifecycle, 0, db);
     const read = store.db.getAllAsync('SELECT 1', []);
 
-    lifecycle.switchMode('test');
+    lifecycle.deactivate();
     await flushPromises();
-    expect(normal.closeCalls).toBe(0);
-    expect(harness.opens).toHaveLength(1);
+    expect(db.closeCalls).toBe(0);
     await expect(store.db.getAllAsync('SELECT 2', [])).rejects.toBeInstanceOf(
       ConnectionClosingError,
     );
-    expect(normal.reads).toHaveLength(1);
+    expect(db.reads).toHaveLength(1);
 
-    normal.reads[0]?.resolve([]);
+    db.reads[0]?.resolve([]);
     await expect(read).resolves.toEqual([]);
     await flushPromises();
-    expect(normal.closeCalls).toBe(1);
-    expect(harness.openedModes).toEqual(['normal', 'test']);
-  });
-
-  it('discards an initialisation that was still running when the mode switched', async () => {
-    const harness = createHarness();
-    const lifecycle = createDatabaseLifecycle(harness.deps);
-    const lateNormal = new ClosableFakeDatabase();
-    const test = new ClosableFakeDatabase();
-    lifecycle.activate();
-    await flushPromises();
-
-    lifecycle.switchMode('test');
-    await flushPromises();
-    // The normal open is still running, so the test open must wait for it.
-    expect(harness.opens).toHaveLength(1);
-
-    harness.opens[0]?.resolve(lateNormal);
-    await flushPromises();
-    expect(lateNormal.closeCalls).toBe(1);
-    expect(lifecycle.getState()).toEqual({ status: 'loading' });
-
-    const store = await openReady(harness, lifecycle, 1, test);
-    await expectStoreUses(store.db, test);
-    expect(harness.openedModes).toEqual(['normal', 'test']);
-  });
-
-  it('does not publish a failure from the earlier mode', async () => {
-    const harness = createHarness();
-    const lifecycle = createDatabaseLifecycle(harness.deps);
-    lifecycle.activate();
-    await flushPromises();
-
-    lifecycle.switchMode('test');
-    harness.opens[0]?.reject(new Error('normal open failed'));
-    await flushPromises();
-
-    expect(lifecycle.getState()).toEqual({ status: 'loading' });
-    expect(harness.reported).toEqual([]);
+    expect(db.closeCalls).toBe(1);
   });
 
   it('opens nothing more after deactivation', async () => {
     const harness = createHarness();
     const lifecycle = createDatabaseLifecycle(harness.deps);
-    const normal = new ClosableFakeDatabase();
     lifecycle.activate();
-    await openReady(harness, lifecycle, 0, normal);
+    await openReady(harness, lifecycle, 0, new ClosableFakeDatabase());
 
     lifecycle.deactivate();
-    lifecycle.switchMode('test');
+    lifecycle.retry();
     await flushPromises();
 
-    expect(normal.closeCalls).toBe(1);
     expect(harness.opens).toHaveLength(1);
+  });
+});
+
+describe('createDatabaseLifecycle: analyses and housekeeping', () => {
+  it('runs afterOpen on the new connection before handing it out, once per open', async () => {
+    const harness = createHarness();
+    const seen: SessionDatabase[] = [];
+    const lifecycle = createDatabaseLifecycle({
+      ...harness.deps,
+      afterOpen: async (db) => {
+        seen.push(db);
+      },
+    });
+    lifecycle.activate();
+    const store = await openReady(harness, lifecycle, 0, new ClosableFakeDatabase());
+    expect(seen).toEqual([store.db]);
+  });
+
+  it('still opens when afterOpen fails, and reports the failure', async () => {
+    const harness = createHarness();
+    const failure = new Error('cleanup failed');
+    const lifecycle = createDatabaseLifecycle({
+      ...harness.deps,
+      afterOpen: async () => {
+        throw failure;
+      },
+    });
+    lifecycle.activate();
+    await openReady(harness, lifecycle, 0, new ClosableFakeDatabase());
+    expect(harness.reported).toEqual([failure]);
+  });
+
+  it('aborts running analyses and refuses new ones when the connection closes', async () => {
+    const harness = createHarness();
+    const lifecycle = createDatabaseLifecycle(harness.deps);
+    lifecycle.activate();
+    const store = await openReady(harness, lifecycle, 0, new ClosableFakeDatabase());
+    const seen: { signal: AbortSignal | null } = { signal: null };
+    store.analysisRuns.start('r1', 'a1', (signal) => {
+      seen.signal = signal;
+      return new Promise(() => undefined);
+    });
+
+    lifecycle.deactivate();
+
+    expect(seen.signal?.aborted).toBe(true);
+    expect(store.analysisRuns.isAttemptRunning('a1')).toBe(false);
+    expect(store.analysisRuns.start('r1', 'a2', () => new Promise(() => undefined))).toBe(false);
   });
 });
 

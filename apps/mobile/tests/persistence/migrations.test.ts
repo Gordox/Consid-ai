@@ -2,6 +2,7 @@ import { DatabaseStateError } from '../../src/persistence/database';
 import {
   DatabaseVersionTooNewError,
   JournalModeError,
+  LATEST_SCHEMA_VERSION,
   MIGRATIONS,
   MigrationFailedError,
   migrateDatabase,
@@ -54,7 +55,7 @@ function describeCalls(calls: readonly DatabaseCall[]): string[] {
 }
 
 describe('migrateDatabase', () => {
-  it('migrates a new database: version check, WAL, then one atomic migration', async () => {
+  it('migrates a new database: version check, WAL, then each migration atomically', async () => {
     const state: FakeState = { userVersion: 0, journalMode: 'wal' };
     const db = createFakeDatabase(state);
 
@@ -63,17 +64,47 @@ describe('migrateDatabase', () => {
     expect(describeCalls(db.calls)).toEqual([
       'main getFirst PRAGMA user_version',
       'main getFirst PRAGMA journal_mode = WAL',
-      'begin',
-      'transaction getFirst PRAGMA user_version',
-      `transaction exec ${MIGRATIONS[0]}`,
-      'transaction exec PRAGMA user_version = 1',
-      'commit',
+      ...MIGRATIONS.flatMap((migration, index) => [
+        'begin',
+        'transaction getFirst PRAGMA user_version',
+        `transaction exec ${migration}`,
+        `transaction exec PRAGMA user_version = ${index + 1}`,
+        'commit',
+      ]),
     ]);
-    expect(state.userVersion).toBe(1);
+    expect(state.userVersion).toBe(LATEST_SCHEMA_VERSION);
+  });
+
+  // Existing installs from steps 3–7 are at version 1 with saved sessions.
+  it('upgrades a version 1 database with the later migrations only', async () => {
+    const state: FakeState = { userVersion: 1, journalMode: 'wal' };
+    const db = createFakeDatabase(state);
+
+    await migrateDatabase(db);
+
+    const calls = describeCalls(db.calls);
+    expect(calls).not.toContain(`transaction exec ${MIGRATIONS[0]}`);
+    for (const migration of MIGRATIONS.slice(1)) {
+      expect(calls).toContain(`transaction exec ${migration}`);
+    }
+    expect(state.userVersion).toBe(LATEST_SCHEMA_VERSION);
+  });
+
+  // Installs from the first MVP (tested on the S20) are at version 2 with rounds.
+  it('upgrades a version 2 database without rerunning migrations 1 and 2', async () => {
+    const state: FakeState = { userVersion: 2, journalMode: 'wal' };
+    const db = createFakeDatabase(state);
+
+    await migrateDatabase(db);
+
+    const calls = describeCalls(db.calls);
+    expect(calls).not.toContain(`transaction exec ${MIGRATIONS[0]}`);
+    expect(calls).not.toContain(`transaction exec ${MIGRATIONS[1]}`);
+    expect(state.userVersion).toBe(LATEST_SCHEMA_VERSION);
   });
 
   it('only checks the version and WAL when the database is up to date', async () => {
-    const db = createFakeDatabase({ userVersion: 1, journalMode: 'wal' });
+    const db = createFakeDatabase({ userVersion: LATEST_SCHEMA_VERSION, journalMode: 'wal' });
 
     await migrateDatabase(db);
 
@@ -84,12 +115,16 @@ describe('migrateDatabase', () => {
   });
 
   it('rejects a newer database before any write, including WAL', async () => {
-    const db = createFakeDatabase({ userVersion: 2, journalMode: 'wal' });
+    const newer = LATEST_SCHEMA_VERSION + 1;
+    const db = createFakeDatabase({ userVersion: newer, journalMode: 'wal' });
 
     const error = await migrateDatabase(db).catch((caught: unknown) => caught);
 
     expect(error).toBeInstanceOf(DatabaseVersionTooNewError);
-    expect(error).toMatchObject({ databaseVersion: 2, supportedVersion: 1 });
+    expect(error).toMatchObject({
+      databaseVersion: newer,
+      supportedVersion: LATEST_SCHEMA_VERSION,
+    });
     expect(describeCalls(db.calls)).toEqual(['main getFirst PRAGMA user_version']);
   });
 
@@ -182,7 +217,7 @@ describe('migrateDatabase', () => {
       versionSeenInTransaction: 1,
     });
 
-    await migrateDatabase(db);
+    await migrateDatabase(db, ['CREATE TABLE a (x)']);
 
     expect(describeCalls(db.calls).slice(2)).toEqual([
       'begin',

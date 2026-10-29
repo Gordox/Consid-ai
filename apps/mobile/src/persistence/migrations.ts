@@ -16,8 +16,151 @@ const MIGRATION_1_CREATE_SESSIONS = `CREATE TABLE sessions (
 ) STRICT;
 CREATE INDEX sessions_created_at_idx ON sessions (created_at_utc DESC, id DESC);`;
 
+// Rounds, photos, marks and analysis attempts. Only adds: existing sessions keep their rows and
+// become in-progress sessions (finished_at_utc NULL). Confirmed rounds keep a fixed result
+// snapshot in confirmed_json plus summary columns for lists. JSON columns are validated when read.
+const MIGRATION_2_ADD_ROUNDS = `ALTER TABLE sessions ADD COLUMN finished_at_utc TEXT;
+CREATE TABLE rounds (
+  id TEXT PRIMARY KEY NOT NULL,
+  session_id TEXT NOT NULL REFERENCES sessions (id),
+  sequence INTEGER NOT NULL CHECK (sequence >= 1),
+  state TEXT NOT NULL CHECK (state IN ('draft','confirmed')),
+  created_at_utc TEXT NOT NULL,
+  actual_shots INTEGER NOT NULL CHECK (actual_shots BETWEEN 0 AND 100),
+  declared_misses INTEGER NOT NULL CHECK (declared_misses BETWEEN 0 AND 100),
+  unresolved_shots INTEGER NOT NULL CHECK (unresolved_shots BETWEEN 0 AND 100),
+  target_id TEXT NOT NULL,
+  hit_diameter_mm REAL NOT NULL CHECK (hit_diameter_mm BETWEEN 1 AND 30),
+  calibration_json TEXT,
+  confirmed_at_utc TEXT,
+  confirmed_json TEXT,
+  confirmed_subtotal INTEGER,
+  confirmed_complete INTEGER CHECK (confirmed_complete IS NULL OR confirmed_complete IN (0,1)),
+  UNIQUE (session_id, sequence)
+) STRICT;
+CREATE INDEX rounds_session_idx ON rounds (session_id, sequence);
+CREATE TABLE round_photos (
+  round_id TEXT NOT NULL REFERENCES rounds (id),
+  role TEXT NOT NULL CHECK (role IN ('before','after')),
+  file_name TEXT NOT NULL,
+  width INTEGER NOT NULL CHECK (width > 0),
+  height INTEGER NOT NULL CHECK (height > 0),
+  added_at_utc TEXT NOT NULL,
+  PRIMARY KEY (round_id, role)
+) STRICT;
+CREATE TABLE round_marks (
+  id TEXT PRIMARY KEY NOT NULL,
+  round_id TEXT NOT NULL REFERENCES rounds (id),
+  ordinal INTEGER NOT NULL,
+  x REAL NOT NULL,
+  y REAL NOT NULL,
+  shots INTEGER NOT NULL CHECK (shots BETWEEN 1 AND 10),
+  source TEXT NOT NULL CHECK (source IN ('manual','suggested','suggestedEdited')),
+  uncertain INTEGER NOT NULL CHECK (uncertain IN (0,1)),
+  candidate_id TEXT
+) STRICT;
+CREATE INDEX round_marks_round_idx ON round_marks (round_id, ordinal);
+CREATE TABLE analysis_attempts (
+  id TEXT PRIMARY KEY NOT NULL,
+  round_id TEXT NOT NULL REFERENCES rounds (id),
+  created_at_utc TEXT NOT NULL,
+  source TEXT NOT NULL CHECK (source IN ('service','demo')),
+  status TEXT NOT NULL CHECK (status IN ('pending','succeeded','failed')),
+  algorithm_version TEXT,
+  error_code TEXT,
+  result_json TEXT
+) STRICT;
+CREATE INDEX analysis_attempts_round_idx ON analysis_attempts (round_id, created_at_utc);`;
+
+// Photos are stored twice from schema 3: the unmodified copy (original_file_name) and an upright,
+// metadata-free JPEG (file_name) that defines the pixel coordinates for marks and analysis. Rows
+// from schema 2 keep original_file_name NULL: their file_name is the unmodified copy.
+// pending_photo_picks remembers the one camera or library pick in progress, so a photo can be
+// recovered when Android ends the app while the picker is open. Only adds.
+const MIGRATION_3_PHOTO_RELIABILITY = `ALTER TABLE round_photos ADD COLUMN original_file_name TEXT;
+CREATE TABLE pending_photo_picks (
+  slot INTEGER PRIMARY KEY NOT NULL CHECK (slot = 1),
+  round_id TEXT NOT NULL,
+  role TEXT NOT NULL CHECK (role IN ('before','after')),
+  started_at_utc TEXT NOT NULL
+) STRICT;`;
+
+// Suggestions must be accepted before they count as hits: round_marks.accepted, with existing
+// untouched suggestions starting as pending. Analysis attempts remember which photo files they
+// analysed, so a late answer for a replaced photo is discarded. Only adds.
+const MIGRATION_4_SUGGESTION_REVIEW = `ALTER TABLE round_marks ADD COLUMN accepted INTEGER NOT NULL DEFAULT 1 CHECK (accepted IN (0,1));
+UPDATE round_marks SET accepted = 0 WHERE source = 'suggested';
+ALTER TABLE analysis_attempts ADD COLUMN after_file_name TEXT;
+ALTER TABLE analysis_attempts ADD COLUMN before_file_name TEXT;`;
+
+// Whether a round's hole diameter is the unconfirmed default or the user's choice. Existing rounds
+// become 'assumed': nothing recorded that the user chose their diameter. Only adds.
+const MIGRATION_5_DIAMETER_SOURCE = `ALTER TABLE rounds ADD COLUMN hit_diameter_source TEXT NOT NULL DEFAULT 'assumed' CHECK (hit_diameter_source IN ('assumed','userSet'));`;
+
+// Every photo file this database creates is recorded here before it is written. Cleanup only
+// ever deletes files listed here, so files of other databases, older app versions or anything
+// else in the folder are never touched. Existing photo rows are recorded so a copy orphaned
+// later (for example by a crash after a replacement) can still be cleaned up. Only adds.
+const MIGRATION_6_PHOTO_FILE_JOURNAL = `CREATE TABLE photo_files (
+  file_name TEXT PRIMARY KEY NOT NULL,
+  created_at_utc TEXT NOT NULL
+) STRICT;
+INSERT OR IGNORE INTO photo_files (file_name, created_at_utc)
+  SELECT file_name, added_at_utc FROM round_photos;
+INSERT OR IGNORE INTO photo_files (file_name, created_at_utc)
+  SELECT original_file_name, added_at_utc FROM round_photos WHERE original_file_name IS NOT NULL;`;
+
+// Saved firearm profiles and training templates. Only adds two tables: sessions keep their own
+// settings snapshot and get no reference to these, so editing or archiving one never changes
+// history. Archived rows are kept (no deletion in this version).
+const MIGRATION_7_PROFILES_AND_TEMPLATES = `CREATE TABLE firearm_profiles (
+  id TEXT PRIMARY KEY NOT NULL,
+  firearm_name TEXT NOT NULL CHECK (length(firearm_name) BETWEEN 1 AND 100),
+  firearm_type TEXT NOT NULL CHECK (firearm_type IN ('pistol','revolver','rifle','other')),
+  calibre_label TEXT NOT NULL CHECK (length(calibre_label) BETWEEN 1 AND 50),
+  created_at_utc TEXT NOT NULL,
+  updated_at_utc TEXT NOT NULL,
+  archived_at_utc TEXT,
+  last_used_at_utc TEXT
+) STRICT;
+CREATE TABLE training_templates (
+  id TEXT PRIMARY KEY NOT NULL,
+  name TEXT NOT NULL CHECK (length(name) BETWEEN 1 AND 100),
+  distance_m REAL NOT NULL CHECK (distance_m BETWEEN 0.1 AND 1000),
+  planned_shots_per_round INTEGER NOT NULL CHECK (planned_shots_per_round BETWEEN 1 AND 100),
+  planned_rounds INTEGER CHECK (planned_rounds IS NULL OR planned_rounds BETWEEN 1 AND 100),
+  created_at_utc TEXT NOT NULL,
+  updated_at_utc TEXT NOT NULL,
+  archived_at_utc TEXT,
+  last_used_at_utc TEXT
+) STRICT;`;
+
+// Stabilisation: optimistic concurrency and traceability. Only adds columns; existing rows get
+// draft_revision 0 and NULL in the rest, so no history is rewritten.
+// - rounds.draft_revision grows with every write to a draft; screens send the revision they
+//   showed, so a write based on an outdated view is refused instead of overwriting newer work.
+// - analysis_attempts.calibration_json is the calibration the attempt was sent with, so
+//   suggestions found with an earlier alignment can be told apart. NULL for older attempts.
+// - round_marks.attempt_id names the attempt a suggestion came from. NULL for marks the user
+//   added and for suggestions saved before this schema; it is never filled in afterwards.
+// - pending_photo_picks.draft_revision is the draft revision the pick started from. NULL for a
+//   pick recorded before this schema.
+const MIGRATION_8_DRAFT_REVISION = `ALTER TABLE rounds ADD COLUMN draft_revision INTEGER NOT NULL DEFAULT 0 CHECK (draft_revision >= 0);
+ALTER TABLE analysis_attempts ADD COLUMN calibration_json TEXT;
+ALTER TABLE round_marks ADD COLUMN attempt_id TEXT;
+ALTER TABLE pending_photo_picks ADD COLUMN draft_revision INTEGER CHECK (draft_revision IS NULL OR draft_revision >= 0);`;
+
 // Append only: index + 1 is the schema version. Never edit or reorder a shipped entry.
-export const MIGRATIONS: readonly string[] = [MIGRATION_1_CREATE_SESSIONS];
+export const MIGRATIONS: readonly string[] = [
+  MIGRATION_1_CREATE_SESSIONS,
+  MIGRATION_2_ADD_ROUNDS,
+  MIGRATION_3_PHOTO_RELIABILITY,
+  MIGRATION_4_SUGGESTION_REVIEW,
+  MIGRATION_5_DIAMETER_SOURCE,
+  MIGRATION_6_PHOTO_FILE_JOURNAL,
+  MIGRATION_7_PROFILES_AND_TEMPLATES,
+  MIGRATION_8_DRAFT_REVISION,
+];
 
 export const LATEST_SCHEMA_VERSION = MIGRATIONS.length;
 

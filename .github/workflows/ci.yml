@@ -1,6 +1,9 @@
-# Runs the same checks as README "Checks". No builds, deployment or device tests:
-# a green run does not mean the Galaxy S20 or iOS checks have passed.
-# expo install --check and expo-doctor stay manual (implementation/step-8-ci.md, Ö1).
+# Pull requests and pushes to main run the checks of README "Tester och CI/CD" for the app and
+# the analysis service, plus an Android bundle export. Pushes to main that change the app or this
+# workflow then build one signed release APK and publish exactly that file as a GitHub prerelease
+# (implementation/assignment-4-delivery.md). A green run does not mean the Galaxy S20 or iOS
+# checks have passed. expo install --check and expo-doctor stay manual
+# (implementation/step-8-ci.md, Ö1).
 name: CI
 
 on:
@@ -57,3 +60,246 @@ jobs:
 
       - name: Test
         run: npm test -- --runInBand
+
+      # Bundles the JavaScript for Android as a release build would, without native code or keys.
+      - name: Export the Android bundle
+        run: npx expo export --platform android --output-dir "$RUNNER_TEMP/android-export"
+
+  analysis:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: services/analysis
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: services/analysis/requirements-lock.txt
+
+      - name: Install from lock file
+        run: python -m pip install -c requirements-lock.txt -e '.[dev]'
+
+      - name: Check formatting
+        run: ruff format --check app tests
+
+      - name: Lint
+        run: ruff check app tests
+
+      - name: Type check
+        run: mypy
+
+      # Synthetic images only; no live service and no real photos.
+      - name: Test
+        run: python -m pytest -q
+
+  # One signed release APK per qualifying push to main. Only reads the repository; the keystore
+  # exists in the runner's temp folder for the build and is deleted afterwards.
+  apk:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [checks, analysis]
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: apps/mobile
+    outputs:
+      changed: ${{ steps.changes.outputs.changed }}
+      version-name: ${{ steps.version.outputs.name }}
+      tag: ${{ steps.version.outputs.tag }}
+    env:
+      TP_VERSION_CODE: ${{ github.run_number }}
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      # Documentation-only pushes keep the latest release instead of publishing a new version.
+      - name: Decide whether the app changed
+        id: changes
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: |
+          if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ] \
+            || ! git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+            changed=true
+          elif git diff --quiet "$BEFORE" "$GITHUB_SHA" -- . ../../.github/workflows/ci.yml; then
+            changed=false
+          else
+            changed=true
+          fi
+          echo "changed=$changed" >> "$GITHUB_OUTPUT"
+          echo "App or workflow changed since $BEFORE: $changed"
+
+      - name: Set the version
+        id: version
+        if: steps.changes.outputs.changed == 'true'
+        run: |
+          base=$(node -p "require('./app.json').expo.version")
+          name="$base-alpha.$TP_VERSION_CODE"
+          echo "TP_VERSION_NAME=$name" >> "$GITHUB_ENV"
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          echo "tag=v$name" >> "$GITHUB_OUTPUT"
+          echo "Version $name, versionCode $TP_VERSION_CODE, commit $GITHUB_SHA"
+
+      # The published APK must not carry anyone's analysis address (README, "Konfiguration").
+      - name: Check that no analysis address is set
+        if: steps.changes.outputs.changed == 'true'
+        run: |
+          test -z "${EXPO_PUBLIC_ANALYSIS_URL:-}"
+          test ! -e .env.local
+          test ! -e .env
+
+      - name: Set up Node from .nvmrc
+        if: steps.changes.outputs.changed == 'true'
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: apps/mobile/.nvmrc
+          cache: npm
+          cache-dependency-path: apps/mobile/package-lock.json
+
+      - name: Install from lockfile
+        if: steps.changes.outputs.changed == 'true'
+        run: npm ci
+
+      - name: Generate the Android project
+        if: steps.changes.outputs.changed == 'true'
+        run: CI=1 npx expo prebuild --platform android --no-install
+
+      - name: Build the signed APK
+        if: steps.changes.outputs.changed == 'true'
+        env:
+          TP_UPLOAD_KEYSTORE_BASE64: ${{ secrets.TP_UPLOAD_KEYSTORE_BASE64 }}
+          TP_UPLOAD_STORE_PASSWORD: ${{ secrets.TP_UPLOAD_STORE_PASSWORD }}
+          TP_UPLOAD_KEY_ALIAS: ${{ secrets.TP_UPLOAD_KEY_ALIAS }}
+          TP_UPLOAD_KEY_PASSWORD: ${{ secrets.TP_UPLOAD_KEY_PASSWORD }}
+        run: |
+          for name in TP_UPLOAD_KEYSTORE_BASE64 TP_UPLOAD_STORE_PASSWORD TP_UPLOAD_KEY_ALIAS TP_UPLOAD_KEY_PASSWORD; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Secret $name is missing (README, \"Tester och CI/CD\")."
+              exit 1
+            fi
+          done
+          export JAVA_HOME="$JAVA_HOME_17_X64"
+          export TP_UPLOAD_STORE_FILE="$RUNNER_TEMP/upload.keystore"
+          trap 'rm -f "$TP_UPLOAD_STORE_FILE"' EXIT
+          printf '%s' "$TP_UPLOAD_KEYSTORE_BASE64" | base64 --decode > "$TP_UPLOAD_STORE_FILE"
+          unset TP_UPLOAD_KEYSTORE_BASE64
+          (cd android && ./gradlew assembleRelease --no-daemon)
+
+      - name: Check signature, package and version
+        if: steps.changes.outputs.changed == 'true'
+        env:
+          EXPECTED_CERT_SHA256: ${{ vars.TP_SIGNING_CERT_SHA256 }}
+        run: |
+          apk=android/app/build/outputs/apk/release/app-release.apk
+          tools="$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)"
+          certs=$("$tools/apksigner" verify --print-certs "$apk")
+          actual=$(printf '%s\n' "$certs" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')
+          expected=$(printf '%s' "$EXPECTED_CERT_SHA256" | tr -d ': ' | tr 'A-F' 'a-f')
+          echo "Signing certificate SHA-256: $actual"
+          if [ -z "$expected" ] || [ "$actual" != "$expected" ]; then
+            echo "::error::The APK is not signed with the expected upload key (TP_SIGNING_CERT_SHA256)."
+            exit 1
+          fi
+          badging=$("$tools/aapt2" dump badging "$apk" | head -1)
+          echo "$badging"
+          case "$badging" in
+            *"name='com.gordox.targetpractice' versionCode='$TP_VERSION_CODE' versionName='$TP_VERSION_NAME'"*) ;;
+            *) echo "::error::Package, versionCode or versionName is not as expected."; exit 1 ;;
+          esac
+
+      - name: Collect the release files
+        if: steps.changes.outputs.changed == 'true'
+        run: |
+          out="$RUNNER_TEMP/release"
+          mkdir -p "$out"
+          cp android/app/build/outputs/apk/release/app-release.apk "$out/target-practice-alpha-$TP_VERSION_NAME.apk"
+          cp "../../Assigments/Assigment 4/README.md" "$out/INSTALL.md"
+          (cd "$out" && sha256sum "target-practice-alpha-$TP_VERSION_NAME.apk" INSTALL.md > SHA256SUMS && cat SHA256SUMS)
+
+      - name: Keep the release files for publishing
+        if: steps.changes.outputs.changed == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-files
+          path: ${{ runner.temp }}/release
+          if-no-files-found: error
+          retention-days: 30
+
+  # Publishes the files the apk job built, unchanged. The only job that may write to the
+  # repository; it never overwrites an existing release.
+  release:
+    needs: apk
+    if: needs.apk.outputs.changed == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      TAG: ${{ needs.apk.outputs.tag }}
+      VERSION_NAME: ${{ needs.apk.outputs.version-name }}
+    steps:
+      - name: Fetch the built files
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-files
+          path: release
+
+      - name: Check the files against SHA256SUMS
+        working-directory: release
+        run: sha256sum --check SHA256SUMS
+
+      - name: Refuse to replace an existing release
+        run: |
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            echo "::error::Release $TAG already exists; a rerun never replaces it."
+            exit 1
+          fi
+
+      - name: Publish the prerelease
+        run: |
+          run_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          cat > notes.md <<NOTES
+          Personlig alfa av Target Practice för Android. Installationsguide: INSTALL.md.
+
+          - Version: $VERSION_NAME (versionCode $GITHUB_RUN_NUMBER)
+          - Commit: $GITHUB_SHA
+          - Byggd av: $run_url
+          - Applikations-id: com.gordox.targetpractice
+
+          Kända begränsningar:
+          - Poängen är demopoäng tills tavlans mått är verifierade.
+          - Bildanalysen körs bara via en lokalt startad server på en dator. Det här bygget har ingen analysadress, så analysen är avstängd och träffar markeras manuellt.
+          - Analysens precision på riktiga foton är inte mätt.
+          - Anteckningar ingår inte i alfan.
+
+          SHA256SUMS:
+          \`\`\`
+          $(cat release/SHA256SUMS)
+          \`\`\`
+          NOTES
+          gh release create "$TAG" release/*.apk release/INSTALL.md release/SHA256SUMS \
+            --prerelease --target "$GITHUB_SHA" --title "Target Practice $VERSION_NAME" --notes-file notes.md
+
+      # Downloads without a token, as a tester would, and compares with SHA256SUMS.
+      - name: Check the public download
+        run: |
+          mkdir public
+          cd public
+          base="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/download/$TAG"
+          for file in "target-practice-alpha-$VERSION_NAME.apk" INSTALL.md SHA256SUMS; do
+            curl --fail --silent --show-error --location --retry 5 --retry-delay 5 -o "$file" "$base/$file"
+          done
+          sha256sum --check SHA256SUMS

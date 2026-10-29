@@ -1,6 +1,8 @@
 import type { SessionDatabase } from '../../persistence/database';
 import { DatabaseVersionTooNewError } from '../../persistence/migrations';
 import type { ClosableSessionDatabase } from '../../persistence/openSessionDatabase';
+import { type AnalysisRuns, createAnalysisRuns } from '../analysis/analysisRuns';
+import type { AnalysisRunOutcome } from '../analysis/analysisRun';
 import type { SaveCoordinator } from '../sessions/saveCoordinator';
 import { trackConnection, type TrackedConnection } from './trackedConnection';
 
@@ -8,13 +10,13 @@ import { trackConnection, type TrackedConnection } from './trackedConnection';
 export type SessionStore = {
   readonly db: SessionDatabase;
   readonly coordinator: SaveCoordinator;
+  // The photo folder that belongs to this database, handed out together with the connection.
+  readonly photoFolder: string;
+  // Analyses running on this connection; closed together with it.
+  readonly analysisRuns: AnalysisRuns<AnalysisRunOutcome>;
 };
 
 export type StartupErrorKind = 'newerVersion' | 'other';
-
-// 'test' is the development-only UI check database. The mode lives only in memory, so a full
-// restart always opens the normal database again.
-export type DatabaseMode = 'normal' | 'test';
 
 export type DatabaseLifecycleState =
   | { readonly status: 'loading' }
@@ -22,20 +24,20 @@ export type DatabaseLifecycleState =
   | { readonly status: 'failed'; readonly errorKind: StartupErrorKind };
 
 export type DatabaseLifecycleDeps = {
-  openAndMigrate: (mode: DatabaseMode) => Promise<ClosableSessionDatabase>;
+  openAndMigrate: () => Promise<ClosableSessionDatabase>;
+  photoFolder: string;
   createCoordinator: () => SaveCoordinator;
+  // Runs once after each open, before screens get the connection: it may only touch records no
+  // request of this connection can own yet (no request exists until screens start one).
+  afterOpen?: (db: SessionDatabase) => Promise<void>;
   reportError: (error: unknown) => void;
 };
 
 export type DatabaseLifecycle = {
   getState(): DatabaseLifecycleState;
-  getMode(): DatabaseMode;
   subscribe(listener: () => void): () => void;
   activate(): void;
   retry(): void;
-  // Closes the current connection (after its save and running operations settle) and then
-  // opens the other database, on the same serial queue.
-  switchMode(mode: DatabaseMode): void;
   deactivate(): void;
 };
 
@@ -46,15 +48,18 @@ export function classifyStartupError(error: unknown): StartupErrorKind {
 const LOADING: DatabaseLifecycleState = { status: 'loading' };
 
 // Owns the database connection for DatabaseGate. Opening, migrating and closing run on one
-// serial queue, so two initialisations never overlap (Retry, effect restarts, StrictMode,
-// mode switches) and a new connection opens only after the previous one has closed.
+// serial queue, so two initialisations never overlap (Retry, effect restarts, StrictMode) and a
+// new connection opens only after the previous one has closed.
 // The generation number only decides whether a finished result is still wanted.
 export function createDatabaseLifecycle(deps: DatabaseLifecycleDeps): DatabaseLifecycle {
   let state: DatabaseLifecycleState = LOADING;
-  let mode: DatabaseMode = 'normal';
   let generation = 0;
   let active = false;
-  let open: { connection: TrackedConnection; coordinator: SaveCoordinator } | null = null;
+  let open: {
+    connection: TrackedConnection;
+    coordinator: SaveCoordinator;
+    analysisRuns: AnalysisRuns<AnalysisRunOutcome>;
+  } | null = null;
   let queue: Promise<void> = Promise.resolve();
   const listeners = new Set<() => void>();
 
@@ -83,6 +88,9 @@ export function createDatabaseLifecycle(deps: DatabaseLifecycleDeps): DatabaseLi
     const closing = open;
     open = null;
     if (closing !== null) {
+      // Running analyses are aborted now; whatever they still try to write is refused by the
+      // closing connection, and the next open records their attempts as interrupted.
+      closing.analysisRuns.closeAll();
       enqueue(async () => {
         await closing.coordinator.whenIdle();
         await closeQuietly(() => closing.connection.close());
@@ -93,7 +101,6 @@ export function createDatabaseLifecycle(deps: DatabaseLifecycleDeps): DatabaseLi
   function startInitialisation(): void {
     generation += 1;
     const wanted = generation;
-    const wantedMode = mode;
     setState(LOADING);
     enqueue(async () => {
       if (!active || wanted !== generation) {
@@ -101,7 +108,7 @@ export function createDatabaseLifecycle(deps: DatabaseLifecycleDeps): DatabaseLi
       }
       let db: ClosableSessionDatabase;
       try {
-        db = await deps.openAndMigrate(wantedMode);
+        db = await deps.openAndMigrate();
       } catch (error) {
         if (active && wanted === generation) {
           deps.reportError(error);
@@ -114,16 +121,30 @@ export function createDatabaseLifecycle(deps: DatabaseLifecycleDeps): DatabaseLi
         return;
       }
       const connection = trackConnection(db);
+      if (deps.afterOpen !== undefined) {
+        try {
+          await deps.afterOpen(connection.db);
+        } catch (error) {
+          // Only housekeeping: screens treat a pending attempt without a request as interrupted.
+          deps.reportError(error);
+        }
+      }
+      if (!active || wanted !== generation) {
+        await closeQuietly(() => connection.close());
+        return;
+      }
       const coordinator = deps.createCoordinator();
-      open = { connection, coordinator };
-      setState({ status: 'ready', store: { db: connection.db, coordinator } });
+      const analysisRuns = createAnalysisRuns<AnalysisRunOutcome>(deps.reportError);
+      open = { connection, coordinator, analysisRuns };
+      setState({
+        status: 'ready',
+        store: { db: connection.db, coordinator, photoFolder: deps.photoFolder, analysisRuns },
+      });
     });
   }
 
   return {
     getState: () => state,
-
-    getMode: () => mode,
 
     subscribe(listener) {
       listeners.add(listener);
@@ -144,16 +165,6 @@ export function createDatabaseLifecycle(deps: DatabaseLifecycleDeps): DatabaseLi
       if (!active || state.status !== 'failed') {
         return;
       }
-      startInitialisation();
-    },
-
-    switchMode(next) {
-      if (!active || next === mode) {
-        return;
-      }
-      mode = next;
-      // The loading state unmounts the screens first, so their late results are discarded.
-      closeCurrent();
       startInitialisation();
     },
 

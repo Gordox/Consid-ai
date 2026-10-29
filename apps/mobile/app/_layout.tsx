@@ -2,6 +2,7 @@ import { DarkTheme, Stack, ThemeProvider } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 
 import { colors } from '../src/components/tokens';
+import { PhotoRecovery } from '../src/features/rounds/PhotoRecovery';
 import { DatabaseGate } from '../src/features/startup/DatabaseGate';
 
 // Dark only (decision A6).
@@ -23,6 +24,7 @@ export default function RootLayout() {
     <ThemeProvider value={theme}>
       <StatusBar style="light" />
       <DatabaseGate>
+        <PhotoRecovery />
         <Stack
           screenOptions={{
             headerShown: false,

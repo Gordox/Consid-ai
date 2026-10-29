@@ -1,23 +1,11 @@
-# Designbilder
+# Design references v2.1
 
-Designreferenser för [`../ui-ux.md`](../ui-ux.md). Ägaren tar fram bilderna.
+The canonical specification is [../ui-ux.md](../ui-ux.md); exact values are in [../tokens.json](../tokens.json).
 
-| Fil | Innehåll |
-| --- | --- |
-| `01-foundations.png` | Färger, typografi, avstånd och tillgänglighet |
-| `02-components.png` | Komponenter och deras tillstånd |
-| `03-current-mvp.png` | MVP:ns skärmar: sessionslistan och formuläret för ny session |
-| `04-future-features.png` | Framtida koncept, inte MVP |
-| `05-prototype-flows.png` | Navigering och beteende |
+- `components/`: 24 separate component-family references.
+- `screens/android/`: 20 Android screen/state references, 360 logical width at 2×.
+- `screens/ios/`: 20 iPhone screen/state references, 390 logical width at 2×.
+- `overview.png`: component overview.
+- `screen-index.png`: screen index.
 
-- **Namn:**
-  - Tavlor heter `NN-tavla.png`, till exempel `03-current-mvp.png`.
-  - Utsnitt ur en tavla heter `NN-tavla--ram.png`, till exempel `03-current-mvp--save-failure.png`.
-  - Bara gemena ASCII-tecken, siffror och bindestreck. Inga mellanslag eller tankstreck.
-- **Utsnitt:** Görs bara när de behövs för läsbarhet eller för att dokumentera ett tillstånd som saknas.
-  Originaltavlan behålls tills ersättningen är kontrollerad.
-- **Format:** PNG eller JPG. SVG går också bra för wireframes.
-- **Innehåll:** Använd påhittade exempelvärden. Lägg inte in riktiga foton av måltavlor,
-  personuppgifter eller annat privat material.
-- **Ändringar:** Om en bild ersätts ska den stämma med texten i `ui-ux.md`, eller så uppdateras
-  dokumentet i samma ändring. Avvikelser mellan bild och beslut står i avsnitt 4 i `ui-ux.md`.
+These are full scrollable-content examples, not fixed native viewport screenshots. Artwork and scores are synthetic. They do not establish target measurements. Individual files use ASCII kebab-case. The five old design boards are superseded; do not restore their conflicting behaviour.

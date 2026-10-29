@@ -1,5 +1,7 @@
 # Detaljplan steg 6: lista sessioner
 
+> **Notis (2026-10-28):** Hänvisningar till `docs/design/ui-ux.md` gäller designdokumentet v1, som har ersatts av v2.1. Listan har nu filter och klickbara kort; listkontrollern är oförändrad. Developer checks-länken är borttagen.
+
 > **Status (2026-10-27):** Godkänd plan med beslut Ö1–Ö3 och förtydliganden (§8). **6a–6c är implementerade, enhetstestade och committade** (`1cec35f`, `680a65c`, `537a0b7`, designbeslut i `7456ec6`). **6d: dokumentationen är uppdaterad** (`PLAN.md`, README och denna plan). Steg 6 är **inte fullständigt verifierat**.
 > **Branch:** `feature/session-list`, skapad från `main` (`a1e4761`) 2026-10-27. Ingen push eller sammanslagning görs utan ägarens besked.
 > **Verifiering:** M1–M5 och M7–M10 är godkända på Galaxy S20 i Expo Go (ägaren). M5 verifierar att skapade sessioner finns kvar efter fullständig omstart i den testade miljön. **M6 är delvis kontrollerad, inte verifierad.** Node-testerna verifierar inte `Intl` i Hermes (M6). Felinjektion för listan återstår till steg 7. iOS är overifierat. Tangentbordsbuggen i formuläret (steg 5-kod) är dokumenterad och rättad separat (`9f99cf4`, `840e8c7`) och ingår inte i M1–M10.
