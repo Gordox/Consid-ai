@@ -55,7 +55,7 @@ Migration 1–7 är oförändrade och fästa med fingeravtryck i `migrationSchem
 | `npm run format:check` | exit 0 |
 | `npm run lint` | exit 0, inga fynd |
 | `npm run typecheck` | exit 0 |
-| `npm test -- --runInBand` | exit 0. 69 sviter, 818 tester (före: 58 sviter, 743). Ingen varning om att Jest inte avslutas. |
+| `npm test -- --runInBand` | exit 0. 66 sviter, 818 tester (före: 58 sviter, 743). Ingen varning om att Jest inte avslutas. |
 | `npx expo export --platform android` / `--platform ios` | exit 0 båda, till en mapp utanför repot |
 | `npx expo install --check` | **exit 1**, redovisas separat nedan |
 
