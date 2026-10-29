@@ -21,6 +21,7 @@ Kamera, bildanalys, poängberäkning, mål, backend, autentisering, synk, redige
 | 8 | CI | **Verifierat i GitHub Actions**: PR #2 (`679c863`) och push till `main` (`d802586`), med alla steg gröna. |
 | UI v2.1 | Omdesign av hela MVP:n och borttagning av Developer checks | **Implementerat och enhetstestat 2026-10-28** (`implementation/ui-ux-v2.md`). Android-exporten fungerar. Ingen skärm är körd på S20 eller iOS; telefonchecklistan finns i `docs/device-tests/mvp.md`. |
 | Förbättring 2 | Redigerbar kalibrering, inspektion, profiler och mallar, kaliberväljare, kameravy | **Implementerat och enhetstestat 2026-10-28** (`implementation/improvements-2.md`). Android- och iOS-export fungerar. Inget är provat på telefon. |
+| Stabilisering | Samtidighet mellan analys, editor och bekräftelse; navigering och bilder; förslag efter omkalibrering; diameter; historisk visning | **Implementerat och automatiskt testat 2026-10-29** (`implementation/stabilization.md`). Migration 8 lägger bara till kolumner. Inget är provat på telefon; checklistan S-1–S-10 finns i `docs/device-tests/mvp.md`. Inget är pushat. |
 | MVP | Rundor, foton, editor, poäng, lokal analys | **Delvis klar MVP** med fungerande manuellt flöde och lokal, heuristisk analysserver (`implementation/mvp-plan.md` §9–10). Demotavla. Analysen är bara testad på syntetiska bilder. Grundflödet från före fas 2 fungerar på S20. Fas 2 är **inte testad på S20** (`docs/device-tests/mvp.md`). |
 
 ## Verifierade versioner (npm-registret och Expo-dokumentationen för SDK 58, 2026-10-27)
@@ -446,7 +447,7 @@ Detaljplanen, med förutsättningar, beslut, delsteg och resultat, finns i `impl
 - **Avvikelse från punkt 2 nedan (ägarbeslut Ö1):** `npx expo install --check` och `npx expo-doctor` ingår **inte** i CI. De körs manuellt vid ändringar av beroenden, eftersom de beror på Expos tjänster.
 - **Verifiering:**
   - **Lokalt kontrollerat i en ren klon.**
-  - **Ännu inte verifierat i GitHub Actions** (8c). Steg 8 räknas inte som verifierat förrän den första körningen har lyckats.
+  - *Historik:* "Ännu inte verifierat i GitHub Actions (8c)" gällde när stycket skrevs. CI har sedan körts grönt för PR #2 och push till `main` (`d802586`), se statustabellen överst. Senare commits är inte pushade och har inte körts i GitHub Actions.
   - Ett grönt CI betyder inte att kontrollerna på S20 har gått igenom.
 - `npm audit` rapporterar tre high-fynd. Det är en separat fråga och påverkar inte CI (`implementation/step-8-ci.md` §9).
 

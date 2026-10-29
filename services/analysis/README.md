@@ -72,7 +72,8 @@ on this computer only.
 
 The service has no login. On `0.0.0.0`, anyone on the network can send it photos for analysis.
 It keeps nothing, and it limits size and concurrency, but it must not be exposed outside a
-trusted network or deployed as it is.
+trusted network or deployed as it is. Public hosting, authentication and HTTPS are outside the
+personal MVP.
 
 ## Checks
 

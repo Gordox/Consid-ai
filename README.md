@@ -105,7 +105,7 @@ mypy
 python -m pytest -q
 ```
 
-**CI:** [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs both sets of checks on every pull request to `main` and every push to `main`. It has no builds, deployment or device tests, so a green run does not mean the app has been checked on a phone. The app job passed in GitHub Actions for pull request #2 and the push to `main` (`d802586`). The analysis job was added later and has not run on GitHub yet; its steps pass locally in a clean environment.
+**CI:** [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs both sets of checks on every pull request to `main` and every push to `main`. It has no builds, deployment or device tests, so a green run does not mean the app has been checked on a phone. The last run in GitHub Actions was for pull request #2 and the push to `main` (`d802586`), with the app job green. Everything after that, including the analysis job, has only been checked locally: none of it has been pushed.
 
 **Run manually when dependencies change** (not part of CI, because they depend on Expo's online services and can fail when Expo publishes a new patch):
 
@@ -128,8 +128,10 @@ your normal database; there is no developer or test mode in the app.
 2. Open a session and tap **Start round**. The round starts with **Actual shots** set to the
    planned number; change it if the round was interrupted.
 3. **Hole diameter** starts as an *assumed* 9.0 mm, labelled **Assumed** next to your calibre.
-   Change it, or tap **Use this diameter** to confirm it. Your choice carries over to the next
-   round. A hole touching a ring line gets the higher score, so the diameter matters near lines.
+   Type another value (1–30 mm, up to two decimals, with a point or a comma), or tap
+   **Use this diameter** to confirm it. **Add photos** saves a typed value first and stops if it
+   is not valid. Your choice carries over to the next round. A hole touching a ring line gets the
+   higher score, so the diameter matters near lines.
 4. **Add photos:** the **After photo** is the main one; take it with the app's **Camera**, whose
    circle and frame are only a guide (not detection, alignment or scoring), or choose it from the
    **Library**. A **Before photo** is optional, under **Improve detection**, and helps when you
@@ -140,7 +142,8 @@ your normal database; there is no developer or test mode in the app.
    of numbers: top, right, bottom, left. Drag before lifting to fine-position a point under the
    magnifier; afterwards drag any point again and the rings follow. Points in the wrong order or
    on top of each other are explained and cannot be used. Hits keep their place on the photo
-   when you adjust the points; their scores are recalculated.
+   when you adjust the points; their scores are recalculated. Suggestions found with an earlier
+   alignment are struck through and labelled, and the analysis offers **Analyse again**.
 6. **Analyse photos** (when the service is set up, below) or **Mark hits manually**. With a
    before photo the two are compared; without one only the after photo is used, which is less
    reliable. If the two photos cannot be aligned, you can choose **Analyse after photo only**.
@@ -151,14 +154,20 @@ your normal database; there is no developer or test mode in the app.
    marker is also listed below the photo. There is no "accept all": each suggestion is reviewed.
 8. **Review round:** declare known **misses** and **unresolved** shots. Missing marks are never
    counted as misses, and unresolved shots make the result a subtotal that names them.
-9. **Confirm round** when the shots add up and no suggestion is left. Confirmed rounds are
-   read-only. Then **Start next round** or go **Back to session**.
+9. **Confirm round** when the shots add up and no suggestion is left. The app confirms exactly
+   the round as saved: if it changed after you opened the review (new suggestions, counts that
+   could not be saved), nothing is confirmed and you are asked to check it again. Confirmed
+   rounds are read-only and shown from their stored result. Then **Start next round** or go
+   **Back to session**.
 10. **Finish session** (a draft round must be continued or discarded first). Demo scores are
     always labelled and kept apart from any verified ones.
 
-If Android closes the app while the camera or photo picker is open, the app tries to save the
-photo on the next start and otherwise tells you the pick was interrupted. Which cases actually
-work, and that none is verified on a phone yet, is in
+If Android closes the app while the **photo library** is open (from the round screen or the
+camera screen), the app tries to save the photo on the next start and otherwise tells you the
+pick was interrupted. The in-app camera cannot be recovered that way: a photo taken just before
+the app was closed is lost, and the draft keeps its earlier photo. Leaving the camera while a
+photo is being saved does not cancel the save; after eight seconds you can choose to stay or
+leave. Which cases work, and that none is verified on a phone yet, is in
 [docs/photo-recovery.md](docs/photo-recovery.md).
 
 ## Target and scoring
@@ -193,8 +202,11 @@ HTTPS is required in release builds. Development builds also accept plain HTTP t
 `npx expo start` after changing the file. Without an address, analysis is off and you mark hits
 yourself.
 
-While an analysis runs you can tap **Cancel analysis**. The app stops waiting and ignores any
-late answer, but the service may still finish its work on the photos it has received.
+An analysis keeps running when you leave the round; opening it again shows it still running,
+with **Cancel analysis**, and the editor stays read-only until it ends. Cancelling only makes the
+app stop waiting and ignore any late answer; the service may still finish its work on the photos
+it has received. If the app is closed during an analysis, the next start records it as
+interrupted and you can try again.
 
 ## Data and privacy
 
@@ -204,6 +216,9 @@ late answer, but the service may still finish its work on the photos it has rece
   changed or deleted. Discarding a round or replacing a photo deletes only the app's copies.
 - The unchanged copy keeps the photo's metadata, which can include the location. It never
   leaves the phone.
+- The camera's own temporary file is deleted once its copies are saved, or once the round
+  refused the photo; after any other failure it is left for the system to clear. Only files in
+  the app's cache outside its photo folder are ever deleted this way.
 - Every copy is recorded in the database before it is written. At start, the app deletes only
   recorded copies that no round refers to and that are more than ten minutes old (left behind
   if the app stopped mid-save), checking each one just before deleting it. Files it did not

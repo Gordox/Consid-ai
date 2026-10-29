@@ -2,7 +2,7 @@
 
 Checklista för hela flödet efter omdesignen UI/UX v2.1 (`implementation/ui-ux-v2.md`).
 
-**Läge 2026-10-28:**
+**Läge 2026-10-29:**
 - Grundflödet fungerade på S20 före fas 2 och före omdesignen, enligt din rapport.
 - Ingen punkt nedan är genomförd eller godkänd. Den nya UI:n har inte körts på någon telefon.
 - Automatiska tester och Android-exporten verifierar inte UI på telefonen.
@@ -17,6 +17,25 @@ Checklista för hela flödet efter omdesignen UI/UX v2.1 (`implementation/ui-ux-
 1. **Starta appen.** I `apps/mobile`: `npm ci` och `npx expo start`. Ladda om Expo Go helt.
 2. **Starta servern** (behövs för G4). Se startguiden i `services/analysis/README.md`.
 3. **Ha en riktig tavla** med klistermärken till hands.
+
+## Stabilisering (S-1–S-10)
+
+Kör dessa på HEAD efter stabiliseringen (`implementation/stabilization.md`). **R** = skapar eller ändrar riktiga lokala data i din vanliga databas. Använd vapennamnet "Test stabilisering".
+
+| # | Handling | Förväntat | Data | Resultat |
+| --- | --- | --- | --- | --- |
+| S-1 | Starta den nya versionen med dina befintliga data. Öppna listan, en bekräftad runda och ett utkast. | Allt finns kvar (migration 8 lägger bara till kolumner). Bekräftade rundor visar samma poäng som förut. | Migrerar databasen | Ej genomförd |
+| S-2 | Kamera: ta en bild och tryck X direkt medan `Saving photo…` visas. Upprepa med Androids bakåtknapp. Vänta, och pröva en gång att trycka bakåt när sparningen tar lång tid. | En enda navigering tillbaka till rundan, bilden finns i rundan. Efter 8 s visas `Still saving the photo` med Stay/Leave; Stay håller dig kvar tills bilden sparats. | R | Ej genomförd |
+| S-3 | `Library` från rundskärmen och från kameraskärmen. Neka biblioteksåtkomst om systemet erbjuder det. | Samma flöde. Nekad åtkomst ger ett begripligt besked. Notera om Android 13 alls frågar. | R | Ej genomförd |
+| S-4 | Starta analys, gå tillbaka till sessionen, öppna rundan igen och öppna editorn. Tryck `Cancel analysis` i editorn. Analysera igen och låt den bli klar medan editorn är öppen. | Analysen visas fortfarande som pågående efter att rundan öppnats igen. Editorn är skrivskyddad med bannern `Analysis running`. När den är klar visas förslagen; inga markeringar försvinner. | R | Ej genomförd |
+| S-5 | Med väntande förslag: flytta en kalibreringspunkt. | Förslagen är genomstrukna och märkta `earlier alignment`, bannern `Alignment changed` visas och analyspanelen erbjuder `Analyse again`. Accepterade träffar ligger kvar på samma ställe. | R | Ej genomförd |
+| S-6 | Diameter: skriv `9,65` och tryck `Add photos`; skriv `abc` och tryck `Add photos`. Öppna kaliberbladet, tryck i Custom och skriv, med tangentbordet öppet och vid största systemtext. | `9.65` sparas och används; `abc` visar fel och stoppar. Custom-fältet och Done ska gå att nå. Om de döljs: notera det (rättning väntar på detta test). | R | Ej genomförd |
+| S-7 | `Inspect hits` på den äldsta bekräftade rundan och på ett utkast; stäng med Androids bakåt. | Räknade träffar är numrerade, inte `?`. Ingenting ändras. | Läser bara | Ej genomförd |
+| S-8 | Editor: nyp för att zooma, lyft ett finger och dra med det andra. Bakgrunda appen mitt i en dragning och kom tillbaka. | Sidan skrollar inte medan ett finger ligger på bilden, ingen punkt läggs till, och sidan går att skrolla igen efteråt. Om sidan skrollar ändå: notera det. | R (om en punkt flyttas) | Ej genomförd |
+| S-9 | Tvångsstoppa appen under en analys och starta om. Kör sedan "Don't keep activities" med biblioteket från kameraskärmen. | `The last analysis didn't finish because the app was closed or restarted.` Rundan går att bekräfta. Bildvalet räddas eller beskrivs som avbrutet. | R | Ej genomförd |
+| S-10 | Hela flödet: ny session → runda → foto → justering → manuella träffar → granska → bekräfta → nästa runda → kassera utkastet → avsluta → listan. | Kärnflödet fungerar; bekräftelsen visar samma resultat som granskningen. | R | Ej genomförd |
+
+Ingen av kontrollerna verifierar riktig poäng eller analysprecision.
 
 ## Förbättringsomgång 2 (N1–N10)
 
@@ -52,7 +71,7 @@ Kör dessa efter G1–G5. N2–N10 skapar eller ändrar riktiga lokala sessioner
 | V1 | Bild i landskapsläge, och en bild ur biblioteket tagen i landskapsläge | Båda är rättvända, och tryck i editorn hamnar rätt även efter zoom och panorering | Ej genomförd |
 | V2 | Ta bort före-bilden och analysera igen | `No before photo` visas, och texten om att sifferkolumnerna inte genomsöks visas före och efter analysen. Godkända markeringar och dina egna finns kvar. | Ej genomförd |
 | V3 | Stoppa servern och tryck `Analyse photos`. Starta sedan servern, analysera igen och tryck `Cancel analysis` medan den pågår. | Utan server: `Couldn't reach analysis service` med `Try again` och `Mark hits manually`. Vid avbrott: `Analysis cancelled`-text, inga nya förslag dyker upp efteråt, och manuell markering fungerar. Foton och markeringar finns kvar. | Ej genomförd |
-| V4 | Neka kameraåtkomst, försök ta en bild | `No camera access` med `Open settings` (om systemet inte frågar igen) och `Use library instead`. | Ej genomförd |
+| V4 | Neka kameraåtkomst, försök ta en bild | Rubriken `Camera access`, bannern `Allow camera access`, `Allow camera` eller `Open settings` (om systemet inte frågar igen) och `Use library instead`. (Texten ändrad 2026-10-29 för att stämma med appen.) | Ej genomförd |
 | V5 | Största systemtext och 320–360 dp bredd: listan, formuläret med tangentbordet öppet, rundans steg, editorns panel och dialogerna | Texter radbryts, fältparet i formuläret staplas, primärknappar går att nå med tangentbordet öppet, inget hamnar bakom statusfält eller navigationsfält | Ej genomförd |
 | V6 | TalkBack: sessionskort, filter, select-sheet, markörlistan i editorn | Kort läses som en knapp med status och poängbas. Förslag går att välja och granska via listan. Att placera nya träffar kräver fortfarande touch. | Ej genomförd |
 

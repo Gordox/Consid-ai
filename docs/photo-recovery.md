@@ -1,17 +1,20 @@
 # Återställning av foton och utkast: vad som stöds
 
-Status 2026-10-28. **Ingen återställning är verifierad på S20.**
+Status 2026-10-29. **Ingen återställning är verifierad på S20.**
 
-> **Ändrat i förbättringsomgång 2:** Kameran är nu appens egen vy (`expo-camera`, `src/features/camera/`), inte systemkameran via `expo-image-picker`. Den öppnar ingen annan aktivitet, så återställningen nedan gäller **bara bildbiblioteket**. Om appen avslutas medan kameravyn är öppen finns ingen bild att rädda; utkastet och andra bilder finns kvar. Om appen avslutas efter att bilden tagits men innan den sparats, gäller raden om avbrott mitt i sparandet. De automatiska testerna nedan täcker inte den nya kameran, och ingen del av kameran är provad på telefon. Det som är verifierat är logiken i automatiska tester (`pendingPickRecovery.test.ts`, `sqlitePhotos.test.ts` och `sqlitePhotoCleanup.test.ts`).
+> **Ändrat i stabiliseringen (2026-10-29):** Kameran är appens egen vy (`expo-camera`). Den öppnar ingen annan aktivitet, så återställningen nedan gäller **bildbiblioteket**, både från rundskärmen och från kameraskärmens biblioteksknapp (samma flöde, `src/features/rounds/libraryPick.ts`). Posten sparar nu också vilken revision av utkastet valet utgick från: en bild som kommer tillbaka efter en omstart läggs bara till om rundan inte har ändrats sedan dess. Inget av detta är verifierat på telefon; logiken är testad mot SQLite (`sqliteLatePhotos.test.ts`, `pendingPickRecovery.test.ts`, `sqlitePhotos.test.ts`, `sqlitePhotoCleanup.test.ts`).
+>
+> *Historik:* I förbättringsomgång 2 gällde återställningen bara rundskärmens biblioteksknapp; kameraskärmens biblioteksval hade ingen post.
 
 ## Vad appen gör
 
 1. **Innan bildväljaren öppnas** sparas en post i databasen (`pending_photo_picks`) med vilken runda och roll bilden gäller. När väljaren svarar medan appen lever tas posten bort, oavsett utfall.
-2. **Varje gång appens skärmar startar** läser `PhotoRecovery` posten. Det sker vid kallstart, och när databasen öppnas igen efter ett byte av läge.
+2. **Varje gång databasen öppnas** läser `PhotoRecovery` posten (vid kallstart, eller om databasen öppnas igen).
    - **Ingen post:** ingenting händer.
    - **En post finns:** appen frågar `expo-image-picker` efter ett kvarhållet resultat (`getPendingResultAsync`).
      - **Om det finns en bild** sparas den till rundan och rollen i posten, och rundan öppnas.
      - **Om rundan inte längre är ett utkast** sparas inget.
+     - **Om rundan har ändrats sedan valet började** (en annan bild, markeringar) sparas inget, och appen säger det. Bildens kopior raderas.
      - **Om det inte finns något resultat** visar appen att valet avbröts och ber dig ta eller välja bilden igen. Inget gissas.
    - Posten tas bort i alla fall, så samma bild sparas aldrig två gånger av återställningen.
 3. **Varje fil skrivs in i journalen `photo_files`** innan den skrivs till disk. Städningen vid start raderar bara filer som:
@@ -23,18 +26,31 @@ Status 2026-10-28. **Ingen återställning är verifierad på S20.**
 
 ## Vilka fall som stöds
 
+**Normala avbrott (appen lever):**
+
+| Fall | Vad som händer |
+| --- | --- |
+| Avbryter bildväljaren | Befintlig bild ligger kvar. Posten tas bort. |
+| Kameran: X eller bakåt innan bilden tas | Ingenting ändras. |
+| Kameran: X, Androids bakåt eller iOS-gesten medan bilden sparas | Att lämna avbryter inte sparningen. Appen väntar på den och går tillbaka en gång när den är klar. Efter 8 sekunder kan du välja **Stay** eller **Leave**; med Leave kan bilden fortfarande läggas till när sparningen blir klar. |
+| Sparningen misslyckas | Inget ändras i rundan. De nya kopiorna raderas. Kamerans egen fil raderas bara om rundan avvisade bilden (ändrad, bekräftad eller kasserad); vid andra fel ligger den kvar i cachen. |
+| En äldre bild blir klar efter en nyare, eller efter att du har gjort markeringar | Den äldre bilden läggs inte till och ersätter inget. Dess kopior raderas. |
+| Rundan kasseras eller bekräftas medan bilden sparas | Bilden läggs inte till. Dess kopior raderas. |
+
+**Processen avslutas:**
+
 | Fall | Vad som händer | Status |
 | --- | --- | --- |
-| Väljaren svarar medan appen lever (det normala) | Bilden sparas direkt och posten tas bort | Ingick i grundflödet som du rapporterade som fungerande. Den nya versionen (rättvänd kopia, journal) är inte provad. |
-| **Androids aktivitet förstörs men processen lever**, till exempel "Don't keep activities" | `expo-image-picker` håller resultatet **i minnet** och lämnar ut det via `getPendingResultAsync`. Appen sparar bilden när skärmarna startar om. | Stöds i koden. **Overifierat.** Det är också overifierat om Expo Go startar om appens skärmar när aktiviteten återskapas. Om de inte gör det körs återställningen först vid nästa kallstart, och då finns resultatet bara kvar om processen fortfarande lever. |
-| **Hela processen avslutas** medan väljaren är öppen (minnesbrist, gräns för bakgrundsprocesser) | Resultatet i minnet försvinner med processen. Om Android återskapar aktiviteten och lämnar resultatet till den nya processen kan bilden räddas. Annars visar appen att valet avbröts. | Bilden **lovas inte**. Utkastet, de andra bilderna och markeringarna finns kvar, eftersom de sparas direkt. **Overifierat.** |
-| Du sveper bort appen eller tvångsstoppar den medan väljaren är öppen | Inget resultat. Vid nästa start visas att valet avbröts. | Bilden räddas inte. Utkastet finns kvar. **Overifierat.** |
-| Appen avslutas mitt i sparandet, efter att bilden kommit tillbaka | Kopior utan rad ligger kvar och städas bort efter 10 minuter vid en senare start. Rundan har kvar sin tidigare bild eller ingen. | Stöds i koden och är testat mot SQLite. **Overifierat på enhet.** |
+| Androids aktivitet förstörs men processen lever, under bildbiblioteket | `expo-image-picker` lämnar ut resultatet via `getPendingResultAsync`, och appen sparar bilden när databasen öppnas, om rundan inte har ändrats. | Stöds i koden. **Overifierat.** |
+| Hela processen avslutas medan bildbiblioteket är öppet | Resultatet försvinner normalt med processen. Appen säger då att valet avbröts. | Bilden **lovas inte**. Utkastet, de andra bilderna och markeringarna finns kvar. **Overifierat.** |
+| Appen avslutas medan kameravyn är öppen, eller efter att bilden tagits men innan den sparats | Bilden förloras. Utkastet behåller sin tidigare bild. Kamerans fil kan ligga kvar i appens cache tills systemet rensar den. | **Overifierat.** |
+| Appen avslutas mitt i sparandet | Bildraden skrivs i en enda transaktion. Om transaktionen hann committa har rundan den **nya** bilden; annars har den kvar den **gamla** (eller ingen). Kopior utan rad ligger kvar och städas efter 10 minuter vid en senare start. | Stöds i koden och är testat mot SQLite. **Overifierat på enhet.** |
+| Appen avslutas under en analys | Vid nästa start registreras försöket som avbrutet (`interrupted`) och du kan försöka igen. Ett sent svar från servern kan inte längre nå appen. | Testat mot SQLite. **Overifierat på enhet.** |
 | iOS | `getPendingResultAsync` ger alltid null. En kvarlämnad post ger beskedet att valet avbröts. | Overifierat. iOS är inte prioriterat. |
 
 ## Utkast i övrigt
 
-Antal skott, missar, diameter, kalibrering och markeringar skrivs till SQLite vid varje ändring. De finns kvar efter att appen avslutas, oavsett hur det sker. Det gäller inte en ändring som pågår precis när processen dör.
+Antal skott, missar, diameter, kalibrering och markeringar skrivs till SQLite vid varje ändring. De finns kvar efter att appen avslutas, oavsett hur det sker. Det gäller inte en ändring som pågår precis när processen dör. Om rundan har ändrats på en annan väg (till exempel nya förslag från en analys) skrivs äldre ändringar från en skärm inte över det; skärmen läser om rundan och säger hur många ändringar som inte sparades.
 
 ## Testa senare
 
@@ -43,3 +59,4 @@ Vänta med dessa tills grundflödet är provat. Ordningen nedan går från vanli
 2. Utvecklaralternativ → **Gräns för bakgrundsprocesser: inga** → ta en bild (ungefär fall 3).
 3. Svep bort appen medan bildväljaren är öppen (fall 4).
 4. Svep bort appen medan appens kameravy är öppen: utkastet ska finnas kvar, och ingen bild ska ha lagts till.
+5. Öppna biblioteket från kameraskärmen med "Don't keep activities" på.
