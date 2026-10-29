@@ -69,6 +69,9 @@ export type ConfirmedShot = {
   readonly markId: string;
   // Where the hit came from; absent in results confirmed before suggestions needed acceptance.
   readonly source?: MarkSource;
+  // The analysis attempt a suggested or edited hit came from, when that was recorded. Absent for
+  // the user's own hits and for older results; its algorithm version stays with the attempt.
+  readonly attemptId?: string;
   readonly shots: number;
   readonly centreMm: Point;
   readonly value: number;

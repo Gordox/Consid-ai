@@ -4,10 +4,16 @@ import { StyleSheet, Text, View } from 'react-native';
 import { Button } from '../../components/Button';
 import { StatusBadge } from '../../components/StatusBadge';
 import { Stepper } from '../../components/Stepper';
+import { TextField } from '../../components/TextField';
 import { colors, radius, spacing, typography } from '../../components/tokens';
-import { ACTUAL_SHOTS_RANGE, HIT_DIAMETER_MM_RANGE } from '../../domain/round/roundRules';
+import {
+  ACTUAL_SHOTS_RANGE,
+  formatHitDiameterMm,
+  HIT_DIAMETER_MM_RANGE,
+} from '../../domain/round/roundRules';
 import type { RoundEvaluation } from '../../domain/round/roundEvaluation';
 import type { DraftCounts } from '../../persistence/roundRepository';
+import type { useDiameterField } from './useDiameterField';
 
 type CountsProps = {
   counts: DraftCounts;
@@ -34,15 +40,17 @@ export function ActualShots({ counts, onChange, disabled }: CountsProps) {
 }
 
 // The diameter stays a stated assumption until the user confirms or changes it. It is never
-// derived from the calibre text, which is shown only as a reminder.
+// derived from the calibre text, which is shown only as a reminder. The value is typed; the field
+// (useDiameterField) keeps the text apart from the saved value.
 export function HoleDiameterCard({
   counts,
   onChange,
   disabled,
   calibreLabel,
-}: CountsProps & { calibreLabel: string }) {
+  field,
+}: CountsProps & { calibreLabel: string; field: ReturnType<typeof useDiameterField> }) {
   const assumed = counts.hitDiameterSource === 'assumed';
-  const mm = counts.hitDiameterMm.toFixed(1);
+  const mm = formatHitDiameterMm(counts.hitDiameterMm);
   return (
     <View style={styles.card}>
       <View style={styles.top}>
@@ -54,17 +62,17 @@ export function HoleDiameterCard({
           tone={assumed ? 'warning' : 'success'}
         />
       </View>
-      <Stepper
-        disabled={disabled}
-        label="Diameter"
-        max={HIT_DIAMETER_MM_RANGE.max}
-        min={HIT_DIAMETER_MM_RANGE.min}
-        onChange={(value) =>
-          onChange({ ...counts, hitDiameterMm: value, hitDiameterSource: 'userSet' })
-        }
-        step={0.5}
-        value={counts.hitDiameterMm}
-        valueText={`${mm} mm`}
+      <TextField
+        error={field.error}
+        hint={`${HIT_DIAMETER_MM_RANGE.min} to ${HIT_DIAMETER_MM_RANGE.max} mm, up to two decimals.`}
+        keyboardType="decimal-pad"
+        label="Diameter (mm)"
+        locked={disabled}
+        onBlur={() => void field.commit()}
+        onChangeText={field.onChangeText}
+        onSubmitEditing={() => void field.commit()}
+        returnKeyType="done"
+        value={field.text}
       />
       <Text style={styles.supporting}>
         {assumed
@@ -76,7 +84,11 @@ export function HoleDiameterCard({
           disabled={disabled}
           icon={Check}
           label="Use this diameter"
-          onPress={() => onChange({ ...counts, hitDiameterSource: 'userSet' })}
+          onPress={() => {
+            // A typed value is the diameter the user means; otherwise confirm the shown one.
+            if (field.commit() === 'unchanged')
+              onChange({ ...counts, hitDiameterSource: 'userSet' });
+          }}
           variant="secondary"
         />
       ) : null}

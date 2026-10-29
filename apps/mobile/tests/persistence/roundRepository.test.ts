@@ -380,6 +380,25 @@ describe('confirmRound', () => {
       shots: [{ markId: 'a', shots: 0, value: 1, centreMm: { x: 0, y: 0 } }],
     });
     expect(() => parseConfirmedResult(badShot)).toThrow(InvalidRoundDataError);
+    const traced = {
+      ...RESULT,
+      shots: [
+        {
+          markId: 'a',
+          source: 'suggested',
+          attemptId: 'att-1',
+          shots: 1,
+          value: 9,
+          centreMm: { x: 1, y: 2 },
+        },
+      ],
+    } as const;
+    expect(parseConfirmedResult(JSON.stringify(traced))).toEqual(traced);
+    const badAttempt = JSON.stringify({
+      ...RESULT,
+      shots: [{ markId: 'a', attemptId: 7, shots: 1, value: 1, centreMm: { x: 0, y: 0 } }],
+    });
+    expect(() => parseConfirmedResult(badAttempt)).toThrow(InvalidRoundDataError);
   });
 });
 

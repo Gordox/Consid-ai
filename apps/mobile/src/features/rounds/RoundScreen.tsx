@@ -13,6 +13,7 @@ import { ScreenHeader } from '../../components/ScreenHeader';
 import { ScoreSummary } from '../../components/ScoreSummary';
 import { colors, radius, spacing, typography } from '../../components/tokens';
 import type { ConfirmedRound, DraftRound, PhotoRole, RoundPhoto } from '../../domain/round/round';
+import { formatHitDiameterMm } from '../../domain/round/roundRules';
 import { findTarget } from '../../domain/target/targetDefinition';
 import { clearPendingPick, recordPendingPick } from '../../persistence/pendingPhotoPick';
 import { DraftChangedError, getRound, removeDraftPhoto } from '../../persistence/roundRepository';
@@ -32,6 +33,7 @@ import { libraryPickMessage, pickLibraryPhoto } from './libraryPick';
 import { savePickedPhoto } from './roundPhotos';
 import { createActionGuard } from './nextRound';
 import { initialRoundStep, type RoundStep } from './roundSteps';
+import { useDiameterField } from './useDiameterField';
 import { useDraftCounts } from './useDraftCounts';
 
 function reportDevError(error: unknown): void {
@@ -123,6 +125,7 @@ function DraftRoundView({
     reportDevError,
     onChanged,
   );
+  const diameter = useDiameterField(counts, change);
   const [step, setStep] = useState<RoundStep>(() => initialRoundStep(draft));
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -162,6 +165,19 @@ function DraftRoundView({
       cameraGuard.current.release();
     }, []),
   );
+
+  // Moving on saves a typed diameter first and waits for it, so the next step never works with
+  // an unsaved or invalid value.
+  async function continueToPhotos(): Promise<void> {
+    if (diameter.commit() === 'invalid') return;
+    const outcome = await written();
+    if (outcome === 'failed') {
+      setMessage("Couldn't save the shots or diameter. Try again before adding photos.");
+      return;
+    }
+    if (outcome === 'changed') return;
+    setStep('photos');
+  }
 
   // The draft revision a photo change is based on: the draft shown here, advanced by this
   // screen's own count writes. Null when the draft changed elsewhere and is being read again.
@@ -285,6 +301,7 @@ function DraftRoundView({
             calibreLabel={calibreLabel}
             counts={counts}
             disabled={locked}
+            field={diameter}
             onChange={change}
           />
           {target?.isDemo !== false ? (
@@ -294,7 +311,7 @@ function DraftRoundView({
               tone="warning"
             />
           ) : null}
-          <Button icon={Camera} label="Add photos" onPress={() => setStep('photos')} />
+          <Button icon={Camera} label="Add photos" onPress={() => void continueToPhotos()} />
         </>
       ) : null}
 
@@ -519,7 +536,7 @@ function ConfirmedRoundView({
           </Text>
         )}
         <Text style={styles.secondary}>
-          Hole diameter {result.hitDiameterMm.toFixed(1)} mm (
+          Hole diameter {formatHitDiameterMm(result.hitDiameterMm)} mm (
           {DIAMETER_SOURCE_TEXT[result.hitDiameterSource ?? 'unrecorded']}) ·{' '}
           {target?.label ?? result.targetId} · rule {result.scoringRule}
         </Text>

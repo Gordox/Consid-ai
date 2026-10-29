@@ -12,6 +12,7 @@ import { ScoreSummary } from '../../components/ScoreSummary';
 import { colors, radius, spacing, typography } from '../../components/tokens';
 import type { ConfirmedResult, DraftRound } from '../../domain/round/round';
 import { evaluateDraft } from '../../domain/round/roundEvaluation';
+import { formatHitDiameterMm } from '../../domain/round/roundRules';
 import { DEMO_TARGET, findTarget } from '../../domain/target/targetDefinition';
 import { confirmRound, getRound } from '../../persistence/roundRepository';
 import { getSession } from '../../persistence/sessionRepository';
@@ -289,13 +290,13 @@ function ReviewDraft({
       ) : null}
       {counts.hitDiameterSource === 'assumed' ? (
         <Banner
-          body={`${counts.hitDiameterMm.toFixed(1)} mm is a default. Check this value before using boundary scores. If you confirm now, it is saved as an assumption.`}
+          body={`${formatHitDiameterMm(counts.hitDiameterMm)} mm is a default. Check this value before using boundary scores. If you confirm now, it is saved as an assumption.`}
           title="Hole diameter is assumed"
           tone="warning"
         >
           <Button
             disabled={busy}
-            label={`Use ${counts.hitDiameterMm.toFixed(1)} mm`}
+            label={`Use ${formatHitDiameterMm(counts.hitDiameterMm)} mm`}
             onPress={() => change({ ...counts, hitDiameterSource: 'userSet' })}
             variant="secondary"
           />

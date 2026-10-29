@@ -26,7 +26,6 @@ import { colors, radius, spacing, typography } from '../../components/tokens';
 import { calibrationProblem } from '../../domain/round/calibrationCheck';
 import { findTarget } from '../../domain/target/targetDefinition';
 import type { EditorAction } from '../editor/annotationEditor';
-import { markerNumbers } from '../editor/editorInteraction';
 import { createGestureController } from '../editor/gestureController';
 import { MarkerList, MarkerOverlay, markName, PhotoLayer } from '../editor/PhotoMarkers';
 import { holeRadiusInPhoto, ringOutlines } from '../editor/targetOverlay';
@@ -40,7 +39,7 @@ import {
 import { usePhotoStore } from '../startup/photoStoreContext';
 import { useSessionStore } from '../startup/sessionStoreContext';
 import { useFocusLoad } from '../useFocusLoad';
-import { type Inspection, loadInspection } from './inspection';
+import { type Inspection, inspectionMarkers, loadInspection } from './inspection';
 
 type Which = 'after' | 'before';
 
@@ -126,7 +125,8 @@ function Viewer({
     [imageWidth, imageHeight],
   );
   const target = findTarget(inspection.targetId);
-  const numbers = markerNumbers(inspection.marks);
+  const markers = inspectionMarkers(inspection);
+  const numbers = markers.numbers;
   // Marks and calibration belong to the after photo; the before photo is shown without them.
   const onAfter = which === 'after';
   const calibration =
@@ -220,6 +220,7 @@ function Viewer({
             <PhotoLayer image={image} uri={photos.uri(photo.fileName)} view={view} />
             {showHits && onAfter ? (
               <MarkerOverlay
+                appearance={markers.kind}
                 calibrationPoints={[]}
                 holeRadius={(position) =>
                   target === null
@@ -281,6 +282,8 @@ function Viewer({
         ) : null}
         {showHits && onAfter ? (
           <MarkerList
+            appearance={markers.kind}
+            status={markers.status}
             detail={(mark) => inspection.details.get(mark.id) ?? null}
             marks={inspection.marks}
             numbers={numbers}

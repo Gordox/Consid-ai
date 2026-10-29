@@ -92,7 +92,16 @@ export function evaluateDraft(draft: DraftRound, target: TargetDefinition | null
         return blocked('calibrationInvalid');
       }
       const { value } = scoreShot(target, centreMm, draft.hitDiameterMm);
-      mapped.push({ markId: mark.id, source: mark.source, shots: mark.shots, centreMm, value });
+      mapped.push({
+        markId: mark.id,
+        source: mark.source,
+        ...(mark.source !== 'manual' && mark.attemptId !== null
+          ? { attemptId: mark.attemptId }
+          : {}),
+        shots: mark.shots,
+        centreMm,
+        value,
+      });
     }
     shots = mapped;
   }

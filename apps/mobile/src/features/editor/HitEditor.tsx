@@ -41,7 +41,7 @@ import { calibrationProblem } from '../../domain/round/calibrationCheck';
 import type { Calibration, DraftRound, HitMark } from '../../domain/round/round';
 import { type SuggestionBasis, suggestionBasis } from '../../domain/round/suggestionBasis';
 import { evaluateDraft } from '../../domain/round/roundEvaluation';
-import { SHOTS_PER_HOLE_RANGE } from '../../domain/round/roundRules';
+import { formatHitDiameterMm, SHOTS_PER_HOLE_RANGE } from '../../domain/round/roundRules';
 import { findTarget } from '../../domain/target/targetDefinition';
 import { DraftChangedError, saveDraftAnnotations } from '../../persistence/roundRepository';
 import { newId } from '../../services/deviceContext';
@@ -723,8 +723,8 @@ function Inspector({
         />
       ) : null}
       <Text style={styles.secondary}>
-        Hole diameter {diameterMm.toFixed(1)} mm ({diameterAssumed ? 'assumed' : 'set by you'}), the
-        same for every hit in this round.
+        Hole diameter {formatHitDiameterMm(diameterMm)} mm (
+        {diameterAssumed ? 'assumed' : 'set by you'}), the same for every hit in this round.
       </Text>
       <View style={styles.secondaryRow}>
         {mark.accepted ? null : (

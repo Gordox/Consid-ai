@@ -30,6 +30,8 @@ export type TextFieldProps = {
   keyboardType?: KeyboardTypeOptions;
   returnKeyType?: ReturnKeyTypeOptions;
   onSubmitEditing?: () => void;
+  // Called when the field loses focus, e.g. to save a typed value.
+  onBlur?: () => void;
   inputRef?: Ref<TextInputInstance>;
   onLayout?: (event: LayoutChangeEvent) => void;
   placeholder?: string;
@@ -67,6 +69,7 @@ function FieldInput(props: TextFieldProps) {
     keyboardType = 'default',
     returnKeyType,
     onSubmitEditing,
+    onBlur,
     inputRef,
     placeholder,
   } = props;
@@ -88,7 +91,10 @@ function FieldInput(props: TextFieldProps) {
       editable={!locked}
       keyboardAppearance="dark"
       keyboardType={keyboardType}
-      onBlur={() => setFocused(false)}
+      onBlur={() => {
+        setFocused(false);
+        onBlur?.();
+      }}
       onChangeText={onChangeText}
       onFocus={() => setFocused(true)}
       onSubmitEditing={onSubmitEditing}

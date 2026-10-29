@@ -182,8 +182,10 @@ function readShot(value: unknown, column: string): ConfirmedShot {
   const shots: unknown = Reflect.get(value, 'shots');
   const shotValue: unknown = Reflect.get(value, 'value');
   const source: unknown = Reflect.get(value, 'source');
+  const attemptId: unknown = Reflect.get(value, 'attemptId');
   if (
     (source !== undefined && (typeof source !== 'string' || !isMarkSource(source))) ||
+    (attemptId !== undefined && (typeof attemptId !== 'string' || attemptId === '')) ||
     typeof markId !== 'string' ||
     typeof shots !== 'number' ||
     !isShotsPerHole(shots) ||
@@ -196,6 +198,7 @@ function readShot(value: unknown, column: string): ConfirmedShot {
   return {
     markId,
     ...(source === undefined ? {} : { source }),
+    ...(attemptId === undefined ? {} : { attemptId }),
     shots,
     value: shotValue,
     centreMm: readPoint(Reflect.get(value, 'centreMm'), column),

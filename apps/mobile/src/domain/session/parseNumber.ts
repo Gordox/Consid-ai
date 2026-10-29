@@ -64,7 +64,14 @@ export function parseWholeNumber(
   return digitsWithinRange(trimmed, range);
 }
 
-export function parseDistanceMetres(raw: string): Result<number, DistanceError> {
+// A decimal typed with a point or a comma and at most maxFractionDigits decimals, as a whole
+// number of the smallest unit (for example tenths), checked against a range in that unit. No
+// sign, exponent, grouping or leading/trailing separator, and nothing is rounded.
+export function parseScaledDecimal(
+  raw: string,
+  maxFractionDigits: number,
+  scaledRange: IntegerRange,
+): Result<number, DistanceError> {
   const trimmed = raw.trim();
   if (trimmed === '') {
     return { ok: false, error: 'required' };
@@ -74,13 +81,17 @@ export function parseDistanceMetres(raw: string): Result<number, DistanceError> 
   if (integerDigits === undefined) {
     return { ok: false, error: 'invalidNumber' };
   }
-  const fractionDigits = match?.[2] ?? '0';
-  if (fractionDigits.length > 1) {
+  const fractionDigits = match?.[2] ?? '';
+  if (fractionDigits.length > maxFractionDigits) {
     return { ok: false, error: 'tooManyDecimals' };
   }
-  const tenths = digitsWithinRange(integerDigits + fractionDigits, DISTANCE_TENTHS_RANGE);
-  if (!tenths.ok) {
-    return tenths;
-  }
-  return { ok: true, value: tenths.value / 10 };
+  return digitsWithinRange(
+    integerDigits + fractionDigits.padEnd(maxFractionDigits, '0'),
+    scaledRange,
+  );
+}
+
+export function parseDistanceMetres(raw: string): Result<number, DistanceError> {
+  const tenths = parseScaledDecimal(raw, 1, DISTANCE_TENTHS_RANGE);
+  return tenths.ok ? { ok: true, value: tenths.value / 10 } : tenths;
 }

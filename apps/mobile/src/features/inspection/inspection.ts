@@ -1,4 +1,10 @@
-import type { Calibration, HitMark, Round, RoundPhoto } from '../../domain/round/round';
+import type {
+  Calibration,
+  ConfirmedShot,
+  HitMark,
+  Round,
+  RoundPhoto,
+} from '../../domain/round/round';
 import { evaluateDraft } from '../../domain/round/roundEvaluation';
 import { findTarget } from '../../domain/target/targetDefinition';
 import type { SessionDatabase } from '../../persistence/database';
@@ -20,7 +26,62 @@ export type Inspection = {
   readonly marks: readonly HitMark[];
   // Per mark: its number (accepted hits only) and what is known about its score.
   readonly details: ReadonlyMap<string, string>;
+  // A confirmed round's stored shots by mark; null for a draft. A confirmed round is shown from
+  // these, never from the marks' current review state.
+  readonly confirmedShots: ReadonlyMap<string, ConfirmedShot> | null;
 };
+
+export type MarkerKind = 'counted' | 'suggestion' | 'notInResult';
+
+export type InspectionMarkers = {
+  readonly numbers: ReadonlyMap<string, number>;
+  readonly kind: (mark: HitMark) => MarkerKind;
+  readonly status: (mark: HitMark) => string;
+};
+
+const SOURCE_TEXT = {
+  manual: 'marked by you',
+  suggested: 'accepted suggestion',
+  suggestedEdited: 'suggestion you moved',
+} as const;
+
+// How the markers of an inspected round are numbered, drawn and described. For a confirmed round
+// this follows the stored result: a mark in it is a counted hit even if an older schema left it
+// looking like an unreviewed suggestion, and a mark outside it is labelled so. Where the result
+// does not record where a hit came from, it says so instead of guessing.
+export function inspectionMarkers(inspection: Inspection): InspectionMarkers {
+  const shots = inspection.confirmedShots;
+  if (shots === null) {
+    const numbers = new Map<string, number>();
+    for (const mark of inspection.marks) {
+      if (mark.accepted) numbers.set(mark.id, numbers.size + 1);
+    }
+    return {
+      numbers,
+      kind: (mark) => (mark.accepted ? 'counted' : 'suggestion'),
+      status: (mark) =>
+        mark.accepted
+          ? `${SOURCE_TEXT[mark.source]}${mark.shots > 1 ? `, ${mark.shots} shots in this hole` : ''}`
+          : mark.uncertain
+            ? 'uncertain suggestion, not counted'
+            : 'suggestion, not counted',
+    };
+  }
+  const numbers = new Map<string, number>();
+  for (const mark of inspection.marks) {
+    if (shots.has(mark.id)) numbers.set(mark.id, numbers.size + 1);
+  }
+  return {
+    numbers,
+    kind: (mark) => (shots.has(mark.id) ? 'counted' : 'notInResult'),
+    status: (mark) => {
+      const shot = shots.get(mark.id);
+      if (shot === undefined) return 'not part of the confirmed result';
+      const origin = shot.source === undefined ? 'source not recorded' : SOURCE_TEXT[shot.source];
+      return `${origin}${shot.shots > 1 ? `, ${shot.shots} shots in this hole` : ''}`;
+    },
+  };
+}
 
 function plural(count: number, one: string, many: string): string {
   return count === 1 ? `1 ${one}` : `${count} ${many}`;
@@ -85,5 +146,9 @@ export async function loadInspection(
     hitDiameterMm: round.state === 'confirmed' ? round.result.hitDiameterMm : round.hitDiameterMm,
     marks: annotations.marks,
     details: hitDetails(round, annotations.marks),
+    confirmedShots:
+      round.state === 'confirmed'
+        ? new Map(round.result.shots.map((shot) => [shot.markId, shot]))
+        : null,
   };
 }

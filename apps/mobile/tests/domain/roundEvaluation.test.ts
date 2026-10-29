@@ -146,6 +146,27 @@ describe('buildConfirmedResult', () => {
       RoundNotConfirmableError,
     );
   });
+
+  it('keeps the attempt of accepted or moved suggestions and none for the user’s own hits', () => {
+    const result = buildConfirmedResult(
+      draft({
+        marks: [
+          { ...mark('a', 0, 0), source: 'suggested', attemptId: 'att-1' },
+          { ...mark('b', 44.5, 0), source: 'suggestedEdited', attemptId: 'att-1' },
+          // Accepted before attempts were recorded on marks: nothing is filled in.
+          { ...mark('c', 0, 120), source: 'suggested', attemptId: null },
+        ],
+      }),
+      DEMO_TARGET,
+    );
+    expect(result.shots.map((shot) => [shot.markId, shot.attemptId])).toEqual([
+      ['a', 'att-1'],
+      ['b', 'att-1'],
+      ['c', undefined],
+    ]);
+    const manual = buildConfirmedResult(draft(), DEMO_TARGET);
+    expect(manual.shots.every((shot) => !('attemptId' in shot))).toBe(true);
+  });
 });
 
 describe('pending suggestions', () => {
