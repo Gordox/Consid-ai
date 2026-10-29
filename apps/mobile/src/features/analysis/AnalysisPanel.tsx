@@ -13,7 +13,10 @@ import type { DraftRound } from '../../domain/round/round';
 import { findTarget } from '../../domain/target/targetDefinition';
 import { getLatestAttempt, type LatestAttempt } from '../../persistence/analysisRepository';
 import { ANALYSIS_TIMEOUT_MS } from '../../services/analysis/analysisClient';
-import { readAnalysisConfig } from '../../services/analysis/analysisConfig';
+import {
+  readAnalysisAddressRefused,
+  readAnalysisConfig,
+} from '../../services/analysis/analysisConfig';
 import { newId, nowUtcIso } from '../../services/deviceContext';
 import { formatCreatedAt } from '../sessions/formatSession';
 import { usePhotoStore } from '../startup/photoStoreContext';
@@ -87,6 +90,7 @@ export function AnalysisPanel({
   const { db, analysisRuns } = useSessionStore();
   const photos = usePhotoStore();
   const [config] = useState(readAnalysisConfig);
+  const [addressRefused] = useState(readAnalysisAddressRefused);
   const [latest, setLatest] = useState<LatestAttempt | null>(null);
   const [confirmReplace, setConfirmReplace] = useState(false);
   const { runningAttempt, cancelling, lastFinished } = useRoundAnalysis(analysisRuns, draft.id);
@@ -222,7 +226,11 @@ export function AnalysisPanel({
     <View style={styles.stack}>
       {config === null ? (
         <Banner
-          body="Automatic analysis isn't set up in this app. Mark the hits yourself."
+          body={
+            addressRefused
+              ? "This build's analysis address isn't allowed: release builds need HTTPS, and plain HTTP to this computer or a private network works only in development. Mark the hits yourself."
+              : "Automatic analysis isn't set up in this app. Mark the hits yourself."
+          }
           title="Analysis unavailable"
           tone="info"
         />

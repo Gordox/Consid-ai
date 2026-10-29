@@ -44,6 +44,21 @@ export function parseAnalysisConfig(
   return { baseUrl: url.toString().replace(/\/+$/, ''), host: url.host };
 }
 
+// True when the build has an address the rules above refuse, for example plain HTTP in a release
+// build. Analysis is then off as without an address, but the app says why.
+export function isAnalysisAddressRefused(
+  value: string | undefined,
+  isDevelopment: boolean,
+): boolean {
+  return (
+    value !== undefined && value.trim() !== '' && parseAnalysisConfig(value, isDevelopment) === null
+  );
+}
+
 export function readAnalysisConfig(): AnalysisConfig | null {
   return parseAnalysisConfig(process.env.EXPO_PUBLIC_ANALYSIS_URL, __DEV__);
+}
+
+export function readAnalysisAddressRefused(): boolean {
+  return isAnalysisAddressRefused(process.env.EXPO_PUBLIC_ANALYSIS_URL, __DEV__);
 }
